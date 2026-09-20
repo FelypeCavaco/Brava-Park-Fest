@@ -19,6 +19,8 @@ import {
   Truck,
   X,
   Pencil,
+  ArrowDownAZ,
+  Maximize2,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -163,6 +165,16 @@ function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
+// Aceita tanto "12,5" quanto "12.5" — o teclado numérico do celular, em
+// muitos aparelhos, só mostra vírgula (ou nem mostra separador nenhum),
+// então um input type="number" (que exige ponto) acaba impedindo ou
+// truncando a parte decimal.
+function parseDecimal(raw: string): number {
+  const normalized = raw.trim().replace(',', '.')
+  const value = Number(normalized)
+  return Number.isFinite(value) ? value : 0
+}
+
 function formatHour(t: string) {
   const [h, m] = t.split(':')
   return m === '00' ? `${Number(h)}h` : `${Number(h)}h${m}`
@@ -237,6 +249,8 @@ export function FestaDetalhe() {
   const [consumptionForm, setConsumptionForm] = useState<Record<string, string>>({})
   const [outroQtd, setOutroQtd] = useState('')
   const [outroDesc, setOutroDesc] = useState('')
+  const [editingConsumptionId, setEditingConsumptionId] = useState<string | null>(null)
+  const [editingConsumptionValue, setEditingConsumptionValue] = useState('')
   const [savingConsumption, setSavingConsumption] = useState(false)
 
   const [extraCatalog, setExtraCatalog] = useState<{ id: string; name: string; price: number }[]>([])
@@ -248,6 +262,8 @@ export function FestaDetalhe() {
   const [guestEntries, setGuestEntries] = useState<{ id: string; name: string; arrived: boolean }[]>([])
   const [manualGuestName, setManualGuestName] = useState('')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [guestSortAlpha, setGuestSortAlpha] = useState(false)
+  const [guestListFullscreen, setGuestListFullscreen] = useState(false)
   const [fornecedoresCopiado, setFornecedoresCopiado] = useState(false)
   const [fornecedoresMessage, setFornecedoresMessage] = useState<string | null>(null)
   const [fornecedoresTemplate, setFornecedoresTemplate] = useState<string>(MESSAGE_TEMPLATES.confirmar_fornecedores)
@@ -579,6 +595,70 @@ export function FestaDetalhe() {
     })
   }
 
+  function renderGuestListBody(large: boolean) {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <input readOnly value={guestListUrl()} className="flex-1 border border-line rounded-lg px-3 py-2 text-xs text-muted bg-paper" />
+          <button onClick={handleCopyLink} className="text-muted hover:text-purple shrink-0" aria-label="Copiar link">
+            <Copy className="w-4 h-4" />
+          </button>
+        </div>
+        {linkCopied && <p className="text-xs text-teal mb-2">Link copiado!</p>}
+        <Can permission="action:festa.lista_convidados">
+          <Button variant="secondary" className="text-xs px-3 py-1.5 mb-4" onClick={handleSendGuestLinkWhatsApp}>
+            Enviar por WhatsApp
+          </Button>
+        </Can>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-muted">
+            {guestEntries.filter((g) => g.arrived).length} de {guestEntries.length} convidado(s) chegaram
+          </p>
+          <button
+            onClick={() => setGuestSortAlpha((v) => !v)}
+            className={`text-xs flex items-center gap-1 ${guestSortAlpha ? 'text-purple font-medium' : 'text-muted'}`}
+          >
+            <ArrowDownAZ className="w-3.5 h-3.5" /> Ordem alfabética
+          </button>
+        </div>
+        <ul className={`divide-y divide-line overflow-y-auto mb-3 ${large ? 'max-h-[70vh]' : 'max-h-40'}`}>
+          {sortedGuestEntries.map((g) => (
+            <li key={g.id} className="py-1.5 flex items-center justify-between text-sm gap-2">
+              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={g.arrived}
+                  onChange={() => toggleGuestArrived(g.id, g.arrived)}
+                  disabled={!can('action:festa.lista_convidados')}
+                  className="shrink-0"
+                />
+                <span className={`truncate ${g.arrived ? 'text-muted line-through' : ''}`}>{g.name}</span>
+              </label>
+              <Can permission="action:festa.lista_convidados">
+                <button onClick={() => handleRemoveGuest(g.id)} className="text-muted hover:text-danger shrink-0">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </Can>
+            </li>
+          ))}
+          {sortedGuestEntries.length === 0 && <p className="text-sm text-muted py-2">Ninguém enviado ainda.</p>}
+        </ul>
+        <Can permission="action:festa.lista_convidados">
+          <form onSubmit={handleAddGuestManual} className="flex gap-2">
+            <input
+              value={manualGuestName}
+              onChange={(e) => setManualGuestName(e.target.value)}
+              placeholder="Adicionar nome manualmente"
+              className="flex-1 border border-line rounded-lg px-3 py-1.5 text-sm"
+            />
+            <Button type="submit" className="text-xs px-3 py-1.5"><Plus className="w-3.5 h-3.5" /></Button>
+          </form>
+        </Can>
+      </div>
+    )
+  }
+
   async function loadPayments() {
     const { data } = await supabase.from('payments').select('*').eq('reservation_id', id).order('payment_date')
     setPayments(
@@ -669,6 +749,11 @@ export function FestaDetalhe() {
     const itemDue = c.dueDate ? parseISO(c.dueDate) : dueDate
     return itemDue && isPast(itemDue)
   }).length
+
+  const sortedGuestEntries = useMemo(
+    () => (guestSortAlpha ? [...guestEntries].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : guestEntries),
+    [guestEntries, guestSortAlpha],
+  )
 
   const pendencias = useMemo(() => {
     let n = 0
@@ -848,7 +933,8 @@ export function FestaDetalhe() {
 
     const calls: any[] = []
     for (const item of unitInventoryItems) {
-      const qty = Number(consumptionForm[item.id])
+      const raw = consumptionForm[item.id]
+      const qty = raw ? parseDecimal(raw) : 0
       if (!qty) continue
       calls.push(
         supabase.rpc('record_stock_consumption', {
@@ -859,7 +945,7 @@ export function FestaDetalhe() {
         }),
       )
     }
-    const outroQtdNum = Number(outroQtd)
+    const outroQtdNum = outroQtd ? parseDecimal(outroQtd) : 0
     if (outroQtdNum && outroDesc.trim()) {
       calls.push(
         supabase.rpc('record_stock_consumption', {
@@ -897,6 +983,25 @@ export function FestaDetalhe() {
     if (error) {
       setStockConsumption(previous)
       setError('Não foi possível desfazer esse lançamento.')
+      return
+    }
+    if (festa) await loadUnitInventory(festa.unitId)
+  }
+
+  function startEditConsumption(entry: StockConsumptionEntry) {
+    setEditingConsumptionId(entry.id)
+    setEditingConsumptionValue(String(entry.quantity))
+  }
+
+  async function handleSaveEditConsumption(entryId: string) {
+    const previous = stockConsumption
+    const newQuantity = parseDecimal(editingConsumptionValue)
+    setStockConsumption((prev) => prev.map((c) => (c.id === entryId ? { ...c, quantity: newQuantity } : c)))
+    setEditingConsumptionId(null)
+    const { error } = await supabase.rpc('update_stock_consumption', { p_id: entryId, p_new_quantity: newQuantity })
+    if (error) {
+      setStockConsumption(previous)
+      setError('Não foi possível editar esse lançamento.')
       return
     }
     if (festa) await loadUnitInventory(festa.unitId)
@@ -1654,7 +1759,19 @@ export function FestaDetalhe() {
             </p>
           </Card>
 
-          <Card title="Lista de convidados" action={<Users className="w-4 h-4 text-muted" />}>
+          <Card
+            title="Lista de convidados"
+            action={
+              <div className="flex items-center gap-3">
+                {guestListToken && (
+                  <button onClick={() => setGuestListFullscreen(true)} className="text-muted hover:text-purple" aria-label="Ver em tela cheia">
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                )}
+                <Users className="w-4 h-4 text-muted" />
+              </div>
+            }
+          >
             {!guestListToken ? (
               <div>
                 <p className="text-sm text-muted mb-3">
@@ -1668,57 +1785,7 @@ export function FestaDetalhe() {
                 </Can>
               </div>
             ) : (
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <input readOnly value={guestListUrl()} className="flex-1 border border-line rounded-lg px-3 py-2 text-xs text-muted bg-paper" />
-                  <button onClick={handleCopyLink} className="text-muted hover:text-purple shrink-0" aria-label="Copiar link">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-                {linkCopied && <p className="text-xs text-teal mb-2">Link copiado!</p>}
-                <Can permission="action:festa.lista_convidados">
-                  <Button variant="secondary" className="text-xs px-3 py-1.5 mb-4" onClick={handleSendGuestLinkWhatsApp}>
-                    Enviar por WhatsApp
-                  </Button>
-                </Can>
-
-                <p className="text-xs text-muted mb-2">
-                  {guestEntries.filter((g) => g.arrived).length} de {guestEntries.length} convidado(s) chegaram
-                </p>
-                <ul className="divide-y divide-line max-h-40 overflow-y-auto mb-3">
-                  {guestEntries.map((g) => (
-                    <li key={g.id} className="py-1.5 flex items-center justify-between text-sm gap-2">
-                      <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={g.arrived}
-                          onChange={() => toggleGuestArrived(g.id, g.arrived)}
-                          disabled={!can('action:festa.lista_convidados')}
-                          className="shrink-0"
-                        />
-                        <span className={`truncate ${g.arrived ? 'text-muted line-through' : ''}`}>{g.name}</span>
-                      </label>
-                      <Can permission="action:festa.lista_convidados">
-                        <button onClick={() => handleRemoveGuest(g.id)} className="text-muted hover:text-danger shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </Can>
-                    </li>
-                  ))}
-                  {guestEntries.length === 0 && <p className="text-sm text-muted py-2">Ninguém enviado ainda.</p>}
-                </ul>
-                <Can permission="action:festa.lista_convidados">
-                  <form onSubmit={handleAddGuestManual} className="flex gap-2">
-                    <input
-                      value={manualGuestName}
-                      onChange={(e) => setManualGuestName(e.target.value)}
-                      placeholder="Adicionar nome manualmente"
-                      className="flex-1 border border-line rounded-lg px-3 py-1.5 text-sm"
-                    />
-                    <Button type="submit" className="text-xs px-3 py-1.5"><Plus className="w-3.5 h-3.5" /></Button>
-                  </form>
-                </Can>
-              </div>
+              renderGuestListBody(false)
             )}
           </Card>
 
@@ -2143,8 +2210,8 @@ export function FestaDetalhe() {
                         {item.name} (tem {item.quantity} {item.unitOfMeasure} em estoque)
                       </label>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
+                        inputMode="decimal"
                         value={consumptionForm[item.id] ?? ''}
                         onChange={(e) => setConsumptionForm((prev) => ({ ...prev, [item.id]: e.target.value }))}
                         placeholder="0"
@@ -2169,8 +2236,8 @@ export function FestaDetalhe() {
                 <div>
                   <label className="block text-xs text-muted mb-1">Outros — quantidade</label>
                   <input
-                    type="number"
-                    min={0}
+                    type="text"
+                    inputMode="decimal"
                     value={outroQtd}
                     onChange={(e) => setOutroQtd(e.target.value)}
                     placeholder="0"
@@ -2192,16 +2259,47 @@ export function FestaDetalhe() {
           <p className="text-sm font-semibold mb-2">Histórico desta festa</p>
           <ul className="divide-y divide-line">
             {stockConsumption.map((c) => (
-              <li key={c.id} className="py-2.5 flex items-center justify-between text-sm">
-                <span>
-                  {c.itemName} — {c.quantity}
-                  {!c.hasInventoryLink && <span className="text-xs text-muted"> (não descontou do estoque)</span>}
-                </span>
-                <Can permission="action:festa.consumo_pos_festa">
-                  <button onClick={() => handleUndoConsumption(c.id)} className="text-xs text-muted hover:text-danger">
-                    Desfazer
-                  </button>
-                </Can>
+              <li key={c.id} className="py-2.5 flex items-center justify-between text-sm gap-3">
+                {editingConsumptionId === c.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="text-muted">{c.itemName} —</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoFocus
+                      value={editingConsumptionValue}
+                      onChange={(e) => setEditingConsumptionValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEditConsumption(c.id)
+                        if (e.key === 'Escape') setEditingConsumptionId(null)
+                      }}
+                      className="w-24 border border-line rounded-lg px-2 py-1 text-sm"
+                    />
+                    <button onClick={() => handleSaveEditConsumption(c.id)} className="text-xs text-purple font-medium">
+                      Salvar
+                    </button>
+                    <button onClick={() => setEditingConsumptionId(null)} className="text-xs text-muted">
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span>
+                      {c.itemName} — {c.quantity}
+                      {!c.hasInventoryLink && <span className="text-xs text-muted"> (não descontou do estoque)</span>}
+                    </span>
+                    <Can permission="action:festa.consumo_pos_festa">
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => startEditConsumption(c)} className="text-muted hover:text-purple" aria-label="Editar quantidade">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleUndoConsumption(c.id)} className="text-xs text-muted hover:text-danger">
+                          Desfazer
+                        </button>
+                      </div>
+                    </Can>
+                  </>
+                )}
               </li>
             ))}
             {stockConsumption.length === 0 && <p className="text-sm text-muted py-2">Nada lançado ainda.</p>}
@@ -2485,6 +2583,20 @@ export function FestaDetalhe() {
             setShowReviewModal(false)
           }}
         />
+      )}
+
+      {guestListFullscreen && guestListToken && (
+        <div className="fixed inset-0 z-50 bg-surface overflow-y-auto p-4 sm:p-8">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-display font-semibold">Lista de convidados</h2>
+              <button onClick={() => setGuestListFullscreen(false)} className="text-muted hover:text-danger" aria-label="Fechar tela cheia">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {renderGuestListBody(true)}
+          </div>
+        </div>
       )}
     </div>
   )

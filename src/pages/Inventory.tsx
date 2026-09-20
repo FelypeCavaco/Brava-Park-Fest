@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Plus, Minus, Trash2, AlertTriangle } from 'lucide-react'
+import { Plus, Minus, Trash2, AlertTriangle, Pencil, ArrowLeftRight } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -37,6 +37,18 @@ export function Inventory() {
   const [minimumQuantity, setMinimumQuantity] = useState('')
   const [quantityPerGuest, setQuantityPerGuest] = useState('')
   const [supplier, setSupplier] = useState('')
+
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCategory, setEditCategory] = useState<InventoryCategory>(INVENTORY_CATEGORIES[0])
+  const [editUnitOfMeasure, setEditUnitOfMeasure] = useState('')
+  const [editMinimumQuantity, setEditMinimumQuantity] = useState('')
+  const [editSupplier, setEditSupplier] = useState('')
+
+  const [transferringItem, setTransferringItem] = useState<InventoryItem | null>(null)
+  const [transferDestUnit, setTransferDestUnit] = useState('')
+  const [transferQuantity, setTransferQuantity] = useState('')
+  const [transferError, setTransferError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!unitDbIdsLoading) loadItems()
@@ -167,6 +179,125 @@ export function Inventory() {
         setItems((prev) => [...prev, item].sort((a, b) => a.name.localeCompare(b.name)))
       },
     })
+  }
+
+  function openEditItem(item: InventoryItem) {
+    setEditingItem(item)
+    setEditName(item.name)
+    setEditCategory(item.category)
+    setEditUnitOfMeasure(item.unit_of_measure)
+    setEditMinimumQuantity(String(item.minimum_quantity))
+    setEditSupplier(item.supplier ?? '')
+  }
+
+  async function handleSaveEditItem(e: FormEvent) {
+    e.preventDefault()
+    if (!editingItem || !editName.trim()) return
+
+    const updates = {
+      name: editName.trim(),
+      category: editCategory,
+      unit_of_measure: editUnitOfMeasure.trim() || 'un',
+      minimum_quantity: Number(editMinimumQuantity) || 0,
+      supplier: editSupplier.trim() || null,
+    }
+
+    const { error } = await supabase.from('inventory_items').update(updates).eq('id', editingItem.id)
+    if (error) {
+      setError('Não foi possível salvar as alterações do item.')
+      return
+    }
+
+    setItems((prev) => prev.map((i) => (i.id === editingItem.id ? { ...i, ...updates } : i)))
+    setEditingItem(null)
+  }
+
+  function openTransferItem(item: InventoryItem) {
+    setTransferringItem(item)
+    setTransferDestUnit(UNITS.find((u) => u.id !== item.unit_id)?.id ?? '')
+    setTransferQuantity(String(item.quantity))
+    setTransferError(null)
+  }
+
+  async function handleConfirmTransfer(e: FormEvent) {
+    e.preventDefault()
+    if (!transferringItem) return
+    const amount = Number(transferQuantity)
+    if (!amount || amount <= 0) {
+      setTransferError('Informe uma quantidade válida.')
+      return
+    }
+    if (amount > transferringItem.quantity) {
+      setTransferError('Essa quantidade é maior do que o disponível.')
+      return
+    }
+    const destDbIds = unitDbIds[transferDestUnit]
+    if (!destDbIds) {
+      setTransferError('Não encontrei essa unidade no banco de dados ainda.')
+      return
+    }
+
+    const { data: existing } = await supabase
+      .from('inventory_items')
+      .select('id, quantity')
+      .eq('unit_id', destDbIds.unitId)
+      .eq('name', transferringItem.name)
+      .maybeSingle()
+
+    const newSourceQuantity = Math.round((transferringItem.quantity - amount) * 100) / 100
+
+    if (existing) {
+      const newDestQuantity = Math.round((Number(existing.quantity) + amount) * 100) / 100
+      const { error } = await supabase.from('inventory_items').update({ quantity: newDestQuantity }).eq('id', existing.id)
+      if (error) {
+        setTransferError('Não foi possível transferir o item.')
+        return
+      }
+      await supabase.from('inventory_items').update({ quantity: newSourceQuantity }).eq('id', transferringItem.id)
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id === transferringItem.id) return { ...i, quantity: newSourceQuantity }
+          if (i.id === existing.id) return { ...i, quantity: newDestQuantity }
+          return i
+        }),
+      )
+    } else {
+      const { data: created, error } = await supabase
+        .from('inventory_items')
+        .insert({
+          unit_id: destDbIds.unitId,
+          name: transferringItem.name,
+          category: transferringItem.category,
+          unit_of_measure: transferringItem.unit_of_measure,
+          quantity: amount,
+          minimum_quantity: transferringItem.minimum_quantity,
+          quantity_per_guest: transferringItem.quantity_per_guest,
+          supplier: transferringItem.supplier,
+        })
+        .select()
+        .single()
+      if (error) {
+        setTransferError('Não foi possível transferir o item.')
+        return
+      }
+      await supabase.from('inventory_items').update({ quantity: newSourceQuantity }).eq('id', transferringItem.id)
+      setItems((prev) => [
+        ...prev.map((i) => (i.id === transferringItem.id ? { ...i, quantity: newSourceQuantity } : i)),
+        {
+          id: created.id,
+          unit_id: transferDestUnit,
+          name: created.name,
+          category: created.category,
+          unit_of_measure: created.unit_of_measure,
+          quantity: Number(created.quantity),
+          minimum_quantity: Number(created.minimum_quantity),
+          quantity_per_guest: created.quantity_per_guest !== null ? Number(created.quantity_per_guest) : null,
+          supplier: created.supplier,
+        },
+      ])
+    }
+
+    setTransferringItem(null)
   }
 
   function setStatusFor(id: string, status: PurchaseStatus) {
@@ -523,9 +654,17 @@ export function Inventory() {
                     )}
                   </td>
                   <td className="py-3 text-right">
-                    <button onClick={() => handleRemove(i.id)} className="text-muted hover:text-danger" aria-label="Remover item">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={() => openTransferItem(i)} className="text-muted hover:text-purple" aria-label="Transferir para outra unidade">
+                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => openEditItem(i)} className="text-muted hover:text-purple" aria-label="Editar item">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleRemove(i.id)} className="text-muted hover:text-danger" aria-label="Remover item">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )})}
@@ -540,6 +679,129 @@ export function Inventory() {
           </table>
         )}
       </Card>
+
+      {editingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setEditingItem(null)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-4">Editar item</h2>
+            <form onSubmit={handleSaveEditItem} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Nome do item</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Categoria</label>
+                <select
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value as InventoryCategory)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                >
+                  {INVENTORY_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1">Unidade de medida</label>
+                  <input
+                    type="text"
+                    value={editUnitOfMeasure}
+                    onChange={(e) => setEditUnitOfMeasure(e.target.value)}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1">Estoque mínimo fixo</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editMinimumQuantity}
+                    onChange={(e) => setEditMinimumQuantity(e.target.value)}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
+                <input
+                  type="text"
+                  value={editSupplier}
+                  onChange={(e) => setEditSupplier(e.target.value)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditingItem(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="flex-1 justify-center">
+                  Salvar
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {transferringItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setTransferringItem(null)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Transferir item</h2>
+            <p className="text-sm text-muted mb-4">
+              "{transferringItem.name}" — tem {transferringItem.quantity} {transferringItem.unit_of_measure} em{' '}
+              {UNITS.find((u) => u.id === transferringItem.unit_id)?.name}.
+            </p>
+            {transferError && <div className="bg-danger-light text-danger text-sm rounded-lg px-3 py-2 mb-3">{transferError}</div>}
+            <form onSubmit={handleConfirmTransfer} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Transferir para</label>
+                <select
+                  value={transferDestUnit}
+                  onChange={(e) => setTransferDestUnit(e.target.value)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                >
+                  {UNITS.filter((u) => u.id !== transferringItem.unit_id).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Quantidade a transferir</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  max={transferringItem.quantity}
+                  value={transferQuantity}
+                  onChange={(e) => setTransferQuantity(e.target.value)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <p className="text-xs text-muted">
+                Se já existir um item com esse nome na unidade de destino, a quantidade soma nele — senão, cria um
+                item novo lá com os mesmos dados (categoria, unidade de medida, mínimo).
+              </p>
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setTransferringItem(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="flex-1 justify-center">
+                  Transferir
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

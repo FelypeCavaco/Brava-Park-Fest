@@ -59,7 +59,11 @@ export async function downloadPdf(
         margin: 0,
         filename,
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        // letterRendering evita um bug conhecido do html2canvas que erra o
+        // cálculo de espaço entre palavras em textos em negrito ("Classic40
+        // pessoas" em vez de "Classic 40 pessoas") — desenha letra por letra
+        // em vez de medir a palavra inteira de uma vez.
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', letterRendering: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation },
         pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'li', '.avoid-break'] },
       } as any)

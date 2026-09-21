@@ -31,6 +31,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useUndo } from '../lib/UndoContext'
 import { SendReviewModal } from '../components/SendReviewModal'
 import { monthBounds } from '../lib/monthUtils'
+import { downloadPdf } from '../lib/pdfExport'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABEL, type MessageTemplateKey } from '../lib/whatsapp'
 import {
   PAYMENT_METHODS,
@@ -1157,43 +1158,27 @@ export function FestaDetalhe() {
     })
   }
 
-  function handleExportEscala() {
+  async function handleExportEscala() {
     if (!festa) return
-    const win = window.open('', '_blank', 'width=800,height=900')
-    if (!win) return
     const rows = staff.length
       ? staff.map((s) => `<tr><td>${s.name}</td><td>${s.role}</td></tr>`).join('')
       : '<tr><td colspan="2">Nenhum funcionário escalado ainda.</td></tr>'
-    win.document.write(`
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <title>Escala — ${festa.cliente}</title>
-          <style>
-            body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
-            h1 { color: #6D28D9; font-size: 18px; margin-bottom: 4px; }
-            p.subtitle { color: #6E6880; margin-top: 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-            th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #E2DBEE; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <h1>${festa.unidadeNome} — ${festa.tipoEvento} de ${festa.cliente}</h1>
-          <p class="subtitle">${festa.data} · ${festa.horario}</p>
-          <table>
-            <thead><tr><th>Nome</th><th>Função</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </body>
-      </html>
-    `)
-    win.document.close()
-    win.focus()
-    // Pequeno atraso pra dar tempo do navegador terminar de desenhar a página
-    // antes de abrir a caixa de impressão — senão alguns navegadores abrem a
-    // caixa com a página ainda em branco, o que impede de "Salvar como PDF".
-    setTimeout(() => win.print(), 300)
+    const styles = `
+      .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
+      h1 { color: #6D28D9; font-size: 18px; margin-bottom: 4px; }
+      p.subtitle { color: #6E6880; margin-top: 0; }
+      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+      th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #E2DBEE; font-size: 14px; }
+    `
+    const bodyHtml = `
+      <h1>${festa.unidadeNome} — ${festa.tipoEvento} de ${festa.cliente}</h1>
+      <p class="subtitle">${festa.data} · ${festa.horario}</p>
+      <table>
+        <thead><tr><th>Nome</th><th>Função</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `
+    await downloadPdf(bodyHtml, styles, `escala-${festa.cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
   }
 
   function openEditDados() {

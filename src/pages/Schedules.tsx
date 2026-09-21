@@ -7,6 +7,7 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
+import { downloadPdf } from '../lib/pdfExport'
 
 interface StaffRow { name: string; role: string }
 interface FestaEscala {
@@ -89,9 +90,7 @@ export function Schedules() {
     return festas.filter((f) => f.unitId === unitId)
   }, [festas, selectedUnit, unitDbIds])
 
-  function handleExport() {
-    const win = window.open('', '_blank', 'width=800,height=900')
-    if (!win) return
+  async function handleExport() {
     const blocks = visibleFestas.length
       ? visibleFestas
           .map(
@@ -114,34 +113,20 @@ export function Schedules() {
           .join('')
       : '<p>Nenhuma festa neste período.</p>'
 
-    win.document.write(`
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <title>Escala — ${format(parseISO(from), 'dd/MM')} a ${format(parseISO(to), 'dd/MM')}</title>
-          <style>
-            body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
-            h1 { color: #6D28D9; font-size: 20px; margin-bottom: 24px; }
-            .festa { margin-bottom: 24px; page-break-inside: avoid; }
-            .festa h3 { margin-bottom: 2px; font-size: 15px; }
-            .festa .subtitle { margin: 0 0 8px; color: #6E6880; font-size: 13px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { text-align: left; padding: 6px; border-bottom: 1px solid #E2DBEE; font-size: 13px; }
-          </style>
-        </head>
-        <body>
-          <h1>Escala de festas — ${format(parseISO(from), 'dd/MM/yyyy')} a ${format(parseISO(to), 'dd/MM/yyyy')}</h1>
-          ${blocks}
-        </body>
-      </html>
-    `)
-    win.document.close()
-    win.focus()
-    // Pequeno atraso pra dar tempo do navegador terminar de desenhar a página
-    // antes de abrir a caixa de impressão — senão alguns navegadores abrem a
-    // caixa com a página ainda em branco, o que impede de "Salvar como PDF".
-    setTimeout(() => win.print(), 300)
+    const styles = `
+      .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
+      h1 { color: #6D28D9; font-size: 20px; margin-bottom: 24px; }
+      .festa { margin-bottom: 24px; page-break-inside: avoid; break-inside: avoid; }
+      .festa h3 { margin-bottom: 2px; font-size: 15px; }
+      .festa .subtitle { margin: 0 0 8px; color: #6E6880; font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 6px; border-bottom: 1px solid #E2DBEE; font-size: 13px; }
+    `
+    const bodyHtml = `
+      <h1>Escala de festas — ${format(parseISO(from), 'dd/MM/yyyy')} a ${format(parseISO(to), 'dd/MM/yyyy')}</h1>
+      ${blocks}
+    `
+    await downloadPdf(bodyHtml, styles, `escala-${from}-a-${to}.pdf`)
   }
 
   return (

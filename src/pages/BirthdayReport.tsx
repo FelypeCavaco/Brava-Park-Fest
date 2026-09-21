@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
+import { downloadPdf } from '../lib/pdfExport'
 
 interface BirthdayRow {
   id: string
@@ -105,10 +106,7 @@ export function BirthdayReport() {
     return rows.filter((r) => r.unitId === unitId)
   }, [rows, selectedUnit, unitDbIds])
 
-  function handleExport() {
-    const win = window.open('', '_blank', 'width=1000,height=900')
-    if (!win) return
-
+  async function handleExport() {
     const body = visibleRows.length
       ? `
         <table>
@@ -148,32 +146,18 @@ export function BirthdayReport() {
         </table>`
       : '<p>Nenhuma festa neste período.</p>'
 
-    win.document.write(`
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <title>Relatório de aniversariantes — ${format(parseISO(from), 'dd/MM')} a ${format(parseISO(to), 'dd/MM')}</title>
-          <style>
-            body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
-            h1 { color: #6D28D9; font-size: 20px; margin-bottom: 24px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { text-align: left; padding: 8px; border-bottom: 1px solid #E2DBEE; font-size: 12px; }
-            th { color: #6E6880; font-weight: 600; }
-          </style>
-        </head>
-        <body>
-          <h1>Relatório de aniversariantes — ${format(parseISO(from), 'dd/MM/yyyy')} a ${format(parseISO(to), 'dd/MM/yyyy')}</h1>
-          ${body}
-        </body>
-      </html>
-    `)
-    win.document.close()
-    win.focus()
-    // Pequeno atraso pra dar tempo do navegador terminar de desenhar a página
-    // antes de abrir a caixa de impressão — senão alguns navegadores abrem a
-    // caixa com a página ainda em branco, o que impede de "Salvar como PDF".
-    setTimeout(() => win.print(), 300)
+    const styles = `
+      .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
+      h1 { color: #6D28D9; font-size: 20px; margin-bottom: 24px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 8px; border-bottom: 1px solid #E2DBEE; font-size: 12px; }
+      th { color: #6E6880; font-weight: 600; }
+    `
+    const bodyHtml = `
+      <h1>Relatório de aniversariantes — ${format(parseISO(from), 'dd/MM/yyyy')} a ${format(parseISO(to), 'dd/MM/yyyy')}</h1>
+      ${body}
+    `
+    await downloadPdf(bodyHtml, styles, `aniversariantes-${from}-a-${to}.pdf`, 'landscape')
   }
 
   return (

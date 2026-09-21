@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button'
 import { supabase } from '../lib/supabaseClient'
 import { buildContractVariables, renderContractTemplate } from '../lib/contractEngine'
 import { useUndo } from '../lib/UndoContext'
+import { downloadPdf } from '../lib/pdfExport'
 import type { Client, ContractTemplate, Package, Reservation, Unit } from '../types'
 
 interface ContractRow {
@@ -23,30 +24,13 @@ interface ContractRow {
   firstPaymentAmount: number | null
 }
 
-function openContractPrintWindow(cliente: string, text: string) {
-  const win = window.open('', '_blank', 'width=800,height=900')
-  if (!win) return
+async function openContractPrintWindow(cliente: string, text: string) {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  win.document.write(`
-    <!doctype html>
-    <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8" />
-        <title>Contrato — ${cliente}</title>
-        <style>
-          body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 40px; white-space: pre-wrap; line-height: 1.6; }
-          h1 { color: #6D28D9; font-size: 18px; }
-        </style>
-      </head>
-      <body>${escaped}</body>
-    </html>
-  `)
-  win.document.close()
-  win.focus()
-  // Pequeno atraso pra dar tempo do navegador terminar de desenhar a página
-  // antes de abrir a caixa de impressão — senão alguns navegadores abrem a
-  // caixa com a página ainda em branco, o que impede de "Salvar como PDF".
-  setTimeout(() => win.print(), 300)
+  const styles = `
+    .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 40px; white-space: pre-wrap; line-height: 1.6; }
+    h1 { color: #6D28D9; font-size: 18px; }
+  `
+  await downloadPdf(escaped, styles, `contrato-${cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
 }
 
 export function Contracts() {

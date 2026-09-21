@@ -10,6 +10,7 @@ import { useUndo } from '../lib/UndoContext'
 import { packagePriceForDate } from '../types'
 import logoUrl from '../assets/logo-brava-park-fest.png'
 import mascotUrl from '../assets/mascote-theo.png'
+import { downloadPdf } from '../lib/pdfExport'
 
 interface PackageOption {
   id: string
@@ -53,10 +54,7 @@ function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-function openProposalPrintWindow(p: ProposalPrintData) {
-  const win = window.open('', '_blank', 'width=800,height=1000')
-  if (!win) return
-
+async function openProposalPrintWindow(p: ProposalPrintData) {
   const extraIcons = ['🎈', '🍿', '💡', '🎵', '🎂', '✨']
   const extrasRows = p.extras.length
     ? p.extras
@@ -74,19 +72,14 @@ function openProposalPrintWindow(p: ProposalPrintData) {
   const hoje = new Date()
   const validade = addDays(hoje, 7)
 
-  win.document.write(`
-    <!doctype html>
-    <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8" />
-        <title>Proposta — ${p.cliente}</title>
-        <style>
+  const styles = `
           * { box-sizing: border-box; }
-          body {
+          .pdf-body {
             font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
             color: #241B33;
             margin: 0;
             background: #F5F2FA;
+            display: block;
           }
           .page { max-width: 640px; margin: 0 auto; background: #fff; overflow: hidden; box-shadow: 0 10px 40px rgba(36,27,51,0.12); }
 
@@ -194,14 +187,9 @@ function openProposalPrintWindow(p: ProposalPrintData) {
           .footer .brand em { color: #7CB92E; font-style: italic; }
           .footer .blurb { margin: 6px 0 0; font-size: 11.5px; color: #6E6880; }
 
-          @media print {
-            body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .page { box-shadow: none; max-width: none; }
-          }
-        </style>
-      </head>
-      <body>
+  `
+
+  const bodyHtml = `
         <div class="page">
           <div class="header">
             <span class="star" style="top:14px; left:56%; font-size:18px;">★</span>
@@ -275,16 +263,9 @@ function openProposalPrintWindow(p: ProposalPrintData) {
             </div>
           </div>
         </div>
-      </body>
-    </html>
-  `)
-  win.document.close()
-  win.focus()
-  // Pequeno atraso pra dar tempo do navegador terminar de desenhar a
-  // página (e carregar as imagens) antes de abrir a caixa de impressão —
-  // chamando print() na hora, alguns navegadores abrem a caixa com a
-  // página ainda em branco, o que impede de usar "Salvar como PDF" direito.
-  setTimeout(() => win.print(), 500)
+  `
+
+  await downloadPdf(bodyHtml, styles, `proposta-${p.cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
 }
 
 export function Proposals() {
@@ -428,7 +409,7 @@ export function Proposals() {
       { id: data.id, unidade: unitSlug, unitId: dbIds.unitId, eventDateIso: dataEvento || null, packageId: pacote.id, status: 'enviada', declineReason: null, ...proposalData },
       ...prev,
     ])
-    openProposalPrintWindow({
+    await openProposalPrintWindow({
       ...proposalData,
       pacoteDescricao: pacote.description,
       pacotePreco: pacotePrecoEfetivo,
@@ -445,7 +426,7 @@ export function Proposals() {
     const { data: unitRow } = await supabase.from('units').select('name, full_address').eq('id', p.unitId).maybeSingle()
     const pacote = packages.find((pk) => pk.id === p.packageId)
     const somaExtras = p.extras.reduce((s, e) => s + e.price, 0)
-    openProposalPrintWindow({
+    await openProposalPrintWindow({
       cliente: p.cliente,
       dataEvento: p.dataEvento,
       pacoteNome: p.pacoteNome,

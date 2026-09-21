@@ -50,6 +50,31 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+// Desenha o emoji isolado num canvas pequeno e devolve como imagem — bem
+// mais confiável que colocar o caractere de emoji direto no texto do PDF
+// (as fontes padrão do PDF não têm esses desenhos, ficaria em branco).
+const emojiCache = new Map<string, string>()
+function emojiImage(emoji: string): string {
+  const cached = emojiCache.get(emoji)
+  if (cached) return cached
+  const px = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = px
+  canvas.height = px
+  const ctx = canvas.getContext('2d')!
+  ctx.font = `${px * 0.78}px "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(emoji, px / 2, px / 2 + px * 0.05)
+  const dataUrl = canvas.toDataURL('image/png')
+  emojiCache.set(emoji, dataUrl)
+  return dataUrl
+}
+
+function drawEmoji(doc: jsPDF, emoji: string, x: number, y: number, size: number) {
+  doc.addImage(emojiImage(emoji), 'PNG', x, y, size, size)
+}
+
 function drawGradientRect(
   doc: jsPDF,
   x: number,
@@ -82,13 +107,6 @@ function drawStar(doc: jsPDF, cx: number, cy: number, outerR: number, innerR: nu
   for (let i = 1; i < pts.length; i++) deltas.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]])
   doc.setFillColor(...color)
   doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'F', true)
-}
-
-function drawDotBullet(doc: jsPDF, cx: number, cy: number, r: number, bg: readonly [number, number, number], dot: readonly [number, number, number]) {
-  doc.setFillColor(...bg)
-  doc.circle(cx, cy, r, 'F')
-  doc.setFillColor(...dot)
-  doc.circle(cx, cy, r * 0.4, 'F')
 }
 
 export async function generateProposalPdf(p: ProposalPrintData) {
@@ -138,40 +156,41 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   doc.text(unitLines, textX, 41)
 
   // mascote, sobrepondo a borda de baixo do cabeçalho
-  const mascotW = 32
+  const mascotW = 48
   const mascotH = mascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
-  doc.addImage(mascotImg, 'PNG', pageW - mascotW - 6, headerH - mascotH + 4, mascotW, mascotH)
+  doc.addImage(mascotImg, 'PNG', pageW - mascotW - 4, headerH - mascotH + 6, mascotW, mascotH)
 
   // ---------- Meta pills ----------
-  let y = headerH + 12
+  let y = headerH + 16
   const colW = contentW / 3
-  const metaCols: [string, string][] = [
-    ['PROPOSTA PARA', p.cliente],
-    ['DATA DO EVENTO', p.dataEvento || 'A definir'],
-    ['EMITIDA EM', format(new Date())],
+  const metaCols: [string, string, string][] = [
+    ['📋', 'PROPOSTA PARA', p.cliente],
+    ['📅', 'DATA DO EVENTO', p.dataEvento || 'A definir'],
+    ['🗓️', 'EMITIDA EM', format(new Date())],
   ]
-  metaCols.forEach(([label, value], i) => {
+  metaCols.forEach(([emoji, label, value], i) => {
     const cx = marginX + colW * i
-    drawDotBullet(doc, cx + 3, y - 1.5, 3.2, COLORS.purpleLight, COLORS.purple)
+    drawEmoji(doc, emoji, cx, y - 4.5, 7)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
     doc.setTextColor(...COLORS.muted)
-    doc.text(label, cx + 8, y - 3)
+    doc.text(label, cx + 9, y - 3)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
     doc.setTextColor(...COLORS.ink)
-    doc.text(doc.splitTextToSize(value, colW - 10), cx + 8, y + 1.5)
+    doc.text(doc.splitTextToSize(value, colW - 11), cx + 9, y + 1.5)
   })
 
-  y = headerH + 26
+  y = headerH + 30
 
   // ---------- Pacote ----------
   doc.setFillColor(...COLORS.purple)
   doc.roundedRect(marginX, y, contentW, 8, 1.5, 1.5, 'F')
+  drawEmoji(doc, '📦', marginX + 3, y + 1.2, 5.6)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(...COLORS.white)
-  doc.text('PACOTE', marginX + 4, y + 5.5)
+  doc.text('PACOTE', marginX + 10, y + 5.5)
   y += 12
 
   const descLines = p.pacoteDescricao ? doc.splitTextToSize(p.pacoteDescricao, contentW - 60) : []
@@ -197,12 +216,14 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   // ---------- Itens extras ----------
   doc.setFillColor(...COLORS.green)
   doc.roundedRect(marginX, y, contentW, 8, 1.5, 1.5, 'F')
+  drawEmoji(doc, '⭐', marginX + 3, y + 1.2, 5.6)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(...COLORS.white)
-  doc.text('ITENS EXTRAS', marginX + 4, y + 5.5)
+  doc.text('ITENS EXTRAS', marginX + 10, y + 5.5)
   y += 12
 
+  const extraIcons = ['🎈', '🍿', '💡', '🎵', '🎂', '✨']
   if (p.extras.length === 0) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9.5)
@@ -210,8 +231,8 @@ export async function generateProposalPdf(p: ProposalPrintData) {
     doc.text('Nenhum item extra', marginX + 5, y + 3)
     y += 8
   } else {
-    for (const extra of p.extras) {
-      drawDotBullet(doc, marginX + 3.5, y, 3, COLORS.greenLight, COLORS.green)
+    p.extras.forEach((extra, i) => {
+      drawEmoji(doc, extraIcons[i % extraIcons.length], marginX, y - 3, 6)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(10)
       doc.setTextColor(...COLORS.ink)
@@ -221,17 +242,18 @@ export async function generateProposalPdf(p: ProposalPrintData) {
       doc.setDrawColor(230, 225, 240)
       doc.line(marginX, y + 4, marginX + contentW, y + 4)
       y += 8
-    }
+    })
   }
   y += 4
 
   // ---------- Valor total ----------
   doc.setFillColor(...COLORS.purple)
   doc.roundedRect(marginX, y, contentW, 14, 2, 2, 'F')
+  drawEmoji(doc, '🪙', marginX + 4, y + 3, 8)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.setTextColor(...COLORS.white)
-  doc.text('Valor total', marginX + 5, y + 9)
+  doc.text('Valor total', marginX + 14, y + 9)
   doc.setFontSize(15)
   doc.text(currency(p.total), marginX + contentW - 5, y + 9.5, { align: 'right' })
   y += 14
@@ -243,25 +265,24 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   y += 14
 
   // ---------- Selos ----------
-  const feats: [string, readonly [number, number, number]][] = [
-    ['Estrutura segura e completa para sua festa', COLORS.purple],
-    ['Equipe preparada para garantir muita diversão', COLORS.orange],
-    ['Momentos especiais para todas as idades', COLORS.purple],
+  const feats: [string, string][] = [
+    ['🛡️', 'Estrutura segura e completa para sua festa'],
+    ['👑', 'Equipe preparada para garantir muita diversão'],
+    ['💜', 'Momentos especiais para todas as idades'],
   ]
   const featColW = contentW / 3
-  feats.forEach(([text, color], i) => {
+  feats.forEach(([emoji, text], i) => {
     const cx = marginX + featColW * i + featColW / 2
     doc.setFillColor(...COLORS.purpleLight)
-    doc.circle(cx, y + 6, 6, 'F')
-    doc.setFillColor(...color)
-    doc.circle(cx, y + 6, 2.4, 'F')
+    doc.circle(cx, y + 6, 7, 'F')
+    drawEmoji(doc, emoji, cx - 5, y - 0.5, 10)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7.5)
     doc.setTextColor(...COLORS.muted)
     const lines = doc.splitTextToSize(text, featColW - 8)
-    doc.text(lines, cx, y + 15, { align: 'center' })
+    doc.text(lines, cx, y + 16, { align: 'center' })
   })
-  y += 30
+  y += 32
 
   // validade
   const validText = `Válida até ${format(addDaysFn(7))}`
@@ -275,9 +296,12 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   y += 16
 
   // ---------- Rodapé ----------
-  const footerH = 32
-  drawGradientRect(doc, 0, y, pageW, footerH, COLORS.purpleLight, COLORS.greenLight)
-  const footMascotW = 22
+  // Fundo sólido (sem gradiente) — a listra de banda de cor que aparecia
+  // aqui vinha do gradiente desenhado em várias faixas finas.
+  const footerH = 38
+  doc.setFillColor(...COLORS.purpleLight)
+  doc.rect(0, y, pageW, footerH, 'F')
+  const footMascotW = 34
   const footMascotH = footMascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
   // espelhado (largura negativa = flip horizontal)
   doc.addImage(mascotImg, 'PNG', marginX + footMascotW, y + (footerH - footMascotH) / 2, -footMascotW, footMascotH)
@@ -286,22 +310,23 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9.5)
   doc.setTextColor(...COLORS.muted)
-  doc.text('Obrigado por escolher a', footTextX, y + 11)
+  doc.text('Obrigado por escolher a', footTextX, y + 13)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
   doc.setTextColor(...COLORS.purple)
-  doc.text('BRAVA PARK', footTextX, y + 18)
+  doc.text('BRAVA PARK', footTextX, y + 20)
   const brandW = doc.getTextWidth('BRAVA PARK ')
   doc.setFont('helvetica', 'bolditalic')
   doc.setTextColor(...COLORS.green)
-  doc.text('Fest', footTextX + brandW, y + 18)
+  doc.text('Fest', footTextX + brandW, y + 20)
 
+  drawEmoji(doc, '🎉', footTextX, y + 23, 5.5)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(...COLORS.muted)
-  const blurbLines = doc.splitTextToSize('Estamos prontos para transformar esse dia em uma experiência inesquecível!', contentW - footMascotW - 12)
-  doc.text(blurbLines, footTextX, y + 24)
+  const blurbLines = doc.splitTextToSize('Estamos prontos para transformar esse dia em uma experiência inesquecível!', contentW - footMascotW - 20)
+  doc.text(blurbLines, footTextX + 7, y + 27)
 
   doc.save(`proposta-${p.cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
 }

@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabaseClient'
 import { currencyToWords } from '../lib/numberToWords'
 import { useUndo } from '../lib/UndoContext'
 import { packagePriceForDate } from '../types'
+import logoUrl from '../assets/logo-brava-park-fest.png'
+import mascotUrl from '../assets/mascote-theo.png'
 
 interface PackageOption {
   id: string
@@ -52,12 +54,22 @@ function currency(v: number) {
 }
 
 function openProposalPrintWindow(p: ProposalPrintData) {
-  const win = window.open('', '_blank', 'width=800,height=900')
+  const win = window.open('', '_blank', 'width=800,height=1000')
   if (!win) return
 
+  const extraIcons = ['🎈', '🍿', '💡', '🎵', '🎂', '✨']
   const extrasRows = p.extras.length
-    ? p.extras.map((e) => `<tr><td>${e.name}</td><td class="value">${currency(e.price)}</td></tr>`).join('')
-    : '<tr><td colspan="2" class="muted">Nenhum item extra</td></tr>'
+    ? p.extras
+        .map(
+          (e, i) => `
+        <li class="extra-row">
+          <span class="extra-icon">${extraIcons[i % extraIcons.length]}</span>
+          <span class="extra-name">${e.name}</span>
+          <span class="extra-price">${currency(e.price)}</span>
+        </li>`,
+        )
+        .join('')
+    : '<li class="extra-row"><span class="muted">Nenhum item extra</span></li>'
 
   const hoje = new Date()
   const validade = addDays(hoje, 7)
@@ -70,61 +82,197 @@ function openProposalPrintWindow(p: ProposalPrintData) {
         <title>Proposta — ${p.cliente}</title>
         <style>
           * { box-sizing: border-box; }
-          body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 0; margin: 0; }
-          .header { background: #6D28D9; color: #fff; padding: 32px 40px; }
-          .header h1 { margin: 0; font-size: 22px; }
-          .header p { margin: 4px 0 0; opacity: 0.85; font-size: 13px; }
-          .content { padding: 32px 40px; }
-          .meta { display: flex; justify-content: space-between; margin-bottom: 24px; font-size: 13px; color: #6E6880; }
-          h3 { font-size: 14px; color: #6D28D9; margin: 24px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { text-align: left; padding: 10px 6px; border-bottom: 1px solid #E2DBEE; font-size: 14px; }
-          td.value, th.value { text-align: right; }
-          .muted { color: #6E6880; }
-          .package-desc { font-size: 12px; color: #6E6880; margin-top: 2px; }
-          .total-row td { font-size: 18px; font-weight: bold; border-bottom: none; padding-top: 16px; }
-          .total-words { text-align: right; font-size: 12px; color: #6E6880; margin-top: -8px; }
-          .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #E2DBEE; font-size: 12px; color: #6E6880; }
-          .validity { display: inline-block; background: #F4EEFB; color: #6D28D9; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-top: 8px; }
-          @media print { .header { background: #6D28D9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+          body {
+            font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+            color: #241B33;
+            margin: 0;
+            background: #F5F2FA;
+          }
+          .page { max-width: 640px; margin: 0 auto; background: #fff; overflow: hidden; box-shadow: 0 10px 40px rgba(36,27,51,0.12); }
+
+          /* ---------- Header ---------- */
+          .header {
+            position: relative;
+            background: linear-gradient(135deg, #6D28D9 0%, #4C1D95 100%);
+            color: #fff;
+            padding: 32px 28px 56px;
+            overflow: hidden;
+          }
+          .star { position: absolute; color: #F2900C; opacity: 0.85; }
+          .header-top { display: flex; align-items: center; gap: 16px; position: relative; z-index: 2; }
+          .logo { width: 84px; height: 84px; border-radius: 50%; box-shadow: 0 6px 20px rgba(0,0,0,0.35); flex-shrink: 0; }
+          .header-titles p.eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+          .header-titles h1 {
+            margin: 2px 0 0;
+            font-size: 30px;
+            font-weight: 800;
+            color: #A3E635;
+            text-shadow: 0 2px 0 rgba(0,0,0,0.25);
+            letter-spacing: 0.01em;
+          }
+          .header-titles .tagline { margin: 6px 0 0; font-size: 13px; opacity: 0.9; }
+          .header-unit { margin: 10px 0 0; font-size: 11.5px; opacity: 0.65; }
+          .mascot {
+            position: absolute;
+            right: -6px;
+            bottom: -14px;
+            width: 150px;
+            z-index: 1;
+            filter: drop-shadow(0 8px 14px rgba(0,0,0,0.35));
+          }
+
+          /* ---------- Meta pills ---------- */
+          .meta-row { display: flex; padding: 18px 24px; gap: 12px; background: #fff; }
+          .meta-pill { flex: 1; display: flex; align-items: center; gap: 10px; }
+          .meta-icon {
+            width: 34px; height: 34px; border-radius: 50%; background: #EEE6FB;
+            display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+          }
+          .meta-label { margin: 0; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #6E6880; font-weight: 600; }
+          .meta-value { margin: 1px 0 0; font-size: 13px; font-weight: 700; color: #241B33; }
+
+          .content { padding: 4px 24px 24px; }
+
+          /* ---------- Section bars ---------- */
+          .section-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border-radius: 8px; margin: 18px 0 10px;
+            color: #fff; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+          }
+          .section-bar.purple { background: linear-gradient(90deg, #6D28D9, #7C3AED); }
+          .section-bar.green { background: linear-gradient(90deg, #7CB92E, #5C9424); }
+
+          .package-card {
+            background: #F4EEFB; border-radius: 10px; padding: 14px 16px;
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+          }
+          .package-card .pkg-name { margin: 0; font-weight: 700; font-size: 15px; }
+          .package-card .pkg-desc { margin: 3px 0 0; font-size: 12px; color: #6E6880; line-height: 1.4; }
+          .package-card .pkg-price { font-weight: 800; font-size: 17px; color: #6D28D9; white-space: nowrap; }
+
+          .extras-list { list-style: none; margin: 0; padding: 0; }
+          .extra-row {
+            display: flex; align-items: center; gap: 10px; padding: 9px 4px;
+            border-bottom: 1px solid #EDEAF4; font-size: 13.5px;
+          }
+          .extra-row:last-child { border-bottom: none; }
+          .extra-icon {
+            width: 26px; height: 26px; border-radius: 50%; background: #EDF6DD;
+            display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+          }
+          .extra-name { flex: 1; font-weight: 500; }
+          .extra-price { font-weight: 700; }
+
+          .total-bar {
+            margin-top: 20px; display: flex; align-items: center; justify-content: space-between;
+            background: linear-gradient(90deg, #6D28D9, #4C1D95); color: #fff;
+            border-radius: 10px; padding: 14px 18px;
+          }
+          .total-bar .label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+          .total-bar .amount { font-size: 22px; font-weight: 800; }
+          .total-words { text-align: right; font-size: 11.5px; color: #6E6880; margin: 6px 4px 0; font-style: italic; }
+
+          /* ---------- Feature badges ---------- */
+          .features { display: flex; justify-content: space-between; gap: 10px; margin-top: 26px; text-align: center; }
+          .feature { flex: 1; }
+          .feature .icon {
+            width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 6px;
+            background: #F4EEFB; display: flex; align-items: center; justify-content: center; font-size: 20px;
+          }
+          .feature p { margin: 0; font-size: 10.5px; color: #6E6880; line-height: 1.3; font-weight: 600; }
+
+          .validity { display: inline-block; background: #F4EEFB; color: #6D28D9; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-top: 18px; }
+
+          /* ---------- Footer ---------- */
+          .footer {
+            display: flex; align-items: center; gap: 16px; margin-top: 26px; padding: 20px 24px 26px;
+            background: linear-gradient(90deg, #F4EEFB, #EDF6DD);
+          }
+          .footer img { width: 76px; flex-shrink: 0; transform: scaleX(-1); filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18)); }
+          .footer .thanks { margin: 0; font-size: 13px; color: #6E6880; }
+          .footer .brand { margin: 2px 0 0; font-size: 17px; font-weight: 800; color: #6D28D9; }
+          .footer .brand em { color: #7CB92E; font-style: italic; }
+          .footer .blurb { margin: 6px 0 0; font-size: 11.5px; color: #6E6880; }
+
+          @media print {
+            body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .page { box-shadow: none; max-width: none; }
+          }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${p.unidadeNome || 'Brava Park Fest'}</h1>
-          <p>${p.unidadeEndereco ?? 'Proposta comercial'}</p>
-        </div>
-        <div class="content">
-          <div class="meta">
-            <span>Proposta para <strong>${p.cliente}</strong></span>
-            <span>Emitida em ${format(hoje, 'dd/MM/yyyy')}</span>
+        <div class="page">
+          <div class="header">
+            <span class="star" style="top:14px; left:56%; font-size:18px;">★</span>
+            <span class="star" style="top:30px; left:64%; font-size:12px;">★</span>
+            <span class="star" style="top:10px; left:72%; font-size:22px;">★</span>
+            <span class="star" style="top:32px; left:80%; font-size:12px;">★</span>
+            <span class="star" style="top:16px; left:88%; font-size:16px;">★</span>
+            <div class="header-top">
+              <img class="logo" src="${logoUrl}" alt="Brava Park Fest" />
+              <div class="header-titles">
+                <p class="eyebrow">Proposta de</p>
+                <h1>Orçamento</h1>
+                <p class="tagline">Aqui a diversão é garantida!</p>
+                <p class="header-unit">${p.unidadeNome || 'Brava Park Fest'}${p.unidadeEndereco ? ' · ' + p.unidadeEndereco : ''}</p>
+              </div>
+            </div>
+            <img class="mascot" src="${mascotUrl}" alt="" />
           </div>
 
-          <h3>Data do evento</h3>
-          <p>${p.dataEvento || 'A definir'}</p>
+          <div class="meta-row">
+            <div class="meta-pill">
+              <span class="meta-icon">📋</span>
+              <div><p class="meta-label">Proposta para</p><p class="meta-value">${p.cliente}</p></div>
+            </div>
+            <div class="meta-pill">
+              <span class="meta-icon">📅</span>
+              <div><p class="meta-label">Data do evento</p><p class="meta-value">${p.dataEvento || 'A definir'}</p></div>
+            </div>
+            <div class="meta-pill">
+              <span class="meta-icon">🗓️</span>
+              <div><p class="meta-label">Emitida em</p><p class="meta-value">${format(hoje, 'dd/MM/yyyy')}</p></div>
+            </div>
+          </div>
 
-          <h3>Pacote</h3>
-          <table>
-            <tr>
-              <td>
-                <strong>${p.pacoteNome}</strong>
-                ${p.pacoteDescricao ? `<p class="package-desc">${p.pacoteDescricao}</p>` : ''}
-              </td>
-              <td class="value">${currency(p.pacotePreco)}</td>
-            </tr>
-          </table>
+          <div class="content">
+            <div class="section-bar purple">📦 Pacote</div>
+            <div class="package-card">
+              <div>
+                <p class="pkg-name">${p.pacoteNome}</p>
+                ${p.pacoteDescricao ? `<p class="pkg-desc">${p.pacoteDescricao}</p>` : ''}
+              </div>
+              <span class="pkg-price">${currency(p.pacotePreco)}</span>
+            </div>
 
-          <h3>Itens extras</h3>
-          <table>${extrasRows}</table>
+            <div class="section-bar green">⭐ Itens extras</div>
+            <ul class="extras-list">${extrasRows}</ul>
 
-          <table>
-            <tr class="total-row"><td>Valor total</td><td class="value">${currency(p.total)}</td></tr>
-          </table>
-          <p class="total-words">${currencyToWords(p.total)}</p>
+            <div class="total-bar">
+              <span class="label">🪙 Valor total</span>
+              <span class="amount">${currency(p.total)}</span>
+            </div>
+            <p class="total-words">${currencyToWords(p.total)}</p>
+
+            <div class="features">
+              <div class="feature"><div class="icon">🛡️</div><p>Estrutura segura e completa para sua festa</p></div>
+              <div class="feature"><div class="icon">👑</div><p>Equipe preparada para garantir muita diversão</p></div>
+              <div class="feature"><div class="icon">💜</div><p>Momentos especiais para todas as idades</p></div>
+            </div>
+
+            <div style="text-align:center;">
+              <span class="validity">Válida até ${format(validade, 'dd/MM/yyyy')}</span>
+            </div>
+          </div>
 
           <div class="footer">
-            <p>Sujeita à disponibilidade de data e espaço.</p>
-            <span class="validity">Válida até ${format(validade, 'dd/MM/yyyy')}</span>
+            <img src="${mascotUrl}" alt="" />
+            <div>
+              <p class="thanks">Obrigado por escolher a</p>
+              <p class="brand">BRAVA PARK <em>Fest</em></p>
+              <p class="blurb">🎉 Estamos prontos para transformar esse dia em uma experiência inesquecível!</p>
+            </div>
           </div>
         </div>
       </body>
@@ -133,10 +281,10 @@ function openProposalPrintWindow(p: ProposalPrintData) {
   win.document.close()
   win.focus()
   // Pequeno atraso pra dar tempo do navegador terminar de desenhar a
-  // página antes de abrir a caixa de impressão — chamando print() na hora
-  // (sem esperar), alguns navegadores abrem a caixa com a página ainda em
-  // branco, o que impede de usar "Salvar como PDF" direito.
-  setTimeout(() => win.print(), 300)
+  // página (e carregar as imagens) antes de abrir a caixa de impressão —
+  // chamando print() na hora, alguns navegadores abrem a caixa com a
+  // página ainda em branco, o que impede de usar "Salvar como PDF" direito.
+  setTimeout(() => win.print(), 500)
 }
 
 export function Proposals() {

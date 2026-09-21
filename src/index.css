@@ -91,3 +91,72 @@ h4 {
     animation: none;
   }
 }
+
+/* ---------- Identidade visual "premium" (logo + urso Theo) ---------- */
+
+/* Fundo com gradiente animado em movimento, nas cores da marca — usado em
+   telas de vitrine (login, topo do painel), não nas telas de trabalho. */
+.bg-brand-mesh {
+  background: radial-gradient(circle at 15% 20%, rgba(124, 185, 46, 0.35), transparent 40%),
+    radial-gradient(circle at 85% 15%, rgba(242, 144, 12, 0.25), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(109, 40, 217, 0.5), transparent 55%),
+    linear-gradient(120deg, #241b33, #3a2159, #1c1428, #241b33);
+  background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%;
+  animation: gradient-x 14s ease infinite;
+}
+
+/* Card com "spotlight" que segue o mouse — as coordenadas --x/--y são
+   atualizadas via JS (onMouseMove) no componente Card. */
+.card-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.card-spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(240px circle at var(--x, 50%) var(--y, 50%), rgba(109, 40, 217, 0.1), transparent 70%);
+}
+.card-spotlight:hover::before {
+  opacity: 1;
+}
+
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.35) 35%, transparent 50%);
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  transition: background-position 0.7s ease;
+}
+.btn-shine:hover::after {
+  background-position: -50% 0;
+}
+
+.text-shimmer {
+  background: linear-gradient(90deg, #7cb92e 0%, #f2900c 25%, #6d28d9 50%, #f2900c 75%, #7cb92e 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-brand-mesh,
+  .text-shimmer {
+    animation: none;
+  }
+  .card-spotlight::before {
+    display: none;
+  }
+}

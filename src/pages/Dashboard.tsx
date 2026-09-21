@@ -7,6 +7,7 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { DashboardMascot } from '../components/mascot/DashboardMascot'
 import { QuickActionsBar } from '../components/layout/QuickActionsBar'
+import logo from '../assets/logo-brava-park-fest.png'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { currentMonthValue, monthBounds, lastNMonths, daysInMonth } from '../lib/monthUtils'
@@ -16,6 +17,25 @@ const CLOSED_STATUSES = ['confirmada', 'sinal_pago', 'quitada']
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
+// Anima o número subindo de 0 até o valor real quando ele muda — só efeito
+// visual, não atrasa nada (o valor de verdade já chegou, só a exibição sobe).
+function useCountUp(target: number, duration = 900) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    let raf: number
+    const start = performance.now()
+    function tick(now: number) {
+      const progress = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setValue(target * eased)
+      if (progress < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return value
 }
 
 interface SaldoPendente {
@@ -320,6 +340,12 @@ export function Dashboard() {
     [unitIds, goalsByUnit, byUnit],
   )
 
+  const faturamentoAnimado = useCountUp(stats.faturamentoRecebido)
+  const festasAnimadas = useCountUp(stats.festasConfirmadas, 700)
+  const ocupacaoAnimada = useCountUp(stats.taxaOcupacao, 700)
+  const cacAnimado = useCountUp(stats.cacMedio)
+  const ticketAnimado = useCountUp(stats.ticketMedio)
+
   return (
     <div className="space-y-6">
       <DashboardMascot />
@@ -331,9 +357,17 @@ export function Dashboard() {
           </button>
         </div>
       )}
-      <div>
-        <h1 className="text-2xl font-semibold">Painel</h1>
-        <p className="text-sm text-muted mt-1">{unitLabel} · mês atual</p>
+
+      <div className="relative overflow-hidden rounded-card bg-brand-mesh px-6 py-7 text-white shadow-xl">
+        <span className="pointer-events-none absolute -top-8 right-10 w-32 h-32 rounded-full bg-green/20 blur-3xl animate-float-slow" />
+        <span className="pointer-events-none absolute bottom-0 left-1/3 w-24 h-24 rounded-full bg-orange/20 blur-3xl animate-float-slow" style={{ animationDelay: '2s' }} />
+        <div className="relative flex items-center gap-4">
+          <img src={logo} alt="Brava Park Fest" className="w-14 h-14 rounded-full shadow-lg ring-2 ring-white/20 hover:animate-logo-drift shrink-0" draggable={false} />
+          <div>
+            <h1 className="text-2xl font-display font-semibold">Painel</h1>
+            <p className="text-sm text-white/70 mt-0.5">{unitLabel} · mês atual</p>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -447,23 +481,23 @@ export function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <p className="text-xs text-muted">Faturamento recebido</p>
-              <p className="text-2xl font-display font-semibold mt-1">{currency(stats.faturamentoRecebido)}</p>
+              <p className="text-2xl font-display font-semibold mt-1">{currency(faturamentoAnimado)}</p>
               <p className="text-xs text-muted mt-1">Ainda a receber: {currency(stats.faturamentoPrevisto)}</p>
             </Card>
             <Card>
               <p className="text-xs text-muted">Festas confirmadas</p>
-              <p className="text-2xl font-display font-semibold mt-1">{stats.festasConfirmadas}</p>
+              <p className="text-2xl font-display font-semibold mt-1">{Math.round(festasAnimadas)}</p>
               <p className="text-xs text-muted mt-1">neste mês</p>
             </Card>
             <Card>
               <p className="text-xs text-muted">Ocupação dos espaços</p>
-              <p className="text-2xl font-display font-semibold mt-1">{Math.round(stats.taxaOcupacao)}%</p>
+              <p className="text-2xl font-display font-semibold mt-1">{Math.round(ocupacaoAnimada)}%</p>
               <p className="text-xs text-muted mt-1">datas vendidas no mês</p>
             </Card>
             <Card>
               <p className="text-xs text-muted">CAC / Ticket médio</p>
               <p className="text-2xl font-display font-semibold mt-1">
-                {currency(stats.cacMedio)} <span className="text-muted text-base font-sans">/ {currency(stats.ticketMedio)}</span>
+                {currency(cacAnimado)} <span className="text-muted text-base font-sans">/ {currency(ticketAnimado)}</span>
               </p>
               <p className="text-xs text-muted mt-1">custo por cliente fechado</p>
             </Card>

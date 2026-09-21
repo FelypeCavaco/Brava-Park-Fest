@@ -24,7 +24,6 @@ import {
   Cake,
   BellRing,
   UserCog,
-  PartyPopper,
   ChevronDown,
   LogOut,
   X,
@@ -32,6 +31,7 @@ import {
 import { useUnit, UNITS } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
+import logo from '../../assets/logo-brava-park-fest.png'
 
 interface LinkItem {
   to: string
@@ -155,12 +155,20 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         <div className="fixed inset-0 bg-ink/50 z-40 md:hidden" onClick={onClose} />
       )}
       <aside
-        className={`w-64 shrink-0 bg-ink text-white/90 flex flex-col h-screen fixed inset-y-0 left-0 z-50 transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 ${
+        className={`w-64 shrink-0 bg-gradient-to-b from-ink via-[#2b1f47] to-ink text-white/90 flex flex-col h-screen fixed inset-y-0 left-0 z-50 transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 overflow-hidden ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-      <div className="flex items-center gap-2 px-5 py-6 shrink-0">
-        <PartyPopper className="w-6 h-6 text-orange" strokeWidth={1.75} />
+      <div className="pointer-events-none absolute -top-16 -left-16 w-48 h-48 rounded-full bg-purple/30 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 -right-20 w-56 h-56 rounded-full bg-green/10 blur-3xl" />
+
+      <div className="relative flex items-center gap-2.5 px-5 py-6 shrink-0">
+        <img
+          src={logo}
+          alt="Brava Park Fest"
+          className="w-11 h-11 rounded-full shadow-lg shadow-purple/40 hover:animate-logo-drift shrink-0"
+          draggable={false}
+        />
         <div className="flex-1">
           <p className="font-display font-semibold leading-tight">Brava Park Fest</p>
           <p className="text-xs text-white/50">Gestão de festas</p>
@@ -170,7 +178,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <div className="px-4 mb-4 shrink-0">
+      <div className="relative px-4 mb-4 shrink-0">
         <label className="block text-[11px] uppercase tracking-wide text-white/40 mb-1.5 px-1">
           Unidade
         </label>
@@ -190,7 +198,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         </select>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
+      <nav className="relative flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
         {visibleTopLinks.map((link) => (
           <NavLink
             key={link.to}
@@ -198,8 +206,10 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             end={link.end}
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+              `relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
+                isActive
+                  ? 'bg-gradient-to-r from-purple/40 to-transparent text-white shadow-inner before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4/5 before:w-0.5 before:rounded-full before:bg-green before:shadow-[0_0_8px_theme(colors.green.DEFAULT)]'
+                  : 'text-white/60 hover:bg-white/5 hover:text-white hover:translate-x-0.5'
               }`
             }
           >
@@ -221,10 +231,10 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
               >
                 <group.icon className="w-4 h-4" strokeWidth={1.75} />
                 <span className="flex-1 text-left">{group.label}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
               </button>
               {isOpen && (
-                <div className="ml-3 pl-3 border-l border-white/10 space-y-1 mt-1 mb-1">
+                <div className="ml-3 pl-3 border-l border-white/10 space-y-1 mt-1 mb-1 animate-card-in">
                   {group.items.map(({ to, label, icon: Icon, end }) => (
                     <NavLink
                       key={to}
@@ -232,8 +242,10 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                       end={end}
                       onClick={onClose}
                       className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                          isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+                        `relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                          isActive
+                            ? 'bg-gradient-to-r from-purple/40 to-transparent text-white before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4/5 before:w-0.5 before:rounded-full before:bg-green before:shadow-[0_0_8px_theme(colors.green.DEFAULT)]'
+                            : 'text-white/60 hover:bg-white/5 hover:text-white hover:translate-x-0.5'
                         }`
                       }
                     >

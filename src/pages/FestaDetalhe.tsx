@@ -21,6 +21,7 @@ import {
   Pencil,
   ArrowDownAZ,
   Maximize2,
+  Contact,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -50,6 +51,7 @@ interface FestaDetalhada {
   unidadeWhatsappGroupLink: string | null
   googleReviewLink: string | null
   cliente: string
+  clientId: string
   clientPhone: string | null
   data: string
   eventDateIso: string
@@ -74,6 +76,24 @@ interface FestaDetalhada {
   cancellationReason: string | null
   cancellationFeePercent: number | null
   refundAmount: number | null
+}
+
+interface ClientData {
+  name: string
+  phone: string | null
+  email: string | null
+  cpf: string | null
+  birthday: string | null
+  cep: string | null
+  street: string | null
+  addressNumber: string | null
+  neighborhood: string | null
+  city: string | null
+  state: string | null
+  childName: string | null
+  childBirthday: string | null
+  source: string | null
+  notes: string | null
 }
 
 interface PackageOption {
@@ -275,6 +295,9 @@ export function FestaDetalhe() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [costSuggestions, setCostSuggestions] = useState<{ category: string; amount: number }[]>([])
   const [showReviewModal, setShowReviewModal] = useState(false)
+  const [showClientData, setShowClientData] = useState(false)
+  const [clientData, setClientData] = useState<ClientData | null>(null)
+  const [loadingClientData, setLoadingClientData] = useState(false)
   const [showEditDados, setShowEditDados] = useState(false)
   const [editData, setEditData] = useState('')
   const [editInicio, setEditInicio] = useState('')
@@ -393,6 +416,7 @@ export function FestaDetalhe() {
       unidadeWhatsappGroupLink: data.unit?.staff_whatsapp_group_link ?? null,
       googleReviewLink: data.unit?.google_review_link ?? null,
       cliente: data.client?.name ?? '—',
+      clientId: data.client_id,
       clientPhone: data.client?.phone ?? null,
       data: format(parseISO(data.event_date), 'dd/MM/yyyy'),
       eventDateIso: data.event_date,
@@ -440,6 +464,39 @@ export function FestaDetalhe() {
 
       await loadUnitInventory(data.unit_id)
     }
+  }
+
+  async function openClientData() {
+    if (!festa) return
+    setShowClientData(true)
+    setLoadingClientData(true)
+    const { data } = await supabase
+      .from('clients')
+      .select('name, phone, email, cpf, birthday, cep, street, address_number, neighborhood, city, state, child_name, child_birthday, source, notes')
+      .eq('id', festa.clientId)
+      .maybeSingle()
+    setClientData(
+      data
+        ? {
+            name: data.name,
+            phone: data.phone,
+            email: data.email,
+            cpf: data.cpf,
+            birthday: data.birthday,
+            cep: data.cep,
+            street: data.street,
+            addressNumber: data.address_number,
+            neighborhood: data.neighborhood,
+            city: data.city,
+            state: data.state,
+            childName: data.child_name,
+            childBirthday: data.child_birthday,
+            source: data.source,
+            notes: data.notes,
+          }
+        : null,
+    )
+    setLoadingClientData(false)
   }
 
   async function loadUnitInventory(unitId: string) {
@@ -1498,7 +1555,15 @@ export function FestaDetalhe() {
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{festa.tipoEvento} — {festa.cliente}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-semibold">{festa.tipoEvento} — {festa.cliente}</h1>
+            <button
+              onClick={openClientData}
+              className="flex items-center gap-1 text-xs font-medium text-purple border border-purple/30 rounded-full px-2.5 py-1 hover:bg-purple-light"
+            >
+              <Contact className="w-3.5 h-3.5" /> Dados
+            </button>
+          </div>
           <p className="text-sm text-muted mt-1">
             {festa.data} · {festa.horario} · {festa.unidadeNome} · {festa.convidados} convidados
           </p>
@@ -2580,6 +2645,88 @@ export function FestaDetalhe() {
               </button>
             </div>
             {renderGuestListBody(true)}
+          </div>
+        </div>
+      )}
+
+      {showClientData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setShowClientData(false)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-display font-semibold">Dados do contratante</h2>
+              <button onClick={() => setShowClientData(false)} className="text-muted hover:text-danger" aria-label="Fechar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {loadingClientData ? (
+              <p className="text-sm text-muted py-4 text-center">Carregando...</p>
+            ) : !clientData ? (
+              <p className="text-sm text-muted py-4 text-center">Não foi possível carregar os dados do cliente.</p>
+            ) : (
+              <dl className="space-y-2.5 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">Nome</dt>
+                  <dd className="font-medium text-right">{clientData.name}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">Telefone</dt>
+                  <dd className="font-medium text-right">{clientData.phone || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">Email</dt>
+                  <dd className="font-medium text-right">{clientData.email || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">CPF</dt>
+                  <dd className="font-medium text-right">{clientData.cpf || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">Data de nascimento</dt>
+                  <dd className="font-medium text-right">
+                    {clientData.birthday ? format(parseISO(clientData.birthday), 'dd/MM/yyyy') : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3 pt-2.5 border-t border-line">
+                  <dt className="text-muted shrink-0">Endereço</dt>
+                  <dd className="font-medium text-right">
+                    {clientData.street
+                      ? `${clientData.street}${clientData.addressNumber ? ', ' + clientData.addressNumber : ''}`
+                      : '—'}
+                    {clientData.neighborhood && <><br />{clientData.neighborhood}</>}
+                    {(clientData.city || clientData.state) && (
+                      <>
+                        <br />
+                        {clientData.city}
+                        {clientData.city && clientData.state ? ' - ' : ''}
+                        {clientData.state}
+                      </>
+                    )}
+                    {clientData.cep && <><br />CEP {clientData.cep}</>}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3 pt-2.5 border-t border-line">
+                  <dt className="text-muted shrink-0">Aniversariante</dt>
+                  <dd className="font-medium text-right">{clientData.childName || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted shrink-0">Data de nascimento (filho)</dt>
+                  <dd className="font-medium text-right">
+                    {clientData.childBirthday ? format(parseISO(clientData.childBirthday), 'dd/MM/yyyy') : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3 pt-2.5 border-t border-line">
+                  <dt className="text-muted shrink-0">Origem</dt>
+                  <dd className="font-medium text-right">{clientData.source || '—'}</dd>
+                </div>
+                {clientData.notes && (
+                  <div className="pt-2.5 border-t border-line">
+                    <dt className="text-muted mb-1">Observações</dt>
+                    <dd>{clientData.notes}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
           </div>
         </div>
       )}

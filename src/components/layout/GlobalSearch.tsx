@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { Search, User, PartyPopper } from 'lucide-react'
@@ -9,6 +9,7 @@ interface FestaHit { id: string; cliente: string; data: string }
 
 export function GlobalSearch() {
   const navigate = useNavigate()
+  const containerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [clients, setClients] = useState<ClientHit[]>([])
@@ -16,6 +17,16 @@ export function GlobalSearch() {
 
   useEffect(() => {
     loadIndex()
+  }, [])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   async function loadIndex() {
@@ -50,13 +61,13 @@ export function GlobalSearch() {
   const hasResults = results.clients.length > 0 || results.festas.length > 0
 
   function goTo(path: string) {
-    navigate(path)
-    setQuery('')
     setOpen(false)
+    setQuery('')
+    navigate(path)
   }
 
   return (
-    <div className="relative w-full max-w-sm">
+    <div ref={containerRef} className="relative w-full max-w-sm">
       <div className="relative">
         <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
         <input
@@ -67,7 +78,6 @@ export function GlobalSearch() {
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="Buscar cliente ou festa..."
           className="w-full border border-line rounded-lg pl-9 pr-3 py-2 text-sm bg-surface"
         />
@@ -81,7 +91,8 @@ export function GlobalSearch() {
               {results.clients.map((c) => (
                 <button
                   key={c.id}
-                  onMouseDown={() => goTo('/clientes')}
+                  type="button"
+                  onClick={() => goTo('/clientes')}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-paper text-left"
                 >
                   <User className="w-3.5 h-3.5 text-muted" /> {c.name}
@@ -95,7 +106,8 @@ export function GlobalSearch() {
               {results.festas.map((f) => (
                 <button
                   key={f.id}
-                  onMouseDown={() => goTo(`/reservas/${f.id}`)}
+                  type="button"
+                  onClick={() => goTo(`/reservas/${f.id}`)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-paper text-left"
                 >
                   <PartyPopper className="w-3.5 h-3.5 text-muted" /> {f.cliente} · {f.data}

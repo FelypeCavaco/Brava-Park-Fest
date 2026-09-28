@@ -846,6 +846,7 @@ export function FestaDetalhe() {
       horario: festa.horario,
       unidade: festa.unidadeNome,
       valor: currency(totalContrato),
+      aniversariante: festa.childName || 'aniversariante(a)',
     })
     openWhatsApp(festa.clientPhone, message)
     await supabase.from('contact_history').insert({ client_name: festa.cliente, type: MESSAGE_TEMPLATE_LABEL[templateKey], channel: 'whatsapp', user_name: 'Você' })
@@ -1841,7 +1842,7 @@ export function FestaDetalhe() {
 
           <Card title="Contato com o cliente (WhatsApp)" className="md:col-span-2">
             <div className="flex flex-wrap gap-2 mb-4">
-              {(['confirmar_festa', 'lembrete_festa', 'localizacao', 'lembrete_pagamento'] as MessageTemplateKey[]).map((key) => (
+              {(['confirmar_festa', 'lembrete_festa', 'localizacao', 'lembrete_pagamento', 'pedidos'] as MessageTemplateKey[]).map((key) => (
                 <Button key={key} variant="secondary" className="text-xs px-3 py-1.5" onClick={() => handleWhatsAppAction(key)}>
                   {MESSAGE_TEMPLATE_LABEL[key]}
                 </Button>

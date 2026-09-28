@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { Plus, Star, X, Trash2, Gift, MessageCircle, Receipt, Pencil } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -32,6 +33,7 @@ export function Clients() {
   useOpenOnQueryParam('novo', () => setShowForm(true))
   const { scheduleDelete } = useUndo()
   const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [historyClient, setHistoryClient] = useState<Client | null>(null)
   const [history, setHistory] = useState<ClientPaymentHistoryEntry[]>([])
@@ -40,6 +42,20 @@ export function Clients() {
   useEffect(() => {
     loadClients()
   }, [])
+
+  // Chegando aqui pela busca global (ex: /clientes?ver=<id>), abre direto
+  // os dados do cliente clicado, assim que a lista terminar de carregar.
+  useEffect(() => {
+    const targetId = searchParams.get('ver')
+    if (!targetId || clients.length === 0) return
+    const target = clients.find((c) => c.id === targetId)
+    if (target) {
+      setEditingClient(target)
+      const next = new URLSearchParams(searchParams)
+      next.delete('ver')
+      setSearchParams(next, { replace: true })
+    }
+  }, [clients, searchParams])
 
   async function loadClients() {
     setLoading(true)

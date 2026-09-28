@@ -92,7 +92,7 @@ export function GlobalSearch() {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => goTo('/clientes')}
+                  onClick={() => goTo(`/clientes?ver=${c.id}`)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-paper text-left"
                 >
                   <User className="w-3.5 h-3.5 text-muted" /> {c.name}

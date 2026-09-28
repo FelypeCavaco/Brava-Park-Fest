@@ -14,7 +14,7 @@ export const MESSAGE_TEMPLATES = {
   lista_convidados: 'Olá, {{cliente}}! Para agilizar a organização da sua festa, envie a lista de convidados por este link, quando puder: {{link}}',
   vaga_disponivel: 'Olá, {{cliente}}! Surgiu uma vaga disponível na unidade {{unidade}} pertinho da data que você tinha interesse ({{data}}). Quer aproveitar? É só responder aqui!',
   pedidos:
-    'Olá, {{cliente}}! 🎉\n\nSua festa está chegando e já estamos a todo vapor por aqui para deixar tudo perfeito para o(a) {{aniversariante}}! 🥳\n\nPara a gente caprichar no cardápio do dia {{data}}, preciso que você escolha:\n\n🍽️ Os pratos da festa\n🍰 O sabor do bolo\n\nVou te enviar o cardápio logo em seguida, com todas as opções 👇 Depois é só me responder por aqui mesmo, assim:\nPratos: ...\nBolo: ...\n\nUm abraço,\nEquipe Brava Park Fest 🐻',
+    'Olá, {{cliente}}!\n\nSua festa está chegando e já estamos a todo vapor por aqui para deixar tudo perfeito para o(a) {{aniversariante}}!\n\nPara a gente caprichar no cardápio do dia {{data}}, preciso que você escolha:\n\n- Os pratos da festa\n- O sabor do bolo\n\nVou te enviar o cardápio logo em seguida, com todas as opções. Depois é só me responder por aqui mesmo, assim:\nPratos: ...\nBolo: ...\n\nUm abraço,\nEquipe Brava Park Fest',
   // Fica editável de verdade pela tela (tabela message_templates) — isto
   // aqui é só o texto de reserva, usado se a migration 035 ainda não rodou.
   confirmar_fornecedores:

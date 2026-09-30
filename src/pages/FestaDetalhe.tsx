@@ -22,6 +22,9 @@ import {
   ArrowDownAZ,
   Maximize2,
   Contact,
+  StickyNote,
+  Bell,
+  BellOff,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -76,6 +79,15 @@ interface FestaDetalhada {
   cancellationReason: string | null
   cancellationFeePercent: number | null
   refundAmount: number | null
+}
+
+interface FestaNote {
+  id: string
+  body: string
+  remindOn: string | null
+  reminderDone: boolean
+  createdByName: string | null
+  createdAt: string
 }
 
 interface ClientData {
@@ -213,7 +225,7 @@ function oneHourBefore(t: string) {
 export function FestaDetalhe() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { session, can } = useAuth()
+  const { session, can, profile } = useAuth()
   const { scheduleDelete } = useUndo()
 
   const [festa, setFesta] = useState<FestaDetalhada | null>(null)
@@ -295,6 +307,14 @@ export function FestaDetalhe() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [costSuggestions, setCostSuggestions] = useState<{ category: string; amount: number }[]>([])
   const [showReviewModal, setShowReviewModal] = useState(false)
+  const [notes, setNotes] = useState<FestaNote[]>([])
+  const [showNotes, setShowNotes] = useState(false)
+  const [noteBody, setNoteBody] = useState('')
+  const [noteReminderOn, setNoteReminderOn] = useState(false)
+  const [noteRemindDate, setNoteRemindDate] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+  const [editingReminderNoteId, setEditingReminderNoteId] = useState<string | null>(null)
+  const [editingReminderDate, setEditingReminderDate] = useState('')
   const [showClientData, setShowClientData] = useState(false)
   const [clientData, setClientData] = useState<ClientData | null>(null)
   const [loadingClientData, setLoadingClientData] = useState(false)
@@ -331,7 +351,100 @@ export function FestaDetalhe() {
     loadPackageHistory()
     loadFornecedoresTemplate()
     loadBirthdayKids()
+    loadNotes()
   }, [id])
+
+  async function loadNotes() {
+    const { data } = await supabase
+      .from('reservation_notes')
+      .select('id, body, remind_on, reminder_done, created_by_name, created_at')
+      .eq('reservation_id', id)
+      .order('created_at', { ascending: false })
+    setNotes(
+      (data ?? []).map((n) => ({
+        id: n.id,
+        body: n.body,
+        remindOn: n.remind_on,
+        reminderDone: n.reminder_done,
+        createdByName: n.created_by_name,
+        createdAt: n.created_at,
+      })),
+    )
+  }
+
+  async function handleAddNote(e: FormEvent) {
+    e.preventDefault()
+    if (!noteBody.trim()) return
+    if (noteReminderOn && !noteRemindDate) {
+      setError('Escolha a data do lembrete (ou desmarque "Ativar lembrete").')
+      return
+    }
+    setSavingNote(true)
+    const { data, error } = await supabase
+      .from('reservation_notes')
+      .insert({
+        reservation_id: id,
+        body: noteBody.trim(),
+        remind_on: noteReminderOn ? noteRemindDate : null,
+        created_by_name: profile?.name ?? null,
+      })
+      .select()
+      .single()
+    setSavingNote(false)
+    if (error || !data) {
+      setError('Não foi possível salvar a observação.')
+      return
+    }
+    setNotes((prev) => [
+      {
+        id: data.id,
+        body: data.body,
+        remindOn: data.remind_on,
+        reminderDone: data.reminder_done,
+        createdByName: data.created_by_name,
+        createdAt: data.created_at,
+      },
+      ...prev,
+    ])
+    setNoteBody('')
+    setNoteReminderOn(false)
+    setNoteRemindDate('')
+  }
+
+  function handleRemoveNote(noteId: string) {
+    const note = notes.find((n) => n.id === noteId)
+    if (!note) return
+    setNotes((prev) => prev.filter((n) => n.id !== noteId))
+    scheduleDelete({
+      label: 'Observação removida',
+      commit: async () => {
+        await supabase.from('reservation_notes').delete().eq('id', noteId)
+      },
+      undo: async () => {
+        await supabase.from('reservation_notes').insert({
+          id: note.id,
+          reservation_id: id,
+          body: note.body,
+          remind_on: note.remindOn,
+          reminder_done: note.reminderDone,
+          created_by_name: note.createdByName,
+          created_at: note.createdAt,
+        })
+        setNotes((prev) => [note, ...prev].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)))
+      },
+    })
+  }
+
+  async function updateNoteReminder(noteId: string, remindOn: string | null) {
+    const previous = notes
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, remindOn, reminderDone: false } : n)))
+    setEditingReminderNoteId(null)
+    const { error } = await supabase.from('reservation_notes').update({ remind_on: remindOn, reminder_done: false }).eq('id', noteId)
+    if (error) {
+      setNotes(previous)
+      setError('Não foi possível atualizar o lembrete.')
+    }
+  }
 
   async function loadBirthdayKids() {
     const { data } = await supabase.from('reservation_birthday_kids').select('id, name, age').eq('reservation_id', id).order('created_at')
@@ -1564,6 +1677,17 @@ export function FestaDetalhe() {
             >
               <Contact className="w-3.5 h-3.5" /> Dados
             </button>
+            <button
+              onClick={() => setShowNotes(true)}
+              className="flex items-center gap-1 text-xs font-medium text-purple border border-purple/30 rounded-full px-2.5 py-1 hover:bg-purple-light"
+            >
+              <StickyNote className="w-3.5 h-3.5" /> Observações
+              {notes.length > 0 && (
+                <span className="ml-0.5 min-w-[18px] h-[18px] rounded-full bg-purple text-white text-[10px] leading-[18px] text-center px-1">
+                  {notes.length}
+                </span>
+              )}
+            </button>
           </div>
           <p className="text-sm text-muted mt-1">
             {festa.data} · {festa.horario} · {festa.unidadeNome} · {festa.convidados} convidados
@@ -2646,6 +2770,132 @@ export function FestaDetalhe() {
               </button>
             </div>
             {renderGuestListBody(true)}
+          </div>
+        </div>
+      )}
+
+      {showNotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setShowNotes(false)} />
+          <div className="relative w-full max-w-lg bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-display font-semibold">Observações da festa</h2>
+              <button onClick={() => setShowNotes(false)} className="text-muted hover:text-danger" aria-label="Fechar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNote} className="space-y-3 mb-5">
+              <textarea
+                value={noteBody}
+                onChange={(e) => setNoteBody(e.target.value)}
+                rows={3}
+                placeholder="Escreva uma observação sobre esta festa..."
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={noteReminderOn} onChange={(e) => setNoteReminderOn(e.target.checked)} />
+                  <Bell className="w-3.5 h-3.5 text-purple" /> Ativar lembrete
+                </label>
+                {noteReminderOn && (
+                  <input
+                    type="date"
+                    value={noteRemindDate}
+                    onChange={(e) => setNoteRemindDate(e.target.value)}
+                    className="border border-line rounded-lg px-3 py-1.5 text-sm"
+                  />
+                )}
+              </div>
+              {noteReminderOn && (
+                <p className="text-xs text-muted">
+                  A partir dessa data, o lembrete aparece no Painel até alguém marcar como concluído.
+                </p>
+              )}
+              <Button type="submit" disabled={savingNote || !noteBody.trim()} className="w-full justify-center">
+                <Plus className="w-4 h-4" /> {savingNote ? 'Salvando...' : 'Adicionar observação'}
+              </Button>
+            </form>
+
+            <ul className="space-y-3">
+              {notes.map((n) => (
+                <li key={n.id} className="border border-line rounded-lg p-3">
+                  <p className="text-sm whitespace-pre-wrap">{n.body}</p>
+                  <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+                    <p className="text-xs text-muted">
+                      {format(parseISO(n.createdAt), 'dd/MM/yyyy HH:mm')}
+                      {n.createdByName ? ` · ${n.createdByName}` : ''}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      {editingReminderNoteId === n.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={editingReminderDate}
+                            onChange={(e) => setEditingReminderDate(e.target.value)}
+                            className="border border-line rounded-lg px-2 py-1 text-xs"
+                          />
+                          <button
+                            onClick={() => editingReminderDate && updateNoteReminder(n.id, editingReminderDate)}
+                            disabled={!editingReminderDate}
+                            className="text-xs text-purple font-medium disabled:opacity-40"
+                          >
+                            Salvar
+                          </button>
+                          <button onClick={() => setEditingReminderNoteId(null)} className="text-xs text-muted">
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : n.remindOn ? (
+                        <>
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs font-medium ${
+                              n.reminderDone ? 'text-muted line-through' : 'text-purple'
+                            }`}
+                          >
+                            <Bell className="w-3.5 h-3.5" /> {format(parseISO(n.remindOn), 'dd/MM/yyyy')}
+                            {n.reminderDone && ' (concluído)'}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setEditingReminderNoteId(n.id)
+                              setEditingReminderDate(n.remindOn ?? '')
+                            }}
+                            className="text-muted hover:text-purple"
+                            aria-label="Alterar data do lembrete"
+                            title="Alterar data do lembrete"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => updateNoteReminder(n.id, null)}
+                            className="text-muted hover:text-danger"
+                            aria-label="Desativar lembrete"
+                            title="Desativar lembrete"
+                          >
+                            <BellOff className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingReminderNoteId(n.id)
+                            setEditingReminderDate('')
+                          }}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-purple"
+                        >
+                          <Bell className="w-3.5 h-3.5" /> Ativar lembrete
+                        </button>
+                      )}
+                      <button onClick={() => handleRemoveNote(n.id)} className="text-muted hover:text-danger" aria-label="Remover observação">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {notes.length === 0 && <p className="text-sm text-muted text-center py-2">Nenhuma observação ainda.</p>}
+            </ul>
           </div>
         </div>
       )}

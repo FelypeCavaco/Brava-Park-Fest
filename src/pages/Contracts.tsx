@@ -44,6 +44,10 @@ export function Contracts() {
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null)
   const [templateDraft, setTemplateDraft] = useState('')
 
+  const [editingContract, setEditingContract] = useState<ContractRow | null>(null)
+  const [contractDraft, setContractDraft] = useState('')
+  const [savingContract, setSavingContract] = useState(false)
+
   useEffect(() => {
     loadAll()
   }, [])
@@ -150,6 +154,27 @@ export function Contracts() {
     })
   }
 
+  function openContractEditor(row: ContractRow) {
+    setEditingContract(row)
+    setContractDraft(row.termsText ?? '')
+  }
+
+  async function handleSaveContract(e: FormEvent, downloadAfter: boolean) {
+    e.preventDefault()
+    if (!editingContract?.contractId) return
+    setSavingContract(true)
+    const { error } = await supabase.from('contracts').update({ terms_text: contractDraft }).eq('id', editingContract.contractId)
+    setSavingContract(false)
+    if (error) {
+      setError('Não foi possível salvar as alterações do contrato.')
+      return
+    }
+    const row = editingContract
+    setContracts((prev) => prev.map((c) => (c.reservationId === row.reservationId ? { ...c, termsText: contractDraft } : c)))
+    setEditingContract(null)
+    if (downloadAfter) openContractPrintWindow(row.cliente, contractDraft)
+  }
+
   function openTemplateEditor(unitId: string) {
     setEditingUnitId(unitId)
     setTemplateDraft(templates[unitId]?.body ?? '')
@@ -239,9 +264,14 @@ export function Contracts() {
                         {c.contractId ? 'Ver / Reimprimir' : 'Gerar PDF'}
                       </Button>
                       {c.contractId && (
-                        <button onClick={() => handleDeleteContract(c)} className="text-muted hover:text-danger" aria-label="Excluir contrato">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <>
+                          <button onClick={() => openContractEditor(c)} className="text-muted hover:text-purple" aria-label="Editar contrato" title="Editar contrato">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDeleteContract(c)} className="text-muted hover:text-danger" aria-label="Excluir contrato">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -254,8 +284,8 @@ export function Contracts() {
           </table>
         )}
         <p className="text-xs text-muted mt-3">
-          "Gerar PDF" abre uma janela pronta para impressão — escolha "Salvar como PDF" na tela de impressão do
-          navegador. O texto gerado fica guardado com a reserva mesmo que o template mude depois.
+          "Gerar PDF" baixa o contrato em PDF. O texto gerado fica guardado com a reserva mesmo que o template mude
+          depois — use o lápis para ajustar o texto de um contrato já gerado.
         </p>
       </Card>
 
@@ -274,6 +304,37 @@ export function Contracts() {
                 className="w-full border border-line rounded-lg px-3 py-2 text-sm font-mono"
               />
               <Button type="submit" className="w-full justify-center">Salvar template</Button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setEditingContract(null)} />
+          <div className="relative w-full max-w-3xl bg-surface rounded-card p-6 shadow-xl max-h-[92vh] flex flex-col">
+            <h2 className="text-lg font-display font-semibold mb-1">Editar contrato — {editingContract.cliente}</h2>
+            <p className="text-sm text-muted mb-4">
+              Festa em {editingContract.evento} · {editingContract.unitName}. A alteração vale só para este contrato — o
+              template da unidade não muda.
+            </p>
+            <form onSubmit={(e) => handleSaveContract(e, false)} className="flex flex-col gap-3 min-h-0 flex-1">
+              <textarea
+                value={contractDraft}
+                onChange={(e) => setContractDraft(e.target.value)}
+                className="w-full flex-1 min-h-[50vh] border border-line rounded-lg px-3 py-2 text-sm leading-relaxed"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditingContract(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="secondary" className="flex-1 justify-center" disabled={savingContract}>
+                  Salvar
+                </Button>
+                <Button type="button" className="flex-1 justify-center" disabled={savingContract} onClick={(e) => handleSaveContract(e, true)}>
+                  <FileDown className="w-4 h-4" /> Salvar e baixar PDF
+                </Button>
+              </div>
             </form>
           </div>
         </div>

@@ -1163,6 +1163,29 @@ create policy "write_reservation_birthday_kids" on reservation_birthday_kids for
   using (has_permission(auth.uid(), 'action:reservas.nova_reserva') or has_permission(auth.uid(), 'action:festa.editar_dados'))
   with check (has_permission(auth.uid(), 'action:reservas.nova_reserva') or has_permission(auth.uid(), 'action:festa.editar_dados'));
 
+-- ---------- Observações da festa (com lembrete opcional por data) ----------
+-- A partir de remind_on, a observação aparece no Painel até ser marcada
+-- como concluída (reminder_done).
+create table if not exists reservation_notes (
+  id uuid primary key default gen_random_uuid(),
+  reservation_id uuid not null references reservations(id) on delete cascade,
+  body text not null,
+  remind_on date,
+  reminder_done boolean not null default false,
+  created_by_name text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_reservation_notes_reservation on reservation_notes (reservation_id);
+create index if not exists idx_reservation_notes_remind on reservation_notes (remind_on) where remind_on is not null and not reminder_done;
+
+alter table reservation_notes enable row level security;
+
+create policy "read_active" on reservation_notes for select using (is_active_user(auth.uid()));
+create policy "write_reservation_notes" on reservation_notes for all
+  using (has_permission(auth.uid(), 'page:festa_detalhe'))
+  with check (has_permission(auth.uid(), 'page:festa_detalhe'));
+
 -- lista de espera
 create policy "read_active" on waitlist for select using (is_active_user(auth.uid()));
 create policy "write_waitlist" on waitlist for all

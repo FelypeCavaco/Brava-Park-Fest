@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { addDays, format, parseISO, differenceInCalendarDays, differenceInCalendarMonths } from 'date-fns'
-import { AlertTriangle, Sparkles } from 'lucide-react'
+import { AlertTriangle, Sparkles, BellRing } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -68,6 +68,15 @@ interface ReativacaoProxima {
   mesesFaltam: number
 }
 
+interface LembreteObservacao {
+  id: string
+  texto: string
+  remindOn: string
+  reservationId: string
+  cliente: string
+  dataFesta: string
+}
+
 interface ContaAPagar {
   id: string
   descricao: string
@@ -107,6 +116,7 @@ export function Dashboard() {
   const [pendenciasFesta, setPendenciasFesta] = useState<PendenciaFesta[]>([])
   const [reativacoesProximas, setReativacoesProximas] = useState<ReativacaoProxima[]>([])
   const [contasAPagar, setContasAPagar] = useState<ContaAPagar[]>([])
+  const [lembretes, setLembretes] = useState<LembreteObservacao[]>([])
 
   const unitIds = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
   const unitLabel = selectedUnit === 'todas' ? 'Ambas as unidades' : UNITS.find((u) => u.id === selectedUnit)?.name
@@ -291,6 +301,29 @@ export function Dashboard() {
         .sort((a, b) => a.diasParaVencer - b.diasParaVencer),
     )
 
+    // Observações com lembrete: aparecem a partir da data escolhida até alguém
+    // marcar como concluído.
+    const { data: notesData } = await supabase
+      .from('reservation_notes')
+      .select('id, body, remind_on, reservation:reservations(id, event_date, unit_id, client:clients(name))')
+      .eq('reminder_done', false)
+      .not('remind_on', 'is', null)
+      .lte('remind_on', today)
+      .order('remind_on')
+    const allowedUnitIds = new Set(Object.values(unitIdBySlug))
+    setLembretes(
+      (notesData ?? [])
+        .filter((n: any) => n.reservation && allowedUnitIds.has(n.reservation.unit_id))
+        .map((n: any) => ({
+          id: n.id,
+          texto: n.body,
+          remindOn: n.remind_on,
+          reservationId: n.reservation.id,
+          cliente: n.reservation.client?.name ?? '—',
+          dataFesta: format(parseISO(n.reservation.event_date), 'dd/MM'),
+        })),
+    )
+
     const { data: auditData } = await supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(10)
     setAtividade(
       (auditData ?? []).map((a) => ({
@@ -302,6 +335,13 @@ export function Dashboard() {
     )
 
     setLoading(false)
+  }
+
+  async function concluirLembrete(noteId: string) {
+    const previous = lembretes
+    setLembretes((prev) => prev.filter((l) => l.id !== noteId))
+    const { error } = await supabase.from('reservation_notes').update({ reminder_done: true }).eq('id', noteId)
+    if (error) setLembretes(previous)
   }
 
   const stats = useMemo(() => {
@@ -379,6 +419,36 @@ export function Dashboard() {
         <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
       ) : (
         <>
+          {lembretes.length > 0 && (
+            <Card className="border-purple/40 bg-purple-light">
+              <div className="flex items-center gap-2 mb-3">
+                <BellRing className="w-4 h-4 text-purple-dark" />
+                <p className="text-sm font-medium text-purple-dark">
+                  {lembretes.length} lembrete{lembretes.length > 1 ? 's' : ''} de observações das festas
+                </p>
+              </div>
+              <ul className="divide-y divide-purple/10">
+                {lembretes.map((l) => (
+                  <li key={l.id} className="py-2.5 flex items-start justify-between gap-3">
+                    <button onClick={() => navigate(`/reservas/${l.reservationId}`)} className="text-left min-w-0">
+                      <p className="text-sm font-medium whitespace-pre-wrap">{l.texto}</p>
+                      <p className="text-xs text-muted mt-0.5">
+                        Festa de {l.cliente} — {l.dataFesta}
+                        {l.remindOn < format(new Date(), 'yyyy-MM-dd') ? ` · lembrete desde ${format(parseISO(l.remindOn), 'dd/MM')}` : ''}
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => concluirLembrete(l.id)}
+                      className="shrink-0 text-xs font-medium text-purple border border-purple/30 rounded-full px-2.5 py-1 hover:bg-surface"
+                    >
+                      Concluir
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           {pendenciasFesta.length > 0 && (
             <Card className="border-amber/40 bg-amber-light">
               <div className="flex items-center gap-2 mb-3">

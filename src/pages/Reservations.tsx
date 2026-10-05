@@ -44,15 +44,26 @@ const statusLabel: Record<ReservationStatus, string> = {
   cancelada: 'Cancelada',
 }
 
-// Cor sólida por status, usada nas pastilhas de nome dentro do calendário
-// (o Badge padrão usa fundo claro, que fica pouco legível em células pequenas)
-const statusDot: Record<ReservationStatus, string> = {
-  orcamento: 'bg-orange',
-  confirmada: 'bg-teal',
-  sinal_pago: 'bg-amber',
-  quitada: 'bg-teal',
-  cancelada: 'bg-danger',
+// Cores do mapa de reservas. "Sinal pago" aparece como Confirmada; orçamento
+// (festa ainda não fechada) fica em cinza e não entra na legenda.
+type MapStatus = 'confirmada' | 'quitada' | 'cancelada' | 'orcamento'
+
+const mapStatusOf: Record<ReservationStatus, MapStatus> = {
+  orcamento: 'orcamento',
+  confirmada: 'confirmada',
+  sinal_pago: 'confirmada',
+  quitada: 'quitada',
+  cancelada: 'cancelada',
 }
+
+const mapStatusStyle: Record<MapStatus, { label: string; pill: string; dot: string; text: string }> = {
+  confirmada: { label: 'Confirmada', pill: 'bg-[#FDE4EF] text-[#D6246E] hover:bg-[#FBCFE3]', dot: 'bg-[#EC4899]', text: 'text-[#D6246E]' },
+  quitada: { label: 'Quitada', pill: 'bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0]', dot: 'bg-[#22C55E]', text: 'text-[#15803D]' },
+  cancelada: { label: 'Cancelada', pill: 'bg-[#FEE2E2] text-[#DC2626] hover:bg-[#FECACA]', dot: 'bg-[#EF4444]', text: 'text-[#DC2626]' },
+  orcamento: { label: 'Orçamento', pill: 'bg-paper text-muted hover:bg-line/60', dot: 'bg-[#A8A2B8]', text: 'text-muted' },
+}
+
+const MAP_LEGEND: MapStatus[] = ['confirmada', 'quitada', 'cancelada']
 
 interface Reservation {
   id: string
@@ -600,17 +611,22 @@ export function Reservations() {
                         {format(day, 'd')}
                       </span>
                       <div className="flex flex-col gap-1">
-                        {dayReservations.slice(0, 3).map((r) => (
-                          <button
-                            key={r.id}
-                            onClick={() => setSelected(r)}
-                            title={`${r.cliente} · ${statusLabel[r.status]}`}
-                            className="w-full flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] bg-paper hover:bg-line/60 text-left truncate transition-colors"
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[r.status]}`} />
-                            <span className="truncate">{r.cliente}</span>
-                          </button>
-                        ))}
+                        {dayReservations.slice(0, 3).map((r) => {
+                          const style = mapStatusStyle[mapStatusOf[r.status]]
+                          return (
+                            <button
+                              key={r.id}
+                              onClick={() => setSelected(r)}
+                              title={`${r.cliente} · ${statusLabel[r.status]}`}
+                              className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold text-left truncate transition-colors ${style.pill} ${
+                                r.status === 'cancelada' ? 'line-through' : ''
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+                              <span className="truncate">{r.cliente}</span>
+                            </button>
+                          )
+                        })}
                         {dayReservations.length > 3 && (
                           <span className="text-[10px] text-muted px-1.5">+{dayReservations.length - 3} mais</span>
                         )}
@@ -620,10 +636,10 @@ export function Reservations() {
                 })}
               </div>
 
-              <div className="flex items-center gap-4 mt-4 pt-3 border-t border-line text-xs text-muted flex-wrap">
-                {(Object.keys(statusLabel) as ReservationStatus[]).map((s) => (
-                  <span key={s} className="flex items-center gap-1.5">
-                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${statusDot[s]}`} /> {statusLabel[s]}
+              <div className="flex items-center gap-4 mt-4 pt-3 border-t border-line text-xs flex-wrap">
+                {MAP_LEGEND.map((s) => (
+                  <span key={s} className={`flex items-center gap-1.5 font-semibold ${mapStatusStyle[s].text}`}>
+                    <span className={`w-3 h-3 rounded-full inline-block ${mapStatusStyle[s].dot}`} /> {mapStatusStyle[s].label}
                   </span>
                 ))}
               </div>

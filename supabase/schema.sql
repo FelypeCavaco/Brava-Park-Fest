@@ -1186,6 +1186,38 @@ create policy "write_reservation_notes" on reservation_notes for all
   using (has_permission(auth.uid(), 'page:festa_detalhe'))
   with check (has_permission(auth.uid(), 'page:festa_detalhe'));
 
+-- ---------- Cadastro de funcionários + presença/pagamento/substituição na escala ----------
+create table if not exists staff_members (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text,
+  default_role text,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table staff_members enable row level security;
+
+create policy "read_staff_members" on staff_members for select
+  using (has_permission(auth.uid(), 'page:festa_detalhe') or has_permission(auth.uid(), 'page:escalas'));
+create policy "write_staff_members" on staff_members for all
+  using (has_permission(auth.uid(), 'action:festa.equipe'))
+  with check (has_permission(auth.uid(), 'action:festa.equipe'));
+
+alter table staff_assignments add column if not exists staff_member_id uuid references staff_members(id) on delete set null;
+alter table staff_assignments add column if not exists attended boolean not null default false;
+alter table staff_assignments add column if not exists attended_at timestamptz;
+alter table staff_assignments add column if not exists payment_cost_id uuid references reservation_costs(id) on delete set null;
+alter table staff_assignments add column if not exists status text not null default 'escalado'
+  check (status in ('escalado', 'substituido'));
+alter table staff_assignments add column if not exists substituted_by_name text;
+alter table staff_assignments add column if not exists substitution_reason text;
+alter table staff_assignments add column if not exists replaces_assignment_id uuid references staff_assignments(id) on delete set null;
+alter table staff_assignments add column if not exists created_at timestamptz not null default now();
+
+-- Convidado sinalizado (ex: veio sem estar na lista) — fica destacado.
+alter table guest_list_entries add column if not exists flagged boolean not null default false;
+
 -- lista de espera
 create policy "read_active" on waitlist for select using (is_active_user(auth.uid()));
 create policy "write_waitlist" on waitlist for all

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { Plus, Minus, Trash2, AlertTriangle, Pencil, ArrowLeftRight } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -25,6 +25,8 @@ export function Inventory() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
   const [items, setItems] = useState<InventoryItem[]>([])
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({})
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [nextFestaByUnit, setNextFestaByUnit] = useState<Record<string, NextFesta>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +116,7 @@ export function Inventory() {
   }
 
   const filtered = useMemo(
-    () => (selectedUnit === 'todas' ? items : items.filter((i) => i.unit_id === selectedUnit)).sort((a, b) => a.name.localeCompare(b.name)),
+    () => (selectedUnit === 'todas' ? [...items] : items.filter((i) => i.unit_id === selectedUnit)).sort((a, b) => a.name.localeCompare(b.name)),
     [items, selectedUnit],
   )
 
@@ -146,18 +148,46 @@ export function Inventory() {
 
   const precisamRepor = useMemo(() => filtered.filter((i) => i.quantity < effectiveMinimum(i)), [filtered, nextFestaByUnit])
 
-  async function adjustQuantity(id: string, delta: number) {
+  // +/− anda de número inteiro em número inteiro: de 6,5 o "+" vai pra 7 (não
+  // 7,5) e o "−" vai pra 6. Valores quebrados continuam podendo ser digitados.
+  async function adjustQuantity(id: string, direction: 1 | -1) {
     const item = items.find((i) => i.id === id)
     if (!item) return
-    const newQuantity = Math.max(0, Math.round((item.quantity + delta) * 100) / 100)
+    const q = item.quantity
+    const next = direction > 0 ? (Number.isInteger(q) ? q + 1 : Math.ceil(q)) : Number.isInteger(q) ? q - 1 : Math.floor(q)
+    const newQuantity = Math.max(0, next)
+    setQtyDrafts((prev) => {
+      const { [id]: _, ...rest } = prev
+      return rest
+    })
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: newQuantity } : i)))
     await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id)
   }
 
-  async function setQuantityDirect(id: string, value: number) {
-    const newQuantity = Math.max(0, value)
+  // Digitação livre (aceita "6,5" ou "6.5"): a tela — incluindo a lista de
+  // compras — atualiza na hora; o banco é salvo meio segundo depois da
+  // última tecla, sem precisar sair do campo.
+  function changeQuantityTyped(id: string, raw: string) {
+    setQtyDrafts((prev) => ({ ...prev, [id]: raw }))
+    const parsed = Number(raw.trim().replace(',', '.'))
+    if (raw.trim() === '' || !Number.isFinite(parsed) || parsed < 0) return
+    const newQuantity = Math.round(parsed * 100) / 100
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: newQuantity } : i)))
-    await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id)
+    clearTimeout(saveTimers.current[id])
+    saveTimers.current[id] = setTimeout(async () => {
+      await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id)
+    }, 500)
+  }
+
+  function finishQuantityTyping(id: string) {
+    setQtyDrafts((prev) => {
+      const { [id]: _, ...rest } = prev
+      return rest
+    })
+  }
+
+  function formatQty(q: number) {
+    return q.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
   }
 
   async function updateQuantityPerGuest(id: string, value: number | null) {
@@ -304,7 +334,7 @@ export function Inventory() {
     setPurchaseStatus((prev) => ({ ...prev, [id]: status }))
     if (status === 'recebido') {
       const item = items.find((i) => i.id === id)
-      if (item) adjustQuantity(id, Math.max(item.minimum_quantity - item.quantity, 0))
+      if (item && item.quantity < item.minimum_quantity) changeQuantityTyped(id, String(item.minimum_quantity))
     }
   }
 
@@ -546,14 +576,12 @@ export function Inventory() {
                             <td key={r.digito} className="px-1 py-1">
                               {item ? (
                                 <input
-                                  type="number"
-                                  min={0}
-                                  defaultValue={item.quantity}
-                                  key={item.quantity}
-                                  onBlur={(e) => {
-                                    const value = Number(e.target.value)
-                                    if (value !== item.quantity) setQuantityDirect(item.id, value)
-                                  }}
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={qtyDrafts[item.id] ?? formatQty(item.quantity)}
+                                  onChange={(e) => changeQuantityTyped(item.id, e.target.value)}
+                                  onBlur={() => finishQuantityTyping(item.id)}
+                                  onFocus={(e) => e.target.select()}
                                   className={`w-10 text-center border rounded px-1 py-1 text-xs ${
                                     item.quantity < item.minimum_quantity ? 'border-danger text-danger' : 'border-line'
                                   }`}
@@ -572,8 +600,8 @@ export function Inventory() {
             </div>
           ))}
           <p className="text-xs text-muted mt-2">
-            Números em vermelho estão abaixo do mínimo (1 unidade). Clique no número, digite a quantidade e saia do
-            campo pra salvar.
+            Números em vermelho estão abaixo do mínimo (1 unidade). Clique no número e digite a quantidade — salva
+            sozinho e já atualiza a lista de compras.
           </p>
         </Card>
       )}
@@ -613,9 +641,19 @@ export function Inventory() {
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-16 text-center">
-                        {i.quantity} {i.unit_of_measure}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={qtyDrafts[i.id] ?? formatQty(i.quantity)}
+                          onChange={(e) => changeQuantityTyped(i.id, e.target.value)}
+                          onBlur={() => finishQuantityTyping(i.id)}
+                          onFocus={(e) => e.target.select()}
+                          aria-label={`Quantidade de ${i.name}`}
+                          className="w-14 text-center border border-line rounded px-1 py-0.5 text-sm"
+                        />
+                        <span className="text-xs text-muted">{i.unit_of_measure}</span>
+                      </div>
                       <button
                         onClick={() => adjustQuantity(i.id, 1)}
                         className="w-6 h-6 rounded border border-line flex items-center justify-center hover:bg-paper"

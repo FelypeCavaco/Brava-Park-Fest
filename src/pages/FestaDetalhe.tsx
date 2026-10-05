@@ -25,6 +25,9 @@ import {
   StickyNote,
   Bell,
   BellOff,
+  UserPlus,
+  Repeat,
+  Flag,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -167,7 +170,37 @@ const EVENT_TYPES = ['Aniversário infantil', 'Debutante', 'Casamento', 'Corpora
 interface CostItem { id: string; description: string; amount: number }
 interface ConsumptionItem { id: string; item: string; quantity: number; unitPrice: number }
 interface ChecklistItem { id: string; description: string; done: boolean; dueDate: string | null }
-interface StaffRow { id: string; name: string; role: string }
+interface StaffRow {
+  id: string
+  name: string
+  role: string
+  staffMemberId: string | null
+  attended: boolean
+  paymentCostId: string | null
+  status: 'escalado' | 'substituido'
+  substitutedByName: string | null
+  substitutionReason: string | null
+}
+
+interface StaffMember { id: string; name: string; phone: string | null; defaultRole: string | null }
+
+interface StaffPayRow { assignmentId: string; name: string; role: string; amount: string; include: boolean }
+
+const DEFAULT_STAFF_PAYMENT = 150
+
+function mapStaffRow(s: any): StaffRow {
+  return {
+    id: s.id,
+    name: s.staff_name,
+    role: s.role ?? 'Equipe',
+    staffMemberId: s.staff_member_id ?? null,
+    attended: !!s.attended,
+    paymentCostId: s.payment_cost_id ?? null,
+    status: s.status === 'substituido' ? 'substituido' : 'escalado',
+    substitutedByName: s.substituted_by_name ?? null,
+    substitutionReason: s.substitution_reason ?? null,
+  }
+}
 interface ContactEntry { id: string; type: string; created_at: string }
 
 const CHECKLIST_TEMPLATE = [
@@ -255,8 +288,21 @@ export function FestaDetalhe() {
   const [custoValor, setCustoValor] = useState('')
   const [custoObs, setCustoObs] = useState('')
   const [custoAviso, setCustoAviso] = useState<{ id: string; description: string | null; supplier: string | null; category: string; amount: number }[] | null>(null)
-  const [staffName, setStaffName] = useState('')
-  const [staffRole, setStaffRole] = useState('')
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
+  const [rosterSelection, setRosterSelection] = useState<Record<string, string>>({})
+  const [escalando, setEscalando] = useState(false)
+  const [showNewMember, setShowNewMember] = useState(false)
+  const [newMemberName, setNewMemberName] = useState('')
+  const [newMemberPhone, setNewMemberPhone] = useState('')
+  const [newMemberRole, setNewMemberRole] = useState('')
+  const [selectedAssignments, setSelectedAssignments] = useState<string[]>([])
+  const [payRows, setPayRows] = useState<StaffPayRow[] | null>(null)
+  const [savingPay, setSavingPay] = useState(false)
+  const [substituting, setSubstituting] = useState<StaffRow | null>(null)
+  const [subMemberId, setSubMemberId] = useState('')
+  const [subNewName, setSubNewName] = useState('')
+  const [subRole, setSubRole] = useState('')
+  const [subReason, setSubReason] = useState('')
 
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
@@ -292,8 +338,9 @@ export function FestaDetalhe() {
   const [novoExtraQtd, setNovoExtraQtd] = useState('1')
 
   const [guestListToken, setGuestListToken] = useState<string | null>(null)
-  const [guestEntries, setGuestEntries] = useState<{ id: string; name: string; arrived: boolean }[]>([])
+  const [guestEntries, setGuestEntries] = useState<{ id: string; name: string; arrived: boolean; flagged: boolean }[]>([])
   const [manualGuestName, setManualGuestName] = useState('')
+  const [manualGuestFlagged, setManualGuestFlagged] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [guestSortAlpha, setGuestSortAlpha] = useState(false)
   const [guestListFullscreen, setGuestListFullscreen] = useState(false)
@@ -673,8 +720,29 @@ export function FestaDetalhe() {
   }
 
   async function loadGuestEntries(token: string) {
-    const { data } = await supabase.from('guest_list_entries').select('id, name, arrived').eq('token', token).order('created_at')
-    setGuestEntries((data ?? []).map((e) => ({ id: e.id, name: e.name, arrived: e.arrived })))
+    const { data } = await supabase.from('guest_list_entries').select('id, name, arrived, flagged').eq('token', token).order('created_at')
+    setGuestEntries((data ?? []).map((e) => ({ id: e.id, name: e.name, arrived: e.arrived, flagged: !!e.flagged })))
+  }
+
+  async function toggleGuestFlag(entryId: string, currentlyFlagged: boolean) {
+    const previous = guestEntries
+    setGuestEntries((prev) => prev.map((g) => (g.id === entryId ? { ...g, flagged: !currentlyFlagged } : g)))
+    const { error } = await supabase.from('guest_list_entries').update({ flagged: !currentlyFlagged }).eq('id', entryId)
+    if (error) {
+      setGuestEntries(previous)
+      setError('Não foi possível sinalizar o convidado.')
+    }
+  }
+
+  function handleSendFlaggedToClient() {
+    if (!festa) return
+    const flagged = guestEntries.filter((g) => g.flagged)
+    if (flagged.length === 0) return
+    const message =
+      `Olá, ${festa.cliente}! Segue a lista de pessoas que vieram à festa do dia ${festa.data} mas não estavam na lista de convidados:\n\n` +
+      flagged.map((g) => `- ${g.name}`).join('\n') +
+      `\n\nTotal: ${flagged.length} pessoa(s).`
+    openWhatsApp(festa.clientPhone, message)
   }
 
   async function toggleGuestArrived(entryId: string, currentlyArrived: boolean) {
@@ -737,17 +805,26 @@ export function FestaDetalhe() {
   async function handleAddGuestManual(e: FormEvent) {
     e.preventDefault()
     if (!guestListToken || !manualGuestName.trim()) return
+    // Quem é sinalizado na hora de adicionar é alguém que chegou sem estar na
+    // lista — então já entra também como "chegou".
     const { data, error } = await supabase
       .from('guest_list_entries')
-      .insert({ token: guestListToken, name: manualGuestName.trim() })
+      .insert({
+        token: guestListToken,
+        name: manualGuestName.trim(),
+        flagged: manualGuestFlagged,
+        arrived: manualGuestFlagged,
+        arrived_at: manualGuestFlagged ? new Date().toISOString() : null,
+      })
       .select()
       .single()
     if (error) {
       setError('Não foi possível adicionar o nome.')
       return
     }
-    setGuestEntries((prev) => [...prev, { id: data.id, name: data.name, arrived: false }])
+    setGuestEntries((prev) => [...prev, { id: data.id, name: data.name, arrived: !!data.arrived, flagged: !!data.flagged }])
     setManualGuestName('')
+    setManualGuestFlagged(false)
   }
 
   function handleRemoveGuest(entryId: string) {
@@ -760,7 +837,7 @@ export function FestaDetalhe() {
         await supabase.from('guest_list_entries').delete().eq('id', entryId)
       },
       undo: async () => {
-        await supabase.from('guest_list_entries').insert({ id: entryId, token: guestListToken, name: guest.name, arrived: guest.arrived })
+        await supabase.from('guest_list_entries').insert({ id: entryId, token: guestListToken, name: guest.name, arrived: guest.arrived, flagged: guest.flagged })
         setGuestEntries((prev) => [...prev, guest])
       },
     })
@@ -793,9 +870,22 @@ export function FestaDetalhe() {
             <ArrowDownAZ className="w-3.5 h-3.5" /> Ordem alfabética
           </button>
         </div>
+        {guestEntries.some((g) => g.flagged) && (
+          <div className="flex items-center justify-between gap-2 mb-2 bg-amber-light rounded-lg px-3 py-2 flex-wrap">
+            <p className="text-xs text-amber font-medium flex items-center gap-1">
+              <Flag className="w-3.5 h-3.5" /> {guestEntries.filter((g) => g.flagged).length} sinalizado(s) — vieram sem estar na lista
+            </p>
+            <button onClick={handleSendFlaggedToClient} className="text-xs font-medium text-amber underline">
+              Enviar ao cliente (WhatsApp)
+            </button>
+          </div>
+        )}
         <ul className={`divide-y divide-line overflow-y-auto mb-3 ${large ? 'max-h-[70vh]' : 'max-h-40'}`}>
           {sortedGuestEntries.map((g) => (
-            <li key={g.id} className="py-1.5 flex items-center justify-between text-sm gap-2">
+            <li
+              key={g.id}
+              className={`py-1.5 flex items-center justify-between text-sm gap-2 ${g.flagged ? 'bg-amber-light -mx-2 px-2 rounded' : ''}`}
+            >
               <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                 <input
                   type="checkbox"
@@ -804,9 +894,17 @@ export function FestaDetalhe() {
                   disabled={!can('action:festa.lista_convidados')}
                   className="shrink-0"
                 />
-                <span className={`truncate ${g.arrived ? 'text-muted line-through' : ''}`}>{g.name}</span>
+                <span className={`truncate ${g.flagged ? 'text-amber font-semibold' : g.arrived ? 'text-muted line-through' : ''}`}>{g.name}</span>
               </label>
               <Can permission="action:festa.lista_convidados">
+                <button
+                  onClick={() => toggleGuestFlag(g.id, g.flagged)}
+                  className={`shrink-0 ${g.flagged ? 'text-amber' : 'text-muted hover:text-amber'}`}
+                  aria-label={g.flagged ? 'Remover sinalização' : 'Sinalizar convidado'}
+                  title={g.flagged ? 'Remover sinalização' : 'Sinalizar (veio sem estar na lista)'}
+                >
+                  <Flag className={`w-3.5 h-3.5 ${g.flagged ? 'fill-amber' : ''}`} />
+                </button>
                 <button onClick={() => handleRemoveGuest(g.id)} className="text-muted hover:text-danger shrink-0">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -816,14 +914,20 @@ export function FestaDetalhe() {
           {sortedGuestEntries.length === 0 && <p className="text-sm text-muted py-2">Ninguém enviado ainda.</p>}
         </ul>
         <Can permission="action:festa.lista_convidados">
-          <form onSubmit={handleAddGuestManual} className="flex gap-2">
-            <input
-              value={manualGuestName}
-              onChange={(e) => setManualGuestName(e.target.value)}
-              placeholder="Adicionar nome manualmente"
-              className="flex-1 border border-line rounded-lg px-3 py-1.5 text-sm"
-            />
-            <Button type="submit" className="text-xs px-3 py-1.5"><Plus className="w-3.5 h-3.5" /></Button>
+          <form onSubmit={handleAddGuestManual} className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                value={manualGuestName}
+                onChange={(e) => setManualGuestName(e.target.value)}
+                placeholder="Adicionar nome manualmente"
+                className="flex-1 border border-line rounded-lg px-3 py-1.5 text-sm"
+              />
+              <Button type="submit" className="text-xs px-3 py-1.5"><Plus className="w-3.5 h-3.5" /></Button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+              <input type="checkbox" checked={manualGuestFlagged} onChange={(e) => setManualGuestFlagged(e.target.checked)} />
+              <Flag className="w-3.5 h-3.5 text-amber" /> Sinalizar — chegou sem estar na lista
+            </label>
           </form>
         </Can>
       </div>
@@ -880,8 +984,12 @@ export function FestaDetalhe() {
   }
 
   async function loadStaff() {
-    const { data } = await supabase.from('staff_assignments').select('*').eq('reservation_id', id)
-    setStaff((data ?? []).map((s) => ({ id: s.id, name: s.staff_name, role: s.role ?? 'Equipe' })))
+    const [{ data }, { data: members }] = await Promise.all([
+      supabase.from('staff_assignments').select('*').eq('reservation_id', id).order('created_at'),
+      supabase.from('staff_members').select('id, name, phone, default_role').eq('active', true).order('name'),
+    ])
+    setStaff((data ?? []).map(mapStaffRow))
+    setStaffMembers((members ?? []).map((m) => ({ id: m.id, name: m.name, phone: m.phone, defaultRole: m.default_role })))
   }
 
   async function loadContract() {
@@ -1331,8 +1439,9 @@ export function FestaDetalhe() {
 
   async function handleExportEscala() {
     if (!festa) return
-    const rows = staff.length
-      ? staff.map((s) => `<tr><td>${s.name}</td><td>${s.role}</td></tr>`).join('')
+    const escalados = staff.filter((s) => s.status === 'escalado')
+    const rows = escalados.length
+      ? escalados.map((s) => `<tr><td>${s.name}</td><td>${s.role}</td></tr>`).join('')
       : '<tr><td colspan="2">Nenhum funcionário escalado ainda.</td></tr>'
     const styles = `
       .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
@@ -1522,7 +1631,11 @@ export function FestaDetalhe() {
   function handleRemoveCusto(itemId: string) {
     const cost = costs.find((c) => c.id === itemId)
     if (!cost) return
+    const linkedAssignment = staff.find((s) => s.paymentCostId === itemId)
     setCosts((prev) => prev.filter((c) => c.id !== itemId))
+    // se era o pagamento de alguém da equipe, ele volta a aparecer como "sem
+    // pagamento lançado" (no banco o vínculo some sozinho ao apagar o custo)
+    if (linkedAssignment) setStaff((prev) => prev.map((s) => (s.id === linkedAssignment.id ? { ...s, paymentCostId: null } : s)))
     scheduleDelete({
       label: `Custo "${cost.description}" removido`,
       commit: async () => {
@@ -1531,6 +1644,10 @@ export function FestaDetalhe() {
       undo: async () => {
         await supabase.from('reservation_costs').insert({ id: itemId, reservation_id: id, description: cost.description, amount: cost.amount })
         setCosts((prev) => [...prev, cost])
+        if (linkedAssignment) {
+          await supabase.from('staff_assignments').update({ payment_cost_id: itemId }).eq('id', linkedAssignment.id)
+          setStaff((prev) => prev.map((s) => (s.id === linkedAssignment.id ? { ...s, paymentCostId: itemId } : s)))
+        }
       },
     })
   }
@@ -1568,17 +1685,185 @@ export function FestaDetalhe() {
     }
   }
 
-  async function handleAddStaff(e: FormEvent) {
+  const activeStaff = staff.filter((s) => s.status === 'escalado')
+  const substitutedStaff = staff.filter((s) => s.status === 'substituido')
+  const assignedMemberIds = new Set(activeStaff.map((s) => s.staffMemberId).filter(Boolean) as string[])
+  const availableMembers = staffMembers.filter((m) => !assignedMemberIds.has(m.id))
+
+  function toggleRosterMember(member: StaffMember) {
+    setRosterSelection((prev) => {
+      if (member.id in prev) {
+        const { [member.id]: _, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [member.id]: member.defaultRole ?? '' }
+    })
+  }
+
+  async function handleEscalarEquipe() {
+    const rows = Object.entries(rosterSelection).flatMap(([memberId, role]) => {
+      const member = staffMembers.find((m) => m.id === memberId)
+      return member ? [{ reservation_id: id, staff_member_id: member.id, staff_name: member.name, role: role.trim() || 'Equipe' }] : []
+    })
+    if (rows.length === 0) return
+    setEscalando(true)
+    const { data, error } = await supabase.from('staff_assignments').insert(rows).select()
+    setEscalando(false)
+    if (error) {
+      setError('Não foi possível escalar a equipe.')
+      return
+    }
+    setStaff((prev) => [...prev, ...(data ?? []).map(mapStaffRow)])
+    setRosterSelection({})
+  }
+
+  async function handleCreateMember(e: FormEvent) {
     e.preventDefault()
-    if (!staffName.trim()) return
-    const { data } = await supabase
-      .from('staff_assignments')
-      .insert({ reservation_id: id, staff_name: staffName.trim(), role: staffRole.trim() || 'Equipe' })
+    if (!newMemberName.trim()) return
+    const { data, error } = await supabase
+      .from('staff_members')
+      .insert({ name: newMemberName.trim(), phone: newMemberPhone.trim() || null, default_role: newMemberRole.trim() || null })
       .select()
       .single()
-    if (data) setStaff((prev) => [...prev, { id: data.id, name: data.staff_name, role: data.role ?? 'Equipe' }])
-    setStaffName('')
-    setStaffRole('')
+    if (error || !data) {
+      setError('Não foi possível cadastrar o funcionário.')
+      return
+    }
+    const member: StaffMember = { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role }
+    setStaffMembers((prev) => [...prev, member].sort((a, b) => a.name.localeCompare(b.name)))
+    // já deixa marcado pra escalar nesta festa
+    setRosterSelection((prev) => ({ ...prev, [member.id]: member.defaultRole ?? '' }))
+    setShowNewMember(false)
+    setNewMemberName('')
+    setNewMemberPhone('')
+    setNewMemberRole('')
+  }
+
+  function toggleAssignmentSelected(assignmentId: string) {
+    setSelectedAssignments((prev) => (prev.includes(assignmentId) ? prev.filter((x) => x !== assignmentId) : [...prev, assignmentId]))
+  }
+
+  // Marca presença e já pergunta se quer lançar o pagamento nos custos da
+  // festa (só pra quem ainda não teve pagamento lançado).
+  async function handleMarkAttended(assignmentIds: string[]) {
+    if (assignmentIds.length === 0) return
+    const previous = staff
+    const now = new Date().toISOString()
+    setStaff((prev) => prev.map((s) => (assignmentIds.includes(s.id) ? { ...s, attended: true } : s)))
+    const { error } = await supabase.from('staff_assignments').update({ attended: true, attended_at: now }).in('id', assignmentIds)
+    if (error) {
+      setStaff(previous)
+      setError('Não foi possível marcar a presença.')
+      return
+    }
+    setSelectedAssignments([])
+    openPayModal(assignmentIds)
+  }
+
+  function openPayModal(assignmentIds: string[]) {
+    const rows = staff
+      .filter((s) => assignmentIds.includes(s.id) && !s.paymentCostId)
+      .map((s) => ({ assignmentId: s.id, name: s.name, role: s.role, amount: String(DEFAULT_STAFF_PAYMENT), include: true }))
+    if (rows.length > 0) setPayRows(rows)
+  }
+
+  async function handleUndoAttended(assignmentId: string) {
+    setStaff((prev) => prev.map((s) => (s.id === assignmentId ? { ...s, attended: false } : s)))
+    await supabase.from('staff_assignments').update({ attended: false, attended_at: null }).eq('id', assignmentId)
+  }
+
+  async function handleConfirmPay() {
+    if (!payRows) return
+    const toLaunch = payRows.filter((r) => r.include && parseDecimal(r.amount) > 0)
+    if (toLaunch.length === 0) {
+      setPayRows(null)
+      return
+    }
+    setSavingPay(true)
+    const results = await Promise.all(
+      toLaunch.map(async (r) => {
+        const { data, error } = await supabase
+          .from('reservation_costs')
+          .insert({ reservation_id: id, description: `Equipe — ${r.name} (${r.role})`, amount: parseDecimal(r.amount) })
+          .select()
+          .single()
+        if (error || !data) return null
+        await supabase.from('staff_assignments').update({ payment_cost_id: data.id }).eq('id', r.assignmentId)
+        return { assignmentId: r.assignmentId, cost: { id: data.id, description: data.description, amount: Number(data.amount) } }
+      }),
+    )
+    setSavingPay(false)
+    const ok = results.filter(Boolean) as { assignmentId: string; cost: CostItem }[]
+    setCosts((prev) => [...prev, ...ok.map((o) => o.cost)])
+    setStaff((prev) => prev.map((s) => {
+      const launched = ok.find((o) => o.assignmentId === s.id)
+      return launched ? { ...s, paymentCostId: launched.cost.id } : s
+    }))
+    if (ok.length < toLaunch.length) setError('Alguns pagamentos não foram lançados — confira os custos da festa.')
+    setPayRows(null)
+  }
+
+  function openSubstitute(row: StaffRow) {
+    setSubstituting(row)
+    setSubMemberId('')
+    setSubNewName('')
+    setSubRole(row.role)
+    setSubReason('')
+  }
+
+  async function handleConfirmSubstitute(e: FormEvent) {
+    e.preventDefault()
+    if (!substituting || !subReason.trim()) return
+    let memberId: string | null = null
+    let newName = ''
+    if (subMemberId === '__novo__') {
+      if (!subNewName.trim()) return
+      const { data, error } = await supabase
+        .from('staff_members')
+        .insert({ name: subNewName.trim(), default_role: subRole.trim() || null })
+        .select()
+        .single()
+      if (error || !data) {
+        setError('Não foi possível cadastrar o substituto.')
+        return
+      }
+      memberId = data.id
+      newName = data.name
+      setStaffMembers((prev) => [...prev, { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role }].sort((a, b) => a.name.localeCompare(b.name)))
+    } else {
+      const member = staffMembers.find((m) => m.id === subMemberId)
+      if (!member) return
+      memberId = member.id
+      newName = member.name
+    }
+
+    const { error: updError } = await supabase
+      .from('staff_assignments')
+      .update({ status: 'substituido', substituted_by_name: newName, substitution_reason: subReason.trim() })
+      .eq('id', substituting.id)
+    if (updError) {
+      setError('Não foi possível registrar a substituição.')
+      return
+    }
+    const { data: inserted } = await supabase
+      .from('staff_assignments')
+      .insert({
+        reservation_id: id,
+        staff_member_id: memberId,
+        staff_name: newName,
+        role: subRole.trim() || substituting.role,
+        replaces_assignment_id: substituting.id,
+      })
+      .select()
+      .single()
+    const original = substituting
+    setStaff((prev) => [
+      ...prev.map((s) =>
+        s.id === original.id ? { ...s, status: 'substituido' as const, substitutedByName: newName, substitutionReason: subReason.trim() } : s,
+      ),
+      ...(inserted ? [mapStaffRow(inserted)] : []),
+    ])
+    setSubstituting(null)
   }
 
   function handleRemoveStaff(staffId: string) {
@@ -1591,7 +1876,18 @@ export function FestaDetalhe() {
         await supabase.from('staff_assignments').delete().eq('id', staffId)
       },
       undo: async () => {
-        await supabase.from('staff_assignments').insert({ id: staffId, reservation_id: id, staff_name: member.name, role: member.role })
+        await supabase.from('staff_assignments').insert({
+          id: staffId,
+          reservation_id: id,
+          staff_name: member.name,
+          role: member.role,
+          staff_member_id: member.staffMemberId,
+          attended: member.attended,
+          payment_cost_id: member.paymentCostId,
+          status: member.status,
+          substituted_by_name: member.substitutedByName,
+          substitution_reason: member.substitutionReason,
+        })
         setStaff((prev) => [...prev, member])
       },
     })
@@ -2340,28 +2636,131 @@ export function FestaDetalhe() {
             </Button>
           }
         >
+          {activeStaff.length > 0 && (
+            <Can permission="action:festa.equipe">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedAssignments.length > 0 && selectedAssignments.length === activeStaff.length}
+                    onChange={(e) => setSelectedAssignments(e.target.checked ? activeStaff.map((s) => s.id) : [])}
+                  />
+                  Selecionar todos
+                </label>
+                {selectedAssignments.length > 0 && (
+                  <Button className="text-xs px-3 py-1.5" onClick={() => handleMarkAttended(selectedAssignments)}>
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Compareceram ({selectedAssignments.length})
+                  </Button>
+                )}
+              </div>
+            </Can>
+          )}
           <ul className="divide-y divide-line mb-4">
-            {staff.map((s) => (
-              <li key={s.id} className="py-2.5 flex items-center justify-between text-sm">
-                <span className="font-medium">{s.name}</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-muted">{s.role}</span>
+            {activeStaff.map((s) => (
+              <li key={s.id} className="py-2.5 flex items-center justify-between gap-3 text-sm flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
                   <Can permission="action:festa.equipe">
-                    <button onClick={() => handleRemoveStaff(s.id)} className="text-muted hover:text-danger">
+                    <input type="checkbox" checked={selectedAssignments.includes(s.id)} onChange={() => toggleAssignmentSelected(s.id)} />
+                  </Can>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{s.name}</p>
+                    <p className="text-xs text-muted">{s.role}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {s.paymentCostId && <Badge tone="teal">Pagamento lançado</Badge>}
+                  <Can permission="action:festa.equipe">
+                    {s.attended ? (
+                      <>
+                        <button
+                          onClick={() => handleUndoAttended(s.id)}
+                          disabled={!!s.paymentCostId}
+                          title={s.paymentCostId ? 'Remova o pagamento nos custos da festa para desfazer' : 'Desfazer presença'}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-teal bg-teal-light rounded-full px-2.5 py-1 disabled:cursor-default"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Compareceu
+                        </button>
+                        {!s.paymentCostId && (
+                          <button onClick={() => openPayModal([s.id])} className="text-xs text-purple font-medium">
+                            Lançar pagamento
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleMarkAttended([s.id])}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-ink border border-line rounded-full px-2.5 py-1 hover:border-teal hover:text-teal"
+                      >
+                        <Circle className="w-3.5 h-3.5" /> Compareceu
+                      </button>
+                    )}
+                    <button onClick={() => openSubstitute(s)} className="inline-flex items-center gap-1 text-xs text-muted hover:text-purple" title="Substituir">
+                      <Repeat className="w-3.5 h-3.5" /> Substituir
+                    </button>
+                    <button onClick={() => handleRemoveStaff(s.id)} className="text-muted hover:text-danger" aria-label="Remover da equipe">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </Can>
                 </div>
               </li>
             ))}
-            {staff.length === 0 && <p className="text-sm text-muted py-2">Nenhum funcionário escalado ainda.</p>}
+            {activeStaff.length === 0 && <p className="text-sm text-muted py-2">Nenhum funcionário escalado ainda.</p>}
           </ul>
+
+          {substitutedStaff.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-1.5">Substituições</p>
+              <ul className="space-y-1.5">
+                {substitutedStaff.map((s) => (
+                  <li key={s.id} className="text-xs text-muted bg-paper rounded-lg px-3 py-2">
+                    <span className="line-through">{s.name}</span> ({s.role}) foi substituído(a) por{' '}
+                    <strong className="text-ink">{s.substitutedByName}</strong>
+                    {s.substitutionReason && <> — motivo: {s.substitutionReason}</>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <Can permission="action:festa.equipe">
-            <form onSubmit={handleAddStaff} className="flex flex-wrap gap-2">
-              <input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Nome" className="border border-line rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[140px]" />
-              <input value={staffRole} onChange={(e) => setStaffRole(e.target.value)} placeholder="Função (ex: Garçom)" className="border border-line rounded-lg px-3 py-1.5 text-sm w-48" />
-              <Button type="submit" className="text-xs px-3 py-1.5"><Plus className="w-3.5 h-3.5" /> Escalar</Button>
-            </form>
+            <div className="border-t border-line pt-4">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <p className="text-sm font-semibold">Montar equipe</p>
+                <button onClick={() => setShowNewMember(true)} className="inline-flex items-center gap-1 text-xs font-medium text-purple">
+                  <UserPlus className="w-3.5 h-3.5" /> Cadastrar funcionário novo
+                </button>
+              </div>
+              <p className="text-xs text-muted mb-3">Marque quem vai trabalhar nesta festa, ajuste a função e clique em "Escalar equipe".</p>
+              {availableMembers.length === 0 ? (
+                <p className="text-sm text-muted py-2">
+                  {staffMembers.length === 0 ? 'Nenhum funcionário cadastrado ainda.' : 'Todos os funcionários cadastrados já estão nesta festa.'}
+                </p>
+              ) : (
+                <ul className="divide-y divide-line border border-line rounded-lg mb-3 max-h-80 overflow-y-auto">
+                  {availableMembers.map((m) => {
+                    const selected = m.id in rosterSelection
+                    return (
+                      <li key={m.id} className={`flex items-center gap-3 px-3 py-2 ${selected ? 'bg-purple-light/60' : ''}`}>
+                        <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                          <input type="checkbox" checked={selected} onChange={() => toggleRosterMember(m)} />
+                          <span className="text-sm truncate">{m.name}</span>
+                        </label>
+                        <input
+                          value={selected ? rosterSelection[m.id] : m.defaultRole ?? ''}
+                          disabled={!selected}
+                          onChange={(e) => setRosterSelection((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                          placeholder="Função"
+                          className="w-36 border border-line rounded-lg px-2 py-1 text-xs disabled:bg-paper disabled:text-muted"
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <Button onClick={handleEscalarEquipe} disabled={escalando || Object.keys(rosterSelection).length === 0}>
+                <Users className="w-4 h-4" /> {escalando ? 'Escalando...' : `Escalar equipe${Object.keys(rosterSelection).length ? ` (${Object.keys(rosterSelection).length})` : ''}`}
+              </Button>
+            </div>
           </Can>
         </Card>
       )}
@@ -2770,6 +3169,121 @@ export function FestaDetalhe() {
               </button>
             </div>
             {renderGuestListBody(true)}
+          </div>
+        </div>
+      )}
+
+      {showNewMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setShowNewMember(false)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-4">Cadastrar funcionário</h2>
+            <form onSubmit={handleCreateMember} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Nome</label>
+                <input required value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Telefone (opcional)</label>
+                <input value={newMemberPhone} onChange={(e) => setNewMemberPhone(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Função mais comum (opcional)</label>
+                <input value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value)} placeholder="Ex: Garçom, Monitora" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <p className="text-xs text-muted">Ele fica salvo para as próximas festas e já vem marcado para esta.</p>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setShowNewMember(false)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center">Cadastrar</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {payRows && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setPayRows(null)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-display font-semibold mb-1">Lançar pagamento da equipe?</h2>
+            <p className="text-sm text-muted mb-4">
+              Os valores marcados entram nos custos desta festa. Ajuste se algum for diferente.
+            </p>
+            <ul className="space-y-2 mb-4">
+              {payRows.map((r, idx) => (
+                <li key={r.assignmentId} className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={r.include}
+                    onChange={(e) => setPayRows((prev) => prev && prev.map((x, i) => (i === idx ? { ...x, include: e.target.checked } : x)))}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{r.name}</p>
+                    <p className="text-xs text-muted">{r.role}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted">R$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={r.amount}
+                      disabled={!r.include}
+                      onChange={(e) => setPayRows((prev) => prev && prev.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))}
+                      className="w-20 border border-line rounded-lg px-2 py-1 text-sm text-right disabled:bg-paper"
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm font-medium mb-4 text-right">
+              Total: {currency(payRows.filter((r) => r.include).reduce((sum, r) => sum + parseDecimal(r.amount), 0))}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1 justify-center" onClick={() => setPayRows(null)}>Não lançar agora</Button>
+              <Button className="flex-1 justify-center" disabled={savingPay} onClick={handleConfirmPay}>
+                {savingPay ? 'Lançando...' : 'Confirmar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {substituting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setSubstituting(null)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Substituir {substituting.name}</h2>
+            <p className="text-sm text-muted mb-4">Fica registrado quem substituiu e o motivo.</p>
+            <form onSubmit={handleConfirmSubstitute} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Substituto</label>
+                <select required value={subMemberId} onChange={(e) => setSubMemberId(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  <option value="" disabled>Escolha...</option>
+                  {availableMembers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                  <option value="__novo__">+ Pessoa nova (cadastrar)</option>
+                </select>
+              </div>
+              {subMemberId === '__novo__' && (
+                <div>
+                  <label className="block text-xs text-muted mb-1">Nome do substituto</label>
+                  <input required value={subNewName} onChange={(e) => setSubNewName(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs text-muted mb-1">Função</label>
+                <input value={subRole} onChange={(e) => setSubRole(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Motivo</label>
+                <input required value={subReason} onChange={(e) => setSubReason(e.target.value)} placeholder="Ex: ficou doente, imprevisto" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setSubstituting(null)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center">Substituir</Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -55,7 +55,7 @@ export function Schedules() {
     setError(null)
     const { data, error } = await supabase
       .from('reservations')
-      .select('id, event_date, start_time, end_time, event_type, unit_id, client:clients(name), unit:units(name), staff_assignments(staff_name, role)')
+      .select('id, event_date, start_time, end_time, event_type, unit_id, client:clients(name), unit:units(name), staff_assignments(staff_name, role, status)')
       .neq('status', 'cancelada')
       .gte('event_date', from)
       .lte('event_date', to)
@@ -78,7 +78,9 @@ export function Schedules() {
         cliente: r.client?.name ?? '—',
         tipoEvento: r.event_type ?? 'Outro',
         unidadeNome: r.unit?.name ?? '',
-        staff: (r.staff_assignments ?? []).map((s: any) => ({ name: s.staff_name, role: s.role ?? 'Equipe' })),
+        staff: (r.staff_assignments ?? [])
+          .filter((s: any) => s.status !== 'substituido')
+          .map((s: any) => ({ name: s.staff_name, role: s.role ?? 'Equipe' })),
       })),
     )
     setLoading(false)

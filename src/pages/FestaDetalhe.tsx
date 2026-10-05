@@ -167,7 +167,7 @@ function paymentMethodLabel(method: string | null) {
 
 const EVENT_TYPES = ['Aniversário infantil', 'Debutante', 'Casamento', 'Corporativo', 'Outro']
 
-interface CostItem { id: string; description: string; amount: number }
+interface CostItem { id: string; description: string; amount: number; fixed?: boolean }
 interface ConsumptionItem { id: string; item: string; quantity: number; unitPrice: number }
 interface ChecklistItem { id: string; description: string; done: boolean; dueDate: string | null }
 interface StaffRow {
@@ -298,6 +298,9 @@ export function FestaDetalhe() {
   const [selectedAssignments, setSelectedAssignments] = useState<string[]>([])
   const [payRows, setPayRows] = useState<StaffPayRow[] | null>(null)
   const [savingPay, setSavingPay] = useState(false)
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
+  const [editingRoleValue, setEditingRoleValue] = useState('')
+  const [undoAttendance, setUndoAttendance] = useState<StaffRow | null>(null)
   const [substituting, setSubstituting] = useState<StaffRow | null>(null)
   const [subMemberId, setSubMemberId] = useState('')
   const [subNewName, setSubNewName] = useState('')
@@ -949,7 +952,7 @@ export function FestaDetalhe() {
 
   async function loadCosts() {
     const { data } = await supabase.from('reservation_costs').select('*').eq('reservation_id', id)
-    setCosts((data ?? []).map((c) => ({ id: c.id, description: c.description, amount: Number(c.amount) })))
+    setCosts((data ?? []).map((c) => ({ id: c.id, description: c.description, amount: Number(c.amount), fixed: !!c.fixed_cost_id })))
   }
 
   async function loadConsumption() {
@@ -1767,9 +1770,42 @@ export function FestaDetalhe() {
     if (rows.length > 0) setPayRows(rows)
   }
 
-  async function handleUndoAttended(assignmentId: string) {
-    setStaff((prev) => prev.map((s) => (s.id === assignmentId ? { ...s, attended: false } : s)))
-    await supabase.from('staff_assignments').update({ attended: false, attended_at: null }).eq('id', assignmentId)
+  // Desfaz o "Compareceu" (apertou errado). Se o pagamento já tinha sido
+  // lançado, pede confirmação e tira o pagamento dos custos junto.
+  async function handleUndoAttended(row: StaffRow) {
+    if (row.paymentCostId) {
+      setUndoAttendance(row)
+      return
+    }
+    setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, attended: false } : s)))
+    await supabase.from('staff_assignments').update({ attended: false, attended_at: null }).eq('id', row.id)
+  }
+
+  async function handleConfirmUndoAttended() {
+    if (!undoAttendance?.paymentCostId) return
+    const row = undoAttendance
+    const costId = row.paymentCostId!
+    setUndoAttendance(null)
+    const { error } = await supabase.from('reservation_costs').delete().eq('id', costId)
+    if (error) {
+      setError('Não foi possível remover o pagamento lançado.')
+      return
+    }
+    await supabase.from('staff_assignments').update({ attended: false, attended_at: null, payment_cost_id: null }).eq('id', row.id)
+    setCosts((prev) => prev.filter((c) => c.id !== costId))
+    setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, attended: false, paymentCostId: null } : s)))
+  }
+
+  async function handleSaveRole(assignmentId: string) {
+    const role = editingRoleValue.trim() || 'Equipe'
+    const previous = staff
+    setStaff((prev) => prev.map((s) => (s.id === assignmentId ? { ...s, role } : s)))
+    setEditingRoleId(null)
+    const { error } = await supabase.from('staff_assignments').update({ role }).eq('id', assignmentId)
+    if (error) {
+      setStaff(previous)
+      setError('Não foi possível alterar a função.')
+    }
   }
 
   async function handleConfirmPay() {
@@ -2475,7 +2511,14 @@ export function FestaDetalhe() {
               <tbody className="divide-y divide-line">
                 {costs.map((c) => (
                   <tr key={c.id}>
-                    <td className="py-2">{c.description}</td>
+                    <td className="py-2">
+                      {c.description}
+                      {c.fixed && (
+                        <span className="ml-2 text-[10px] font-medium text-purple bg-purple-light rounded-full px-1.5 py-0.5" title="Lançado automaticamente pelos valores de despesa fixa das festas">
+                          fixo
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 text-danger">{currency(c.amount)}</td>
                     <td className="py-2 text-right">
                       <button onClick={() => handleRemoveCusto(c.id)} className="text-muted hover:text-danger">
@@ -2663,28 +2706,69 @@ export function FestaDetalhe() {
                     <input type="checkbox" checked={selectedAssignments.includes(s.id)} onChange={() => toggleAssignmentSelected(s.id)} />
                   </Can>
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{s.name}</p>
-                    <p className="text-xs text-muted">{s.role}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium truncate">{s.name}</p>
+                      {s.attended && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-teal bg-teal-light rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="w-3 h-3" /> Compareceu
+                          {s.paymentCostId && (
+                            <> · {currency(costs.find((c) => c.id === s.paymentCostId)?.amount ?? 0)} lançado</>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {editingRoleId === s.id ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          autoFocus
+                          value={editingRoleValue}
+                          onChange={(e) => setEditingRoleValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveRole(s.id)
+                            if (e.key === 'Escape') setEditingRoleId(null)
+                          }}
+                          className="w-36 border border-line rounded-lg px-2 py-0.5 text-xs"
+                          aria-label="Nova função"
+                        />
+                        <button onClick={() => handleSaveRole(s.id)} className="text-xs text-purple font-medium">Salvar</button>
+                        <button onClick={() => setEditingRoleId(null)} className="text-xs text-muted">Cancelar</button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted flex items-center gap-1">
+                        {s.role}
+                        <Can permission="action:festa.equipe">
+                          <button
+                            onClick={() => {
+                              setEditingRoleId(s.id)
+                              setEditingRoleValue(s.role)
+                            }}
+                            className="text-muted hover:text-purple"
+                            aria-label="Alterar função"
+                            title="Alterar função"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </Can>
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {s.paymentCostId && <Badge tone="teal">Pagamento lançado</Badge>}
                   <Can permission="action:festa.equipe">
                     {s.attended ? (
                       <>
-                        <button
-                          onClick={() => handleUndoAttended(s.id)}
-                          disabled={!!s.paymentCostId}
-                          title={s.paymentCostId ? 'Remova o pagamento nos custos da festa para desfazer' : 'Desfazer presença'}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-teal bg-teal-light rounded-full px-2.5 py-1 disabled:cursor-default"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Compareceu
-                        </button>
                         {!s.paymentCostId && (
                           <button onClick={() => openPayModal([s.id])} className="text-xs text-purple font-medium">
                             Lançar pagamento
                           </button>
                         )}
+                        <button
+                          onClick={() => handleUndoAttended(s)}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-danger border border-line rounded-full px-2.5 py-1"
+                          title="Desfazer presença (marcou errado)"
+                        >
+                          <X className="w-3.5 h-3.5" /> Desfazer presença
+                        </button>
                       </>
                     ) : (
                       <button
@@ -3243,6 +3327,23 @@ export function FestaDetalhe() {
               <Button className="flex-1 justify-center" disabled={savingPay} onClick={handleConfirmPay}>
                 {savingPay ? 'Lançando...' : 'Confirmar'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {undoAttendance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setUndoAttendance(null)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Desfazer presença de {undoAttendance.name}?</h2>
+            <p className="text-sm text-muted mb-4">
+              O pagamento de {currency(costs.find((c) => c.id === undoAttendance.paymentCostId)?.amount ?? 0)} que já foi lançado
+              nos custos desta festa também será removido.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1 justify-center" onClick={() => setUndoAttendance(null)}>Cancelar</Button>
+              <Button className="flex-1 justify-center" onClick={handleConfirmUndoAttended}>Desfazer e remover pagamento</Button>
             </div>
           </div>
         </div>

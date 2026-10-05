@@ -24,6 +24,7 @@ import {
   Cake,
   BellRing,
   UserCog,
+  Repeat,
   ChevronDown,
   LogOut,
   X,
@@ -91,6 +92,7 @@ const groups: Group[] = [
     items: [
       { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/financeiro', label: 'Financeiro', icon: Banknote },
+      { to: '/despesas-fixas-festas', label: 'Despesa fixa das festas', icon: Repeat },
       { to: '/resultado-do-mes', label: 'Resultado do mês', icon: FileSpreadsheet },
       { to: '/lucro-por-festa', label: 'Lucro por festa', icon: PiggyBank },
       { to: '/relatorios', label: 'Relatórios e metas', icon: ClipboardList },

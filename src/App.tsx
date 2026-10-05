@@ -15,6 +15,7 @@ import { Packages } from './pages/Packages'
 import { Contracts } from './pages/Contracts'
 import { Payments } from './pages/Payments'
 import { Finance } from './pages/Finance'
+import { FestaFixedCosts } from './pages/FestaFixedCosts'
 import { MonthlyResult } from './pages/MonthlyResult'
 import { Profitability } from './pages/Profitability'
 import { Inventory } from './pages/Inventory'
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/satisfacao" element={<Feedback />} />
           <Route path="/pagamentos" element={<Payments />} />
           <Route path="/financeiro" element={<Finance />} />
+          <Route path="/despesas-fixas-festas" element={<FestaFixedCosts />} />
           <Route path="/resultado-do-mes" element={<MonthlyResult />} />
           <Route path="/lucro-por-festa" element={<Profitability />} />
           <Route path="/estoque" element={<Inventory />} />

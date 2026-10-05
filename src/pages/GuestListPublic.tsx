@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { PartyPopper, Users, Trash2, CheckCircle2 } from 'lucide-react'
+import { PartyPopper, Users, Trash2, CheckCircle2, Music } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 
 interface GuestPage {
@@ -11,6 +11,12 @@ interface GuestPage {
   theme: string | null
   childName: string | null
   guestLimit: number | null
+  playlistEnabled: boolean
+  playlistUrl: string | null
+}
+
+function isSpotifyUrl(url: string) {
+  return /^https:\/\/(open\.spotify\.com|spotify\.link)\//i.test(url.trim())
 }
 
 interface GuestEntry {
@@ -28,6 +34,9 @@ export function GuestListPublic() {
   const [saving, setSaving] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [playlistInput, setPlaylistInput] = useState('')
+  const [savingPlaylist, setSavingPlaylist] = useState(false)
+  const [playlistMessage, setPlaylistMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     if (token) load()
@@ -49,7 +58,10 @@ export function GuestListPublic() {
       theme: data.theme,
       childName: data.child_name,
       guestLimit: data.guest_limit,
+      playlistEnabled: !!data.playlist_enabled,
+      playlistUrl: data.playlist_url ?? null,
     })
+    setPlaylistInput(data.playlist_url ?? '')
     await loadEntries()
     setLoading(false)
   }
@@ -91,6 +103,25 @@ export function GuestListPublic() {
       setEntries(previous)
       if (!error) setError('Esse nome já foi confirmado pela equipe na festa e não pode mais ser removido por aqui.')
     }
+  }
+
+  async function handleSavePlaylist(e: FormEvent) {
+    e.preventDefault()
+    const url = playlistInput.trim()
+    if (url && !isSpotifyUrl(url)) {
+      setPlaylistMessage({ ok: false, text: 'Cole o link da playlist do Spotify (começa com https://open.spotify.com/).' })
+      return
+    }
+    setSavingPlaylist(true)
+    setPlaylistMessage(null)
+    const { error } = await supabase.rpc('public_set_guest_list_playlist', { p_token: token, p_url: url })
+    setSavingPlaylist(false)
+    if (error) {
+      setPlaylistMessage({ ok: false, text: 'Não foi possível salvar a playlist. Confira o link e tente de novo.' })
+      return
+    }
+    setPage((prev) => (prev ? { ...prev, playlistUrl: url || null } : prev))
+    setPlaylistMessage({ ok: true, text: url ? 'Playlist salva! Vamos tocar na festa.' : 'Playlist removida.' })
   }
 
   if (loading) {
@@ -175,6 +206,40 @@ export function GuestListPublic() {
             {saving ? 'Enviando...' : 'Enviar lista'}
           </button>
         </form>
+
+        {page.playlistEnabled && (
+          <form onSubmit={handleSavePlaylist} className="mt-8 pt-6 border-t border-line space-y-3">
+            <div className="flex items-center gap-2">
+              <Music className="w-5 h-5 text-[#1DB954]" />
+              <h2 className="text-base font-display font-semibold">Playlist da festa (Spotify)</h2>
+            </div>
+            <p className="text-sm text-muted">
+              Tem uma playlist que queira ouvir na festa? Cole o link do Spotify aqui e a gente coloca na hora.
+            </p>
+            <input
+              type="url"
+              inputMode="url"
+              value={playlistInput}
+              onChange={(e) => setPlaylistInput(e.target.value)}
+              placeholder="https://open.spotify.com/playlist/..."
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+              aria-label="Link da playlist do Spotify"
+            />
+            <p className="text-xs text-muted">No Spotify: abra a playlist → toque em ⋯ → Compartilhar → Copiar link.</p>
+            {playlistMessage && (
+              <div className={`text-sm rounded-lg px-4 py-2.5 ${playlistMessage.ok ? 'bg-teal-light text-teal' : 'bg-danger-light text-danger'}`}>
+                {playlistMessage.text}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={savingPlaylist || playlistInput.trim() === (page.playlistUrl ?? '')}
+              className="w-full bg-[#1DB954] text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+            >
+              {savingPlaylist ? 'Salvando...' : page.playlistUrl ? 'Atualizar playlist' : 'Salvar playlist'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )

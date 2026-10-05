@@ -25,6 +25,7 @@ import {
   StickyNote,
   Bell,
   BellOff,
+  Music,
   UserPlus,
   Repeat,
   Flag,
@@ -343,6 +344,7 @@ export function FestaDetalhe() {
   const [novoExtraQtd, setNovoExtraQtd] = useState('1')
 
   const [guestListToken, setGuestListToken] = useState<string | null>(null)
+  const [guestPlaylistUrl, setGuestPlaylistUrl] = useState<string | null>(null)
   const [guestEntries, setGuestEntries] = useState<{ id: string; name: string; arrived: boolean; flagged: boolean }[]>([])
   const [manualGuestName, setManualGuestName] = useState('')
   const [manualGuestFlagged, setManualGuestFlagged] = useState(false)
@@ -719,9 +721,10 @@ export function FestaDetalhe() {
   }
 
   async function loadGuestList() {
-    const { data } = await supabase.from('guest_list_pages').select('token').eq('reservation_id', id).maybeSingle()
+    const { data } = await supabase.from('guest_list_pages').select('token, playlist_url').eq('reservation_id', id).maybeSingle()
     if (data) {
       setGuestListToken(data.token)
+      setGuestPlaylistUrl(data.playlist_url ?? null)
       loadGuestEntries(data.token)
     }
   }
@@ -877,6 +880,24 @@ export function FestaDetalhe() {
             <ArrowDownAZ className="w-3.5 h-3.5" /> Ordem alfabética
           </button>
         </div>
+        {festa?.unidadeNome === 'Vila Operária' && (
+          <div className="flex items-center justify-between gap-2 mb-3 border border-line rounded-lg px-3 py-2 flex-wrap">
+            <p className="text-xs flex items-center gap-1.5">
+              <Music className="w-3.5 h-3.5 text-[#1DB954]" />
+              {guestPlaylistUrl ? 'Playlist do Spotify enviada pelo contratante' : 'O contratante ainda não enviou playlist do Spotify'}
+            </p>
+            {guestPlaylistUrl && (
+              <a
+                href={guestPlaylistUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-white bg-[#1DB954] rounded-full px-3 py-1 hover:brightness-110"
+              >
+                Abrir no Spotify
+              </a>
+            )}
+          </div>
+        )}
         {guestEntries.some((g) => g.flagged) && (
           <div className="flex items-center justify-between gap-2 mb-2 bg-amber-light rounded-lg px-3 py-2 flex-wrap">
             <p className="text-xs text-amber font-medium flex items-center gap-1">

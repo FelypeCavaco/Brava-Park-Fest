@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
@@ -10,35 +10,48 @@ interface FixedCost {
   description: string
   amount: number
   unitId: string | null
+  packageAmounts: Record<string, number>
+}
+
+interface PackageLite {
+  id: string
+  name: string
+  unitId: string | null
 }
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// "1.250,50" → 1250.5 ; "600,00" → 600 ; "600.5" → 600.5
 function parseAmount(raw: string) {
-  // "1.250,50" → 1250.5 ; "600,00" → 600 ; "600.5" → 600.5
   const t = raw.trim()
+  if (t === '') return null
   const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)
   return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+function toInput(v: number) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function FestaFixedCosts() {
   const { unitDbIds } = useUnit()
   const [costs, setCosts] = useState<FixedCost[]>([])
+  const [packages, setPackages] = useState<PackageLite[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
 
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [unitSlug, setUnitSlug] = useState('ambas')
+  // formulário (criar e editar usam o mesmo)
+  const [formOpen, setFormOpen] = useState(false)
+  const [formId, setFormId] = useState<string | null>(null)
+  const [formDescription, setFormDescription] = useState('')
+  const [formAmount, setFormAmount] = useState('')
+  const [formUnitSlug, setFormUnitSlug] = useState('ambas')
+  const [formPackageAmounts, setFormPackageAmounts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-
-  const [editing, setEditing] = useState<FixedCost | null>(null)
-  const [editDescription, setEditDescription] = useState('')
-  const [editAmount, setEditAmount] = useState('')
-  const [editUnitSlug, setEditUnitSlug] = useState('ambas')
   const [deleting, setDeleting] = useState<FixedCost | null>(null)
 
   const slugByDbId = useMemo(() => {
@@ -53,9 +66,27 @@ export function FestaFixedCosts() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase.from('festa_fixed_costs').select('*').order('created_at')
-    if (error) setError('Não foi possível carregar os valores fixos.')
-    setCosts((data ?? []).map((c) => ({ id: c.id, description: c.description, amount: Number(c.amount), unitId: c.unit_id })))
+    const [{ data: fc, error }, { data: overrides }, { data: pkgs }] = await Promise.all([
+      supabase.from('festa_fixed_costs').select('*').order('created_at'),
+      supabase.from('festa_fixed_cost_package_amounts').select('fixed_cost_id, package_id, amount'),
+      supabase.from('packages').select('id, name, unit_id').eq('active', true).order('name'),
+    ])
+    if (error) setError('Não foi possível carregar as despesas fixas.')
+    const byCost: Record<string, Record<string, number>> = {}
+    for (const o of overrides ?? []) {
+      if (!byCost[o.fixed_cost_id]) byCost[o.fixed_cost_id] = {}
+      byCost[o.fixed_cost_id][o.package_id] = Number(o.amount)
+    }
+    setCosts(
+      (fc ?? []).map((c) => ({
+        id: c.id,
+        description: c.description,
+        amount: Number(c.amount),
+        unitId: c.unit_id,
+        packageAmounts: byCost[c.id] ?? {},
+      })),
+    )
+    setPackages((pkgs ?? []).map((p) => ({ id: p.id, name: p.name, unitId: p.unit_id })))
     setLoading(false)
   }
 
@@ -68,59 +99,74 @@ export function FestaFixedCosts() {
     return slug === 'ambas' ? null : unitDbIds[slug]?.unitId ?? null
   }
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
-    const value = parseAmount(amount)
-    if (!description.trim() || value === null) {
-      setError('Preencha o que é e o valor (ex: 600 ou 600,00).')
-      return
-    }
-    setSaving(true)
-    const { data, error } = await supabase
-      .from('festa_fixed_costs')
-      .insert({ description: description.trim(), amount: value, unit_id: dbUnitId(unitSlug) })
-      .select()
-      .single()
-    if (error || !data) {
-      setSaving(false)
-      setError('Não foi possível cadastrar o valor fixo.')
-      return
-    }
-    const { data: applied } = await supabase.rpc('apply_festa_fixed_cost', { p_fixed_cost_id: data.id })
-    setSaving(false)
-    setCosts((prev) => [...prev, { id: data.id, description: data.description, amount: Number(data.amount), unitId: data.unit_id }])
-    setNotice(`"${data.description}" cadastrado e lançado em ${applied ?? 0} festa(s) de hoje em diante.`)
-    setDescription('')
-    setAmount('')
+  // Planos que recebem a despesa, agrupados por unidade.
+  function packagesForUnit(unitId: string | null) {
+    return UNITS.map((u) => {
+      const dbId = unitDbIds[u.id]?.unitId
+      return {
+        unitName: u.name,
+        unitDbId: dbId,
+        packages: packages.filter((p) => (unitId ? p.unitId === unitId : true) && (!p.unitId || p.unitId === dbId)),
+      }
+    }).filter((g) => (unitId ? g.unitDbId === unitId : true) && g.packages.length > 0)
+  }
+
+  function openCreate() {
+    setFormId(null)
+    setFormDescription('')
+    setFormAmount('')
+    setFormUnitSlug('ambas')
+    setFormPackageAmounts({})
+    setFormOpen(true)
   }
 
   function openEdit(cost: FixedCost) {
-    setEditing(cost)
-    setEditDescription(cost.description)
-    setEditAmount(String(cost.amount).replace('.', ','))
-    setEditUnitSlug(cost.unitId ? slugByDbId[cost.unitId] ?? 'ambas' : 'ambas')
+    setFormId(cost.id)
+    setFormDescription(cost.description)
+    setFormAmount(toInput(cost.amount))
+    setFormUnitSlug(cost.unitId ? slugByDbId[cost.unitId] ?? 'ambas' : 'ambas')
+    setFormPackageAmounts(Object.fromEntries(Object.entries(cost.packageAmounts).map(([k, v]) => [k, toInput(v)])))
+    setFormOpen(true)
   }
 
-  async function handleSaveEdit(e: FormEvent) {
+  async function handleSave(e: FormEvent) {
     e.preventDefault()
-    if (!editing) return
-    const value = parseAmount(editAmount)
-    if (!editDescription.trim() || value === null) return
-    const unitId = dbUnitId(editUnitSlug)
-    const { error } = await supabase.rpc('update_festa_fixed_cost', {
-      p_id: editing.id,
-      p_description: editDescription.trim(),
-      p_amount: value,
-      p_unit_id: unitId,
-    })
-    if (error) {
-      setError('Não foi possível salvar a alteração.')
+    setError(null)
+    const value = parseAmount(formAmount)
+    if (!formDescription.trim() || value === null) {
+      setError('Preencha o que é e o valor padrão (ex: 600 ou 600,00).')
       return
     }
-    setCosts((prev) => prev.map((c) => (c.id === editing.id ? { ...c, description: editDescription.trim(), amount: value, unitId } : c)))
-    setNotice(`"${editDescription.trim()}" atualizado nas festas de hoje em diante.`)
-    setEditing(null)
+    const unitId = dbUnitId(formUnitSlug)
+    const allowedPackages = new Set(packagesForUnit(unitId).flatMap((g) => g.packages.map((p) => p.id)))
+    const packageAmounts: Record<string, number> = {}
+    for (const [pkgId, raw] of Object.entries(formPackageAmounts)) {
+      if (!allowedPackages.has(pkgId)) continue
+      const v = parseAmount(raw)
+      if (v !== null) packageAmounts[pkgId] = v
+    }
+
+    setSaving(true)
+    const { data: savedId, error } = await supabase.rpc('save_festa_fixed_cost', {
+      p_id: formId,
+      p_description: formDescription.trim(),
+      p_amount: value,
+      p_unit_id: unitId,
+      p_package_amounts: packageAmounts,
+    })
+    setSaving(false)
+    if (error || !savedId) {
+      setError('Não foi possível salvar a despesa fixa.')
+      return
+    }
+    const saved: FixedCost = { id: savedId as string, description: formDescription.trim(), amount: value, unitId, packageAmounts }
+    setCosts((prev) => (formId ? prev.map((c) => (c.id === formId ? saved : c)) : [...prev, saved]))
+    setNotice(
+      formId
+        ? `"${saved.description}" atualizado nas festas de hoje em diante.`
+        : `"${saved.description}" cadastrado e lançado nas festas de hoje em diante.`,
+    )
+    setFormOpen(false)
   }
 
   async function handleConfirmDelete() {
@@ -129,27 +175,44 @@ export function FestaFixedCosts() {
     setDeleting(null)
     const { error } = await supabase.rpc('delete_festa_fixed_cost', { p_id: target.id })
     if (error) {
-      setError('Não foi possível excluir o valor fixo.')
+      setError('Não foi possível excluir a despesa fixa.')
       return
     }
     setCosts((prev) => prev.filter((c) => c.id !== target.id))
     setNotice(`"${target.description}" excluído e retirado das festas de hoje em diante.`)
   }
 
+  // Total de despesas fixas que cada plano recebe, por unidade.
   const totalsByUnit = UNITS.map((u) => {
     const dbId = unitDbIds[u.id]?.unitId
-    const total = costs.filter((c) => !c.unitId || c.unitId === dbId).reduce((s, c) => s + c.amount, 0)
-    return { name: u.name, total }
+    const unitCosts = costs.filter((c) => !c.unitId || c.unitId === dbId)
+    const unitPackages = packages.filter((p) => p.unitId === dbId)
+    const perPackage = unitPackages.map((p) => ({
+      name: p.name,
+      total: unitCosts.reduce((s, c) => s + (c.packageAmounts[p.id] ?? c.amount), 0),
+    }))
+    const base = unitCosts.reduce((s, c) => s + c.amount, 0)
+    const values = perPackage.length ? perPackage.map((p) => p.total) : [base]
+    return { name: u.name, min: Math.min(...values), max: Math.max(...values), perPackage }
   })
+
+  const formUnitId = dbUnitId(formUnitSlug)
+  const formDefault = parseAmount(formAmount)
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Valores de despesa fixa das festas</h1>
-        <p className="text-sm text-muted mt-1">
-          Custos que toda festa tem. O que você cadastrar aqui entra sozinho nos custos de cada festa (aba Financeiro da
-          Central da festa).
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold">Valores de despesa fixa das festas</h1>
+          <p className="text-sm text-muted mt-1 max-w-2xl">
+            Custos que toda festa tem. O que você cadastrar aqui entra sozinho nos custos de cada festa (aba Financeiro da
+            Central da festa). Dá pra ter um valor diferente por plano — por exemplo docinhos, salgados e bolo, que
+            aumentam com o número de convidados.
+          </p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus className="w-4 h-4" /> Nova despesa fixa
+        </Button>
       </div>
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
@@ -164,64 +227,53 @@ export function FestaFixedCosts() {
         {totalsByUnit.map((t) => (
           <Card key={t.name}>
             <p className="text-xs text-muted">Cada festa em {t.name} recebe</p>
-            <p className="text-2xl font-display font-semibold mt-1">{currency(t.total)}</p>
-            <p className="text-xs text-muted mt-1">em custos fixos automáticos</p>
+            <p className="text-2xl font-display font-semibold mt-1 tabular-nums">
+              {t.min === t.max ? currency(t.min) : `${currency(t.min)} a ${currency(t.max)}`}
+            </p>
+            <p className="text-xs text-muted mt-1">em despesas fixas, conforme o plano</p>
+            {t.perPackage.length > 0 && costs.length > 0 && (
+              <details className="mt-3">
+                <summary className="text-xs text-purple font-medium cursor-pointer">Ver por plano</summary>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {t.perPackage.map((p) => (
+                    <li key={p.name} className="flex justify-between gap-3">
+                      <span className="text-muted">{p.name}</span>
+                      <span className="tabular-nums font-medium">{currency(p.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </Card>
         ))}
       </div>
 
-      <Card title="Cadastrar valor fixo">
-        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_200px_auto] gap-3 items-end">
-          <div>
-            <label className="block text-xs text-muted mb-1" htmlFor="ffc-desc">O que é</label>
-            <input id="ffc-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex: Decoração" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1" htmlFor="ffc-amount">Valor (R$)</label>
-            <input id="ffc-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="600,00" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1" htmlFor="ffc-unit">Vale para</label>
-            <select id="ffc-unit" value={unitSlug} onChange={(e) => setUnitSlug(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
-              <option value="ambas">Todas as unidades</option>
-              {UNITS.map((u) => (
-                <option key={u.id} value={u.id}>Só {u.name}</option>
-              ))}
-            </select>
-          </div>
-          <Button type="submit" disabled={saving}>
-            <Plus className="w-4 h-4" /> {saving ? 'Lançando...' : 'Cadastrar'}
-          </Button>
-        </form>
-        <p className="text-xs text-muted mt-3">
-          Ao cadastrar, o valor já entra em todas as festas de hoje em diante (as que já passaram não mudam) e em toda
-          festa nova. Na festa ele vira um custo normal: dá pra apagar ou ajustar só naquela festa.
-        </p>
-      </Card>
-
-      <Card title="Valores cadastrados">
+      <Card title="Despesas cadastradas">
         {loading ? (
           <p className="text-sm text-muted py-4 text-center">Carregando...</p>
         ) : costs.length === 0 ? (
-          <p className="text-sm text-muted">Nenhum valor fixo cadastrado ainda.</p>
+          <p className="text-sm text-muted">Nenhuma despesa fixa cadastrada ainda. Clique em "Nova despesa fixa".</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                <th className="pb-3 font-medium">O que é</th>
-                <th className="pb-3 font-medium">Valor por festa</th>
-                <th className="pb-3 font-medium">Vale para</th>
-                <th className="pb-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {costs.map((c) => (
-                <tr key={c.id}>
-                  <td className="py-3 font-medium">{c.description}</td>
-                  <td className="py-3 tabular-nums">{currency(c.amount)}</td>
-                  <td className="py-3 text-muted">{unitLabel(c.unitId)}</td>
-                  <td className="py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
+          <ul className="divide-y divide-line">
+            {costs.map((c) => {
+              const overrideCount = Object.keys(c.packageAmounts).length
+              const isOpen = expanded === c.id
+              return (
+                <li key={c.id} className="py-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{c.description}</p>
+                      <p className="text-xs text-muted">
+                        {unitLabel(c.unitId)} · padrão {currency(c.amount)}
+                        {overrideCount > 0 && ` · valor próprio em ${overrideCount} plano(s)`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {overrideCount > 0 && (
+                        <button onClick={() => setExpanded(isOpen ? null : c.id)} className="text-xs text-purple font-medium flex items-center gap-1">
+                          Valores por plano <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                      )}
                       <button onClick={() => openEdit(c)} className="text-muted hover:text-purple" aria-label="Editar">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -229,41 +281,92 @@ export function FestaFixedCosts() {
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  {isOpen && (
+                    <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs bg-paper rounded-lg p-3">
+                      {packagesForUnit(c.unitId).flatMap((g) =>
+                        g.packages.map((p) => (
+                          <li key={p.id} className="flex justify-between gap-3">
+                            <span className="text-muted">{p.name}{!c.unitId ? ` (${g.unitName})` : ''}</span>
+                            <span className={`tabular-nums ${p.id in c.packageAmounts ? 'font-semibold' : 'text-muted'}`}>
+                              {currency(c.packageAmounts[p.id] ?? c.amount)}
+                            </span>
+                          </li>
+                        )),
+                      )}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
         )}
       </Card>
 
-      {editing && (
+      {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-ink/40" onClick={() => setEditing(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
-            <h2 className="text-lg font-display font-semibold mb-1">Editar valor fixo</h2>
-            <p className="text-sm text-muted mb-4">A mudança vale para as festas de hoje em diante. As que já passaram não mudam.</p>
-            <form onSubmit={handleSaveEdit} className="space-y-3">
-              <div>
-                <label className="block text-xs text-muted mb-1" htmlFor="ffc-edit-desc">O que é</label>
-                <input id="ffc-edit-desc" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setFormOpen(false)} />
+          <div className="relative w-full max-w-xl bg-surface rounded-card p-6 shadow-xl max-h-[92vh] overflow-y-auto">
+            <h2 className="text-lg font-display font-semibold mb-1">{formId ? 'Editar despesa fixa' : 'Nova despesa fixa'}</h2>
+            <p className="text-sm text-muted mb-4">
+              {formId
+                ? 'A mudança vale para as festas de hoje em diante. As que já passaram não mudam.'
+                : 'Entra em todas as festas de hoje em diante e em toda festa nova.'}
+            </p>
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1" htmlFor="ffc-desc">O que é</label>
+                  <input id="ffc-desc" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Ex: Docinhos" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1" htmlFor="ffc-amount">Valor padrão (R$)</label>
+                  <input id="ffc-amount" inputMode="decimal" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} placeholder="600,00" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
               </div>
               <div>
-                <label className="block text-xs text-muted mb-1" htmlFor="ffc-edit-amount">Valor (R$)</label>
-                <input id="ffc-edit-amount" inputMode="decimal" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs text-muted mb-1" htmlFor="ffc-edit-unit">Vale para</label>
-                <select id="ffc-edit-unit" value={editUnitSlug} onChange={(e) => setEditUnitSlug(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                <label className="block text-xs text-muted mb-1" htmlFor="ffc-unit">Vale para</label>
+                <select id="ffc-unit" value={formUnitSlug} onChange={(e) => setFormUnitSlug(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
                   <option value="ambas">Todas as unidades</option>
                   {UNITS.map((u) => (
                     <option key={u.id} value={u.id}>Só {u.name}</option>
                   ))}
                 </select>
               </div>
+
+              <div className="border-t border-line pt-4">
+                <p className="text-sm font-semibold">Valor por plano (opcional)</p>
+                <p className="text-xs text-muted mb-3">
+                  Preencha só os planos que têm valor diferente. Plano em branco usa o valor padrão
+                  {formDefault !== null ? ` (${currency(formDefault)})` : ''}.
+                </p>
+                <div className="space-y-4">
+                  {packagesForUnit(formUnitId).map((g) => (
+                    <div key={g.unitName}>
+                      <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mb-1.5">{g.unitName}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                        {g.packages.map((p) => (
+                          <label key={p.id} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="truncate">{p.name}</span>
+                            <input
+                              inputMode="decimal"
+                              value={formPackageAmounts[p.id] ?? ''}
+                              onChange={(e) => setFormPackageAmounts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                              placeholder={formDefault !== null ? toInput(formDefault) : 'padrão'}
+                              className="w-24 border border-line rounded-lg px-2 py-1 text-sm text-right tabular-nums"
+                              aria-label={`Valor para ${p.name}`}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex gap-2 pt-1">
-                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditing(null)}>Cancelar</Button>
-                <Button type="submit" className="flex-1 justify-center">Salvar</Button>
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setFormOpen(false)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
               </div>
             </form>
           </div>
@@ -276,7 +379,7 @@ export function FestaFixedCosts() {
           <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
             <h2 className="text-lg font-display font-semibold mb-1">Excluir "{deleting.description}"?</h2>
             <p className="text-sm text-muted mb-4">
-              Ele sai das festas de hoje em diante e para de entrar nas festas novas. As festas que já passaram continuam
+              Ela sai das festas de hoje em diante e para de entrar nas festas novas. As festas que já passaram continuam
               com esse custo.
             </p>
             <div className="flex gap-2">

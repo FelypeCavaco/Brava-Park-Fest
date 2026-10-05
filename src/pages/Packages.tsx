@@ -8,7 +8,7 @@ import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
-import { PACKAGE_COST_CATEGORIES, type PackageCostCategory } from '../types'
+import { PACKAGE_COST_CATEGORIES, packageValidityLabel, type PackageCostCategory } from '../types'
 
 interface PackageRow {
   id: string
@@ -21,6 +21,8 @@ interface PackageRow {
   guest_limit: number | null
   duration_hours: number | null
   included_items: string | null
+  valid_from: string | null
+  valid_until: string | null
 }
 
 interface ExtraRow {
@@ -62,6 +64,8 @@ export function Packages() {
   const [pkgLimite, setPkgLimite] = useState('')
   const [pkgDuracao, setPkgDuracao] = useState('')
   const [pkgItens, setPkgItens] = useState('')
+  const [pkgValidFrom, setPkgValidFrom] = useState('')
+  const [pkgValidUntil, setPkgValidUntil] = useState('')
 
   const [showExtraForm, setShowExtraForm] = useState(false)
   const [extraName, setExtraName] = useState('')
@@ -79,7 +83,7 @@ export function Packages() {
   async function loadAll() {
     setLoading(true)
     const [{ data: pkgs, error: pkgErr }, { data: extraData, error: extraErr }, { data: costData }] = await Promise.all([
-      supabase.from('packages').select('id, name, description, base_price, weekday_price, weekend_price, unit_id, guest_limit, duration_hours, included_items').eq('active', true).order('name'),
+      supabase.from('packages').select('id, name, description, base_price, weekday_price, weekend_price, unit_id, guest_limit, duration_hours, included_items, valid_from, valid_until').eq('active', true).order('name'),
       supabase.from('extra_items').select('id, name, price').order('name'),
       supabase.from('package_costs').select('*'),
     ])
@@ -100,6 +104,8 @@ export function Packages() {
         guest_limit: p.guest_limit,
         duration_hours: p.duration_hours != null ? Number(p.duration_hours) : null,
         included_items: p.included_items,
+        valid_from: p.valid_from ?? null,
+        valid_until: p.valid_until ?? null,
       })),
     )
     setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price) })))
@@ -125,6 +131,8 @@ export function Packages() {
     setPkgLimite('')
     setPkgDuracao('')
     setPkgItens('')
+    setPkgValidFrom('')
+    setPkgValidUntil('')
     setShowPackageForm(true)
   }
 
@@ -139,6 +147,8 @@ export function Packages() {
     setPkgLimite(p.guest_limit != null ? String(p.guest_limit) : '')
     setPkgDuracao(p.duration_hours != null ? String(p.duration_hours) : '')
     setPkgItens(p.included_items ?? '')
+    setPkgValidFrom(p.valid_from ?? '')
+    setPkgValidUntil(p.valid_until ?? '')
     setShowPackageForm(true)
   }
 
@@ -158,6 +168,8 @@ export function Packages() {
       guest_limit: pkgLimite ? Number(pkgLimite) : null,
       duration_hours: pkgDuracao ? Number(pkgDuracao) : null,
       included_items: pkgItens.trim() || null,
+      valid_from: pkgValidFrom || null,
+      valid_until: pkgValidUntil || null,
     }
 
     const query = editingPackageId
@@ -181,6 +193,8 @@ export function Packages() {
       guest_limit: data.guest_limit,
       duration_hours: data.duration_hours != null ? Number(data.duration_hours) : null,
       included_items: data.included_items,
+      valid_from: data.valid_from ?? null,
+      valid_until: data.valid_until ?? null,
     }
     setPackages((prev) => (editingPackageId ? prev.map((p) => (p.id === editingPackageId ? saved : p)) : [...prev, saved]))
     setShowPackageForm(false)
@@ -345,6 +359,11 @@ export function Packages() {
                   </div>
                   <p className="font-display font-semibold">{p.name}</p>
                   {unidadeNome && <p className="text-xs text-purple font-medium mt-0.5">{unidadeNome}</p>}
+                  {packageValidityLabel(p) && (
+                    <p className="inline-block text-[11px] font-medium text-amber bg-amber-light rounded-full px-2 py-0.5 mt-1">
+                      Vale para {packageValidityLabel(p)}
+                    </p>
+                  )}
                   <p className="text-xs text-muted mt-1">{p.description}</p>
                   {(p.guest_limit || p.duration_hours) && (
                     <p className="text-xs text-muted mt-1">
@@ -524,6 +543,20 @@ export function Packages() {
                   placeholder="Ex: Docinhos, salgados, refrigerante, bolo..."
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1" htmlFor="pkg-valid-from">Vale para festas a partir de</label>
+                  <input id="pkg-valid-from" type="date" value={pkgValidFrom} onChange={(e) => setPkgValidFrom(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1" htmlFor="pkg-valid-until">Vale para festas até</label>
+                  <input id="pkg-valid-until" type="date" value={pkgValidUntil} onChange={(e) => setPkgValidUntil(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <p className="text-xs text-muted -mt-1">
+                Opcional. Em branco, o plano vale pra qualquer data. Ao cadastrar uma festa, só aparecem os planos que valem
+                na data dela.
+              </p>
               <Button type="submit" className="w-full justify-center mt-2">
                 {editingPackageId ? 'Salvar alterações' : 'Salvar pacote'}
               </Button>

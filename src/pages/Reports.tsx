@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Download, Target } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -26,6 +27,7 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 }
 
 export function Reports() {
+  const currentUserName = useCurrentUserName()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const [loading, setLoading] = useState(true)
   const [goals, setGoals] = useState<Record<string, number>>({})
@@ -130,7 +132,7 @@ export function Reports() {
       ...comparativo.map((c) => [c.name, c.faturamento, c.despesas, c.lucro, c.festas, Math.round(c.ticketMedio)]),
     ]
     downloadCsv('relatorio-brava-park-fest.csv', rows)
-    setExportLog((prev) => [{ id: crypto.randomUUID(), quando: new Date().toLocaleString('pt-BR'), usuario: 'Você' }, ...prev])
+    setExportLog((prev) => [{ id: crypto.randomUUID(), quando: new Date().toLocaleString('pt-BR'), usuario: currentUserName }, ...prev])
   }
 
   return (

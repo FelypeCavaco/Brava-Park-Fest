@@ -328,7 +328,7 @@ export function Dashboard() {
     setAtividade(
       (auditData ?? []).map((a) => ({
         id: a.id,
-        usuario: 'Alguém da equipe',
+        usuario: a.user_name || 'Alguém da equipe',
         acao: `${a.action} ${a.entity}`,
         quando: new Date(a.created_at).toLocaleString('pt-BR'),
       })),

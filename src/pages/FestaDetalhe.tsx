@@ -44,6 +44,7 @@ import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
   packagePriceForDate,
+  packageValidOn,
   type ReservationStatus,
   type PaymentMethod,
   type InvoiceStatus,
@@ -201,7 +202,7 @@ function mapStaffRow(s: any): StaffRow {
     substitutionReason: s.substitution_reason ?? null,
   }
 }
-interface ContactEntry { id: string; type: string; created_at: string }
+interface ContactEntry { id: string; type: string; created_at: string; user_name: string | null }
 
 const CHECKLIST_TEMPLATE = [
   'Confirmar a lista de convidados',
@@ -259,6 +260,7 @@ export function FestaDetalhe() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { session, can, profile } = useAuth()
+  const currentUserName = profile?.name ?? session?.user?.email ?? 'Equipe'
   const { scheduleDelete } = useUndo()
 
   const [festa, setFesta] = useState<FestaDetalhada | null>(null)
@@ -610,12 +612,14 @@ export function FestaDetalhe() {
     if (data.unit_id) {
       const { data: pkgs } = await supabase
         .from('packages')
-        .select('id, name, base_price, weekday_price, weekend_price, guest_limit')
+        .select('id, name, base_price, weekday_price, weekend_price, guest_limit, valid_from, valid_until')
         .eq('active', true)
         .or(`unit_id.is.null,unit_id.eq.${data.unit_id}`)
         .order('name')
+      // Só os planos que valem na data desta festa (o plano atual dela
+      // continua aparecendo mesmo que esteja fora do período).
       setUnitPackages(
-        (pkgs ?? []).map((p) => ({
+        (pkgs ?? []).filter((p) => p.id === data.package_id || packageValidOn(p, data.event_date)).map((p) => ({
           id: p.id,
           name: p.name,
           base_price: Number(p.base_price),
@@ -697,7 +701,7 @@ export function FestaDetalhe() {
   async function loadPackageHistory() {
     const { data } = await supabase
       .from('audit_log')
-      .select('id, created_at, details, user:user_profiles(name)')
+      .select('id, created_at, details, user_name')
       .eq('entity', 'reservation')
       .eq('entity_id', id)
       .eq('action', 'alterou_pacote')
@@ -706,7 +710,7 @@ export function FestaDetalhe() {
       (data ?? []).map((a: any) => ({
         id: a.id,
         createdAt: new Date(a.created_at).toLocaleString('pt-BR'),
-        userName: a.user?.name ?? 'Alguém da equipe',
+        userName: a.user_name ?? 'Alguém da equipe',
         oldPackageName: a.details?.old_package_name ?? '—',
         newPackageName: a.details?.new_package_name ?? '—',
         diff: Number(a.details?.diff ?? 0),
@@ -1007,7 +1011,7 @@ export function FestaDetalhe() {
   async function loadContactHistory(clientName: string) {
     const { data } = await supabase
       .from('contact_history')
-      .select('id, type, created_at')
+      .select('id, type, created_at, user_name')
       .eq('client_name', clientName)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -1073,7 +1077,7 @@ export function FestaDetalhe() {
       aniversariante: festa.childName || 'aniversariante(a)',
     })
     openWhatsApp(festa.clientPhone, message)
-    await supabase.from('contact_history').insert({ client_name: festa.cliente, type: MESSAGE_TEMPLATE_LABEL[templateKey], channel: 'whatsapp', user_name: 'Você' })
+    await supabase.from('contact_history').insert({ client_name: festa.cliente, type: MESSAGE_TEMPLATE_LABEL[templateKey], channel: 'whatsapp', user_name: currentUserName })
     loadContactHistory(festa.cliente)
   }
 
@@ -1107,7 +1111,7 @@ export function FestaDetalhe() {
     setFornecedoresMessage(null)
     setFornecedoresCopiado(false)
     setObservacaoFornecedores('')
-    await supabase.from('contact_history').insert({ client_name: festa.cliente, type: 'Confirmação com fornecedores', channel: 'whatsapp', user_name: 'Você' })
+    await supabase.from('contact_history').insert({ client_name: festa.cliente, type: 'Confirmação com fornecedores', channel: 'whatsapp', user_name: currentUserName })
     loadContactHistory(festa.cliente)
   }
 
@@ -1373,6 +1377,7 @@ export function FestaDetalhe() {
       .from('audit_log')
       .insert({
         user_id: session?.user?.id ?? null,
+        user_name: currentUserName,
         action: 'alterou_pacote',
         entity: 'reservation',
         entity_id: id,
@@ -1390,7 +1395,7 @@ export function FestaDetalhe() {
         {
           id: logEntry.id,
           createdAt: new Date(logEntry.created_at).toLocaleString('pt-BR'),
-          userName: session?.user?.email ?? 'Você',
+          userName: currentUserName,
           oldPackageName: oldPackage?.name ?? 'Sem pacote definido',
           newPackageName: newPackage.name,
           diff: Math.round(diff * 100) / 100,
@@ -2310,7 +2315,7 @@ export function FestaDetalhe() {
             {contactHistory.length > 0 && (
               <ul className="text-xs text-muted space-y-1">
                 {contactHistory.map((h) => (
-                  <li key={h.id}>{new Date(h.created_at).toLocaleString('pt-BR')} — {h.type} — Você</li>
+                  <li key={h.id}>{new Date(h.created_at).toLocaleString('pt-BR')} — {h.type} — {h.user_name || 'Equipe'}</li>
                 ))}
               </ul>
             )}

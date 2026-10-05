@@ -186,6 +186,27 @@ export interface Package {
   included_items: string | null
   weekday_price: number | null // preço segunda a quinta, quando diferente do base_price
   weekend_price: number | null // preço sexta a domingo, quando diferente do base_price
+  valid_from: string | null // primeira data de festa em que o plano vale (null = sem limite)
+  valid_until: string | null // última data de festa em que o plano vale (null = sem limite)
+}
+
+// O plano só aparece pra festas dentro do período de validade dele (ex: a
+// tabela de 2027 só vale pra festas de 2027 em diante). Sem data da festa
+// ainda, mostra todos.
+export function packageValidOn(pkg: { valid_from?: string | null; valid_until?: string | null }, isoDate: string | null | undefined) {
+  if (!isoDate) return true
+  if (pkg.valid_from && isoDate < pkg.valid_from) return false
+  if (pkg.valid_until && isoDate > pkg.valid_until) return false
+  return true
+}
+
+// Texto curto do período, pra mostrar ao lado do nome do plano.
+export function packageValidityLabel(pkg: { valid_from?: string | null; valid_until?: string | null }) {
+  const fmt = (d: string) => d.split('-').reverse().join('/')
+  if (pkg.valid_from && pkg.valid_until) return `festas de ${fmt(pkg.valid_from)} a ${fmt(pkg.valid_until)}`
+  if (pkg.valid_from) return `festas a partir de ${fmt(pkg.valid_from)}`
+  if (pkg.valid_until) return `festas até ${fmt(pkg.valid_until)}`
+  return null
 }
 
 // Segunda a quinta (1-4) vs sexta a domingo (5,6,0) — usa weekday/weekend_price

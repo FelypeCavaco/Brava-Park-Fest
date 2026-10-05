@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, CalendarClock, X } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -30,6 +31,7 @@ function toLocalInputValue(iso: string) {
 }
 
 export function Visits() {
+  const currentUserName = useCurrentUserName()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
   const [visits, setVisits] = useState<VisitRow[]>([])
@@ -97,7 +99,7 @@ export function Visits() {
         unit_id: dbIds.unitId,
         space_name: SPACES_BY_UNIT[unitSlug]?.[0] ?? '',
         scheduled_at: new Date(dataHora).toISOString(),
-        responsible: responsavel.trim() || 'Você',
+        responsible: responsavel.trim() || currentUserName,
       })
       .select()
       .single()

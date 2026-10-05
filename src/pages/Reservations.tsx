@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, X, LayoutGrid, ChevronLeft, ChevronRight, MessageCircle, Trash2 } from 'lucide-react'
@@ -25,7 +26,7 @@ import { supabase } from '../lib/supabaseClient'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES } from '../lib/whatsapp'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
-import { packagePriceForDate, type ReservationStatus, type DiscountType } from '../types'
+import { packagePriceForDate, packageValidOn, type ReservationStatus, type DiscountType } from '../types'
 
 const statusTone: Record<ReservationStatus, 'purple' | 'orange' | 'teal' | 'amber' | 'danger'> = {
   orcamento: 'orange',
@@ -86,6 +87,7 @@ function formatHour(t: string) {
 }
 
 export function Reservations() {
+  const currentUserName = useCurrentUserName()
   const navigate = useNavigate()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
@@ -94,7 +96,7 @@ export function Reservations() {
   const [error, setError] = useState<string | null>(null)
   const [clients, setClients] = useState<{ id: string; name: string; child_name: string | null; child_birthday: string | null }[]>([])
   const [packages, setPackages] = useState<
-    { id: string; name: string; base_price: number; weekday_price: number | null; weekend_price: number | null; guest_limit: number | null; unit_id: string | null }[]
+    { id: string; name: string; base_price: number; weekday_price: number | null; weekend_price: number | null; guest_limit: number | null; unit_id: string | null; valid_from: string | null; valid_until: string | null }[]
   >([])
   const [view, setView] = useState<'calendario' | 'lista' | 'hoje'>('calendario')
   const [selected, setSelected] = useState<Reservation | null>(null)
@@ -143,7 +145,7 @@ export function Reservations() {
   async function loadPackages() {
     const { data, error } = await supabase
       .from('packages')
-      .select('id, name, base_price, weekday_price, weekend_price, guest_limit, unit_id')
+      .select('id, name, base_price, weekday_price, weekend_price, guest_limit, unit_id, valid_from, valid_until')
       .eq('active', true)
       .order('name')
     if (error) {
@@ -159,6 +161,8 @@ export function Reservations() {
         weekend_price: p.weekend_price != null ? Number(p.weekend_price) : null,
         guest_limit: p.guest_limit,
         unit_id: p.unit_id,
+        valid_from: p.valid_from ?? null,
+        valid_until: p.valid_until ?? null,
       })),
     )
   }
@@ -279,7 +283,7 @@ export function Reservations() {
     const unidadeNome = UNITS.find((u) => u.id === w.unidade)?.name ?? ''
     const message = buildMessage(MESSAGE_TEMPLATES.vaga_disponivel, { cliente: w.cliente, data: w.dataDesejada, unidade: unidadeNome })
     openWhatsApp(w.phone, message)
-    await supabase.from('contact_history').insert({ client_name: w.cliente, type: 'Aviso de vaga (lista de espera)', channel: 'whatsapp', user_name: 'Você' })
+    await supabase.from('contact_history').insert({ client_name: w.cliente, type: 'Aviso de vaga (lista de espera)', channel: 'whatsapp', user_name: currentUserName })
   }
 
   async function loadReservations() {
@@ -336,8 +340,14 @@ export function Reservations() {
 
   const pacotesDaUnidade = useMemo(() => {
     const dbIds = unitDbIds[formUnidade]
-    return packages.filter((p) => !p.unit_id || p.unit_id === dbIds?.unitId)
-  }, [packages, unitDbIds, formUnidade])
+    return packages.filter((p) => (!p.unit_id || p.unit_id === dbIds?.unitId) && packageValidOn(p, formData))
+  }, [packages, unitDbIds, formUnidade, formData])
+
+  // Trocou a data e o plano escolhido não vale mais nela (ex: tabela 2026 numa
+  // festa de 2027): limpa pra pessoa escolher o plano certo.
+  useEffect(() => {
+    if (formPacoteId && !pacotesDaUnidade.some((p) => p.id === formPacoteId)) setFormPacoteId('')
+  }, [pacotesDaUnidade, formPacoteId])
 
   function handlePacoteChange(pacoteId: string) {
     setFormPacoteId(pacoteId)

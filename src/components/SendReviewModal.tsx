@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './ui/Button'
@@ -19,6 +20,7 @@ interface SendReviewModalProps {
 // fornecedores: clipboard automático falha silenciosamente em alguns
 // navegadores — aqui a pessoa vê a mensagem final e escolhe copiar/abrir.
 export function SendReviewModal({ reservationId, clienteNome, phone, unitName, googleReviewLink, onClose, onSent }: SendReviewModalProps) {
+  const currentUserName = useCurrentUserName()
   const [includeLink, setIncludeLink] = useState(true)
   const [includeForm, setIncludeForm] = useState(true)
   const [formUrl, setFormUrl] = useState<string | null>(null)
@@ -65,7 +67,7 @@ export function SendReviewModal({ reservationId, clienteNome, phone, unitName, g
       ? `https://wa.me/${withCountry}?text=${encodeURIComponent(message)}`
       : `https://wa.me/?text=${encodeURIComponent(message)}`
     window.open(url, '_blank')
-    supabase.from('contact_history').insert({ client_name: clienteNome, type: 'Pedido de avaliação', channel: 'whatsapp', user_name: 'Você' })
+    supabase.from('contact_history').insert({ client_name: clienteNome, type: 'Pedido de avaliação', channel: 'whatsapp', user_name: currentUserName })
     onSent()
   }
 

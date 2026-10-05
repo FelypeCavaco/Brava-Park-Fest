@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarMonths, differenceInCalendarDays, parseISO, format } from 'date-fns'
 import { MessageCircle, Sparkles } from 'lucide-react'
@@ -34,6 +35,7 @@ function nextOccurrence(birthdayIso: string, today: Date) {
 }
 
 export function Reactivation() {
+  const currentUserName = useCurrentUserName()
   const [clients, setClients] = useState<Client[]>([])
   const [reservationYearsByClient, setReservationYearsByClient] = useState<Record<string, Set<number>>>({})
   const [loading, setLoading] = useState(true)
@@ -98,7 +100,7 @@ export function Reactivation() {
 
     await Promise.all([
       supabase.from('clients').update({ last_commercial_contact: contactDate, reactivation_status: newStatus }).eq('id', client.id),
-      supabase.from('contact_history').insert({ client_name: client.name, type: 'Contato de reativação', channel: 'whatsapp', user_name: 'Você' }),
+      supabase.from('contact_history').insert({ client_name: client.name, type: 'Contato de reativação', channel: 'whatsapp', user_name: currentUserName }),
     ])
   }
 

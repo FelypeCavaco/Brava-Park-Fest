@@ -121,3 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   return useContext(AuthContext)
 }
+
+// Nome de quem está logado, pra gravar como autor nos históricos (antes
+// vários lugares gravavam o texto fixo "Você", que aparecia igual pra todo
+// mundo).
+export function useCurrentUserName() {
+  const { profile, session } = useContext(AuthContext)
+  return profile?.name ?? session?.user?.email ?? 'Equipe'
+}

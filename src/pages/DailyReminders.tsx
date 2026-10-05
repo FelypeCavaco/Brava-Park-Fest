@@ -1,3 +1,4 @@
+import { useCurrentUserName } from '../lib/AuthContext'
 import { useEffect, useMemo, useState } from 'react'
 import { addDays, subDays, format, parseISO, startOfDay } from 'date-fns'
 import { MessageCircle, Wallet, CalendarClock, Star, BellRing } from 'lucide-react'
@@ -53,6 +54,7 @@ interface ReviewReminder {
 const REVIEW_REQUEST_TYPE = 'Pedido de avaliação'
 
 export function DailyReminders() {
+  const currentUserName = useCurrentUserName()
   const { selectedUnit, unitDbIds } = useUnit()
   const [paymentReminders, setPaymentReminders] = useState<PaymentReminder[]>([])
   const [tomorrowReminders, setTomorrowReminders] = useState<TomorrowReminder[]>([])
@@ -162,7 +164,7 @@ export function DailyReminders() {
     const message = buildMessage(MESSAGE_TEMPLATES.lembrete_pagamento, { cliente: r.cliente, valor: currency(r.saldo), data: r.data })
     openWhatsApp(r.phone, message)
     setSentTodayTypes((prev) => new Set(prev).add(type))
-    await supabase.from('contact_history').insert({ client_name: r.cliente, type, channel: 'whatsapp', user_name: 'Você' })
+    await supabase.from('contact_history').insert({ client_name: r.cliente, type, channel: 'whatsapp', user_name: currentUserName })
   }
 
   async function sendTomorrowReminder(r: TomorrowReminder) {
@@ -170,7 +172,7 @@ export function DailyReminders() {
     const message = buildMessage(MESSAGE_TEMPLATES.lembrete_festa, { cliente: r.cliente, data: r.data, horario: r.horario })
     openWhatsApp(r.phone, message)
     setSentTodayTypes((prev) => new Set(prev).add(type))
-    await supabase.from('contact_history').insert({ client_name: r.cliente, type, channel: 'whatsapp', user_name: 'Você' })
+    await supabase.from('contact_history').insert({ client_name: r.cliente, type, channel: 'whatsapp', user_name: currentUserName })
   }
 
 

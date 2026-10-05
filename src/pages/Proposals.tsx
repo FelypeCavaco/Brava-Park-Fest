@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
-import { packagePriceForDate } from '../types'
+import { packagePriceForDate, packageValidOn } from '../types'
 import { generateProposalPdf, type ProposalPrintData } from '../lib/proposalPdf'
 
 interface PackageOption {
@@ -17,6 +17,8 @@ interface PackageOption {
   weekday_price: number | null
   weekend_price: number | null
   unit_id: string | null
+  valid_from: string | null
+  valid_until: string | null
 }
 interface ExtraOption { id: string; name: string; price: number }
 
@@ -67,7 +69,7 @@ export function Proposals() {
     for (const slug of Object.keys(unitDbIds)) dbIdToSlug[unitDbIds[slug].unitId] = slug
 
     const [{ data: pkgs }, { data: extraData }, { data: props, error: propErr }] = await Promise.all([
-      supabase.from('packages').select('id, name, base_price, weekday_price, weekend_price, description, unit_id').eq('active', true).order('name'),
+      supabase.from('packages').select('id, name, base_price, weekday_price, weekend_price, description, unit_id, valid_from, valid_until').eq('active', true).order('name'),
       supabase.from('extra_items').select('id, name, price').order('name'),
       supabase.from('proposals').select('*').order('created_at', { ascending: false }),
     ])
@@ -82,6 +84,8 @@ export function Proposals() {
       weekend_price: p.weekend_price != null ? Number(p.weekend_price) : null,
       description: p.description,
       unit_id: p.unit_id,
+      valid_from: p.valid_from ?? null,
+      valid_until: p.valid_until ?? null,
     }))
     setPackages(pkgOptions)
     setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price) })))
@@ -107,8 +111,8 @@ export function Proposals() {
 
   const pacotesDaUnidade = useMemo(() => {
     const dbIds = unitDbIds[formUnidade]
-    return packages.filter((p) => !p.unit_id || p.unit_id === dbIds?.unitId)
-  }, [packages, unitDbIds, formUnidade])
+    return packages.filter((p) => (!p.unit_id || p.unit_id === dbIds?.unitId) && packageValidOn(p, dataEvento))
+  }, [packages, unitDbIds, formUnidade, dataEvento])
 
   useEffect(() => {
     if (pacotesDaUnidade.length > 0 && !pacotesDaUnidade.some((p) => p.id === pacoteId)) {

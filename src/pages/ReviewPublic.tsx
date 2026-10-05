@@ -46,7 +46,8 @@ export function ReviewPublic() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase.from('review_links').select('token, client_name, unit_name').eq('token', token).maybeSingle()
+    const { data: rows, error } = await supabase.rpc('public_get_review_link', { p_token: token })
+    const data = rows?.[0]
     if (error || !data) {
       setNotFound(true)
       setLoading(false)
@@ -61,14 +62,14 @@ export function ReviewPublic() {
     if (!token) return
     setSaving(true)
     setError(null)
-    const { error } = await supabase.from('party_reviews').insert({
-      token,
-      hot_dish_rating: ratings.hot_dish_rating || null,
-      cake_rating: ratings.cake_rating || null,
-      sweets_rating: ratings.sweets_rating || null,
-      snacks_rating: ratings.snacks_rating || null,
-      service_rating: ratings.service_rating || null,
-      comment: comment.trim() || null,
+    const { error } = await supabase.rpc('public_submit_party_review', {
+      p_token: token,
+      p_hot_dish_rating: ratings.hot_dish_rating || null,
+      p_cake_rating: ratings.cake_rating || null,
+      p_sweets_rating: ratings.sweets_rating || null,
+      p_snacks_rating: ratings.snacks_rating || null,
+      p_service_rating: ratings.service_rating || null,
+      p_comment: comment.trim() || null,
     })
     setSaving(false)
     if (error) {

@@ -35,7 +35,8 @@ export function GuestListPublic() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase.from('guest_list_pages').select('*').eq('token', token).maybeSingle()
+    const { data: rows, error } = await supabase.rpc('public_get_guest_list_page', { p_token: token })
+    const data = rows?.[0]
     if (error || !data) {
       setNotFound(true)
       setLoading(false)
@@ -54,8 +55,8 @@ export function GuestListPublic() {
   }
 
   async function loadEntries() {
-    const { data } = await supabase.from('guest_list_entries').select('id, name').eq('token', token).order('created_at')
-    setEntries((data ?? []).map((e) => ({ id: e.id, name: e.name })))
+    const { data } = await supabase.rpc('public_list_guest_entries', { p_token: token })
+    setEntries(((data ?? []) as { id: string; name: string }[]).map((e) => ({ id: e.id, name: e.name })))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -68,7 +69,7 @@ export function GuestListPublic() {
 
     setSaving(true)
     setError(null)
-    const { error } = await supabase.from('guest_list_entries').insert(names.map((name) => ({ token, name })))
+    const { error } = await supabase.rpc('public_add_guest_entries', { p_token: token, p_names: names })
     setSaving(false)
 
     if (error) {
@@ -84,8 +85,12 @@ export function GuestListPublic() {
   async function handleRemove(entryId: string) {
     const previous = entries
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
-    const { error } = await supabase.from('guest_list_entries').delete().eq('id', entryId)
-    if (error) setEntries(previous)
+    // Só sai se ainda não chegou e não foi sinalizado pela equipe na portaria.
+    const { data: removed, error } = await supabase.rpc('public_remove_guest_entry', { p_token: token, p_entry_id: entryId })
+    if (error || !removed) {
+      setEntries(previous)
+      if (!error) setError('Esse nome já foi confirmado pela equipe na festa e não pode mais ser removido por aqui.')
+    }
   }
 
   if (loading) {

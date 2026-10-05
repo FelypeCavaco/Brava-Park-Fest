@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
+import { comparePackageNames } from '../types'
 
 interface FixedCost {
   id: string
@@ -86,7 +87,7 @@ export function FestaFixedCosts() {
         packageAmounts: byCost[c.id] ?? {},
       })),
     )
-    setPackages((pkgs ?? []).map((p) => ({ id: p.id, name: p.name, unitId: p.unit_id })))
+    setPackages((pkgs ?? []).map((p) => ({ id: p.id, name: p.name, unitId: p.unit_id })).sort(comparePackageNames))
     setLoading(false)
   }
 

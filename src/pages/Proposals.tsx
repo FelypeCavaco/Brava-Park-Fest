@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
-import { packagePriceForDate, packageValidOn } from '../types'
+import { packagePriceForDate, packageValidOn, comparePackageNames } from '../types'
 import { generateProposalPdf, type ProposalPrintData } from '../lib/proposalPdf'
 
 interface PackageOption {
@@ -87,7 +87,7 @@ export function Proposals() {
       valid_from: p.valid_from ?? null,
       valid_until: p.valid_until ?? null,
     }))
-    setPackages(pkgOptions)
+    setPackages([...pkgOptions].sort(comparePackageNames))
     setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price) })))
 
     setProposals(

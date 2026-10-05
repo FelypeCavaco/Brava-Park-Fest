@@ -8,7 +8,7 @@ import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
-import { PACKAGE_COST_CATEGORIES, packageValidityLabel, type PackageCostCategory } from '../types'
+import { PACKAGE_COST_CATEGORIES, packageValidityLabel, comparePackageNames, type PackageCostCategory } from '../types'
 
 interface PackageRow {
   id: string
@@ -106,7 +106,7 @@ export function Packages() {
         included_items: p.included_items,
         valid_from: p.valid_from ?? null,
         valid_until: p.valid_until ?? null,
-      })),
+      })).sort(comparePackageNames),
     )
     setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price) })))
 
@@ -196,7 +196,7 @@ export function Packages() {
       valid_from: data.valid_from ?? null,
       valid_until: data.valid_until ?? null,
     }
-    setPackages((prev) => (editingPackageId ? prev.map((p) => (p.id === editingPackageId ? saved : p)) : [...prev, saved]))
+    setPackages((prev) => (editingPackageId ? prev.map((p) => (p.id === editingPackageId ? saved : p)) : [...prev, saved]).sort(comparePackageNames))
     setShowPackageForm(false)
   }
 
@@ -238,7 +238,7 @@ export function Packages() {
         } else {
           await supabase.from('packages').insert(pkg)
         }
-        setPackages((prev) => [...prev, pkg])
+        setPackages((prev) => [...prev, pkg].sort(comparePackageNames))
       },
     })
   }

@@ -46,6 +46,7 @@ import {
   PAYMENT_METHOD_LABEL,
   packagePriceForDate,
   packageValidOn,
+  comparePackageNames,
   type ReservationStatus,
   type PaymentMethod,
   type InvoiceStatus,
@@ -628,7 +629,7 @@ export function FestaDetalhe() {
           weekday_price: p.weekday_price != null ? Number(p.weekday_price) : null,
           weekend_price: p.weekend_price != null ? Number(p.weekend_price) : null,
           guest_limit: p.guest_limit,
-        })),
+        })).sort(comparePackageNames),
       )
 
       await loadUnitInventory(data.unit_id)

@@ -190,6 +190,13 @@ export interface Package {
   valid_until: string | null // última data de festa em que o plano vale (null = sem limite)
 }
 
+// Ordem dos pacotes em todas as listas: alfabética, com os números em ordem
+// crescente ("Classic 40" < "Classic 50" < "Classic 100" — comparando como
+// texto puro, o 100 viria antes do 40).
+export function comparePackageNames(a: { name: string }, b: { name: string }) {
+  return a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })
+}
+
 // O plano só aparece pra festas dentro do período de validade dele (ex: a
 // tabela de 2027 só vale pra festas de 2027 em diante). Sem data da festa
 // ainda, mostra todos.

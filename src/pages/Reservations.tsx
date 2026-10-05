@@ -26,7 +26,7 @@ import { supabase } from '../lib/supabaseClient'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES } from '../lib/whatsapp'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
-import { packagePriceForDate, packageValidOn, type ReservationStatus, type DiscountType } from '../types'
+import { packagePriceForDate, packageValidOn, comparePackageNames, type ReservationStatus, type DiscountType } from '../types'
 
 const statusTone: Record<ReservationStatus, 'purple' | 'orange' | 'teal' | 'amber' | 'danger'> = {
   orcamento: 'orange',
@@ -174,7 +174,7 @@ export function Reservations() {
         unit_id: p.unit_id,
         valid_from: p.valid_from ?? null,
         valid_until: p.valid_until ?? null,
-      })),
+      })).sort(comparePackageNames),
     )
   }
 

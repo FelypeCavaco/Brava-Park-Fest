@@ -1360,17 +1360,31 @@ export function FestaDetalhe() {
     }
   }
 
+  // Conta da troca de pacote. Com pacote antigo conhecido: valor atual −
+  // preço do antigo + preço do novo (preserva ajustes feitos à mão). Sem
+  // pacote vinculado (ex: valor digitado direto no cadastro): o valor passa a
+  // ser o preço do pacote novo — antes ele era SOMADO ao valor que já existia,
+  // dobrando o valor da festa.
+  function computePackageSwap(newPackageId: string) {
+    if (!festa) return null
+    const newPackage = unitPackages.find((p) => p.id === newPackageId)
+    if (!newPackage) return null
+    const oldPackage = unitPackages.find((p) => p.id === festa.packageId) ?? null
+    const newPrice = packagePriceForDate(newPackage, festa.eventDateIso)
+    if (oldPackage) {
+      const oldPrice = packagePriceForDate(oldPackage, festa.eventDateIso)
+      const diff = newPrice - oldPrice
+      return { newPackage, oldPackage, oldPrice, newPrice, diff, newTotalValue: Math.round((festa.valorTotal + diff) * 100) / 100 }
+    }
+    const diff = newPrice - festa.valorTotal
+    return { newPackage, oldPackage: null, oldPrice: null, newPrice, diff, newTotalValue: newPrice }
+  }
+
   async function handleSwapPackage() {
     if (!festa || !swapPackageId) return
-    const newPackage = unitPackages.find((p) => p.id === swapPackageId)
-    if (!newPackage) return
-
-    const oldPackage = unitPackages.find((p) => p.id === festa.packageId)
-    const oldPrice = oldPackage ? packagePriceForDate(oldPackage, festa.eventDateIso) : 0
-    const newPrice = packagePriceForDate(newPackage, festa.eventDateIso)
-    const diff = newPrice - oldPrice
-
-    const newTotalValue = Math.round((festa.valorTotal + diff) * 100) / 100
+    const swap = computePackageSwap(swapPackageId)
+    if (!swap) return
+    const { newPackage, oldPackage, diff, newTotalValue } = swap
     let newFinalValue = newTotalValue
     if (festa.discountType === 'percentual') newFinalValue = newTotalValue * (1 - (festa.discountValue ?? 0) / 100)
     else if (festa.discountType === 'valor_fixo') newFinalValue = newTotalValue - (festa.discountValue ?? 0)
@@ -3079,19 +3093,22 @@ export function FestaDetalhe() {
                 </select>
               </div>
               {swapPackageId && swapPackageId !== festa.packageId && (() => {
-                const oldPackage = unitPackages.find((p) => p.id === festa.packageId)
-                const newPackage = unitPackages.find((p) => p.id === swapPackageId)
-                if (!newPackage) return null
-                const oldPrice = oldPackage ? packagePriceForDate(oldPackage, festa.eventDateIso) : 0
-                const newPrice = packagePriceForDate(newPackage, festa.eventDateIso)
-                const diff = newPrice - oldPrice
+                const swap = computePackageSwap(swapPackageId)
+                if (!swap) return null
                 return (
                   <div className="text-sm bg-paper rounded-lg p-3 space-y-1">
-                    <div className="flex justify-between"><span className="text-muted">Pacote atual</span><span>{oldPackage ? currency(oldPrice) : '—'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted">Pacote novo</span><span>{currency(newPrice)}</span></div>
+                    {swap.oldPackage ? (
+                      <div className="flex justify-between"><span className="text-muted">Pacote atual</span><span>{currency(swap.oldPrice ?? 0)}</span></div>
+                    ) : (
+                      <p className="text-xs text-muted pb-1">
+                        Esta festa não tinha pacote vinculado — o valor do pacote passa a ser o preço do pacote novo (não é somado).
+                      </p>
+                    )}
+                    <div className="flex justify-between"><span className="text-muted">Pacote novo</span><span>{currency(swap.newPrice)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Valor atual da festa</span><span>{currency(festa.valorTotal)}</span></div>
                     <div className="flex justify-between font-semibold pt-1 border-t border-line">
-                      <span>{diff >= 0 ? 'Será somado ao valor total' : 'Será descontado do valor total'}</span>
-                      <span className={diff >= 0 ? 'text-danger' : 'text-teal'}>{currency(Math.abs(diff))}</span>
+                      <span>Valor da festa depois da troca</span>
+                      <span>{currency(swap.newTotalValue)}</span>
                     </div>
                   </div>
                 )

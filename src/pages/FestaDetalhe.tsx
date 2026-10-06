@@ -26,6 +26,7 @@ import {
   Bell,
   BellOff,
   Music,
+  ChevronDown,
   UserPlus,
   Repeat,
   Flag,
@@ -40,6 +41,7 @@ import { useUndo } from '../lib/UndoContext'
 import { SendReviewModal } from '../components/SendReviewModal'
 import { monthBounds } from '../lib/monthUtils'
 import { downloadPdf } from '../lib/pdfExport'
+import { describeAudit, type AuditEntry } from '../lib/auditLabels'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABEL, type MessageTemplateKey } from '../lib/whatsapp'
 import {
   PAYMENT_METHODS,
@@ -364,6 +366,9 @@ export function FestaDetalhe() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [notes, setNotes] = useState<FestaNote[]>([])
   const [showNotes, setShowNotes] = useState(false)
+  const [showPendencias, setShowPendencias] = useState(false)
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
+  const [showFullHistory, setShowFullHistory] = useState(false)
   const [noteBody, setNoteBody] = useState('')
   const [noteReminderOn, setNoteReminderOn] = useState(false)
   const [noteRemindDate, setNoteRemindDate] = useState('')
@@ -407,7 +412,29 @@ export function FestaDetalhe() {
     loadFornecedoresTemplate()
     loadBirthdayKids()
     loadNotes()
+    loadAuditHistory()
   }, [id])
+
+  // Atualiza o histórico sempre que volta para a aba Geral (pega o que foi feito nas outras abas).
+  useEffect(() => {
+    if (id && tab === 'geral') loadAuditHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
+
+  async function loadAuditHistory() {
+    if (!id) return
+    const { data } = await supabase
+      .from('audit_log')
+      .select('id, created_at, user_name, action, entity, details')
+      .or(`details->>reservation_id.eq.${id},entity_id.eq.${id}`)
+      .order('created_at', { ascending: false })
+      .limit(150)
+    const entries = ((data ?? []) as AuditEntry[]).filter((e) => {
+      if (e.action !== 'alterou') return true
+      return describeAudit(e).changes.length > 0
+    })
+    setAuditEntries(entries)
+  }
 
   async function loadNotes() {
     const { data } = await supabase
@@ -1052,24 +1079,60 @@ export function FestaDetalhe() {
   const lucroEstimado = totalContrato - totalCustos
 
   const checklistConcluidos = checklist.filter((c) => c.done).length
-  const checklistAtrasados = checklist.filter((c) => {
-    if (c.done) return false
-    const itemDue = c.dueDate ? parseISO(c.dueDate) : dueDate
-    return itemDue && isPast(itemDue)
-  }).length
 
   const sortedGuestEntries = useMemo(
     () => (guestSortAlpha ? [...guestEntries].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : guestEntries),
     [guestEntries, guestSortAlpha],
   )
 
-  const pendencias = useMemo(() => {
-    let n = 0
-    if (saldoDevedor > 0.005 && dueDate && isPast(dueDate)) n++
-    if (checklistAtrasados > 0) n++
-    if (checklist.length > 0 && checklistConcluidos < checklist.length) n++
-    return n
-  }, [saldoDevedor, dueDate, checklistAtrasados, checklist, checklistConcluidos])
+  // Cada pendência com o detalhe do que falta e a aba onde resolver.
+  const pendenciaItens = useMemo(() => {
+    const itens: { key: string; titulo: string; tone: 'danger' | 'amber'; detalhes: string[]; aba: typeof tab; acao: string }[] = []
+    if (saldoDevedor > 0.005 && dueDate && isPast(dueDate)) {
+      itens.push({
+        key: 'saldo',
+        titulo: 'Saldo em aberto perto da festa',
+        tone: 'danger',
+        detalhes: [`Faltam ${currency(saldoDevedor)} — o pagamento deveria estar quitado até ${format(dueDate, 'dd/MM/yyyy')} (7 dias antes da festa).`],
+        aba: 'financeiro',
+        acao: 'Ver pagamentos',
+      })
+    }
+    const pendentes = checklist.filter((c) => !c.done)
+    const atrasadas = pendentes.filter((c) => {
+      const itemDue = c.dueDate ? parseISO(c.dueDate) : dueDate
+      return itemDue && isPast(itemDue)
+    })
+    if (atrasadas.length > 0) {
+      itens.push({
+        key: 'atrasadas',
+        titulo: `${atrasadas.length} tarefa(s) do checklist atrasada(s)`,
+        tone: 'amber',
+        detalhes: atrasadas.map((c) => {
+          const due = c.dueDate ? parseISO(c.dueDate) : dueDate
+          return `${c.description}${due ? ` — prazo era ${format(due, 'dd/MM/yyyy')}` : ''}`
+        }),
+        aba: 'checklist',
+        acao: 'Abrir checklist',
+      })
+    }
+    const noPrazo = pendentes.filter((c) => !atrasadas.includes(c))
+    if (noPrazo.length > 0) {
+      itens.push({
+        key: 'checklist',
+        titulo: `${noPrazo.length} tarefa(s) do checklist ainda não concluída(s)`,
+        tone: 'amber',
+        detalhes: noPrazo.map((c) => {
+          const due = c.dueDate ? parseISO(c.dueDate) : dueDate
+          return `${c.description}${due ? ` — prazo ${format(due, 'dd/MM/yyyy')}` : ''}`
+        }),
+        aba: 'checklist',
+        acao: 'Abrir checklist',
+      })
+    }
+    return itens
+  }, [saldoDevedor, dueDate, checklist])
+  const pendencias = pendenciaItens.length
 
   if (loading) {
     return <p className="text-sm text-muted py-10 text-center">Carregando festa...</p>
@@ -2096,14 +2159,43 @@ export function FestaDetalhe() {
       )}
 
       <Card className={pendencias > 0 ? 'border-amber' : 'border-teal'}>
-        <div className="flex items-center gap-2 text-sm">
+        <button
+          type="button"
+          onClick={() => pendencias > 0 && setShowPendencias((v) => !v)}
+          className={`w-full flex items-center gap-2 text-sm flex-wrap text-left ${pendencias > 0 ? 'cursor-pointer' : 'cursor-default'}`}
+          aria-expanded={showPendencias}
+        >
           {pendencias > 0 ? <AlertTriangle className="w-4 h-4 text-amber" /> : <CheckCircle2 className="w-4 h-4 text-teal" />}
           <span className="font-medium">
             {pendencias === 0 ? 'Tudo em dia com esta festa' : `${pendencias} pendência${pendencias > 1 ? 's' : ''} nesta festa`}
           </span>
-          {saldoDevedor > 0.005 && dueDate && isPast(dueDate) && <Badge tone="danger">Saldo em aberto perto da festa</Badge>}
-          {checklistAtrasados > 0 && <Badge tone="amber">{checklistAtrasados} tarefa(s) atrasada(s)</Badge>}
-        </div>
+          {pendenciaItens.map((p) => (
+            <Badge key={p.key} tone={p.tone}>{p.titulo}</Badge>
+          ))}
+          {pendencias > 0 && (
+            <span className="ml-auto text-xs text-purple font-medium flex items-center gap-1">
+              {showPendencias ? 'Esconder' : 'Ver quais são'}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showPendencias ? 'rotate-180' : ''}`} />
+            </span>
+          )}
+        </button>
+        {showPendencias && pendencias > 0 && (
+          <div className="mt-3 pt-3 border-t border-line space-y-3">
+            {pendenciaItens.map((p) => (
+              <div key={p.key}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className={`text-sm font-semibold ${p.tone === 'danger' ? 'text-danger' : 'text-amber'}`}>{p.titulo}</p>
+                  <button onClick={() => setTab(p.aba)} className="text-xs text-purple font-medium">{p.acao} →</button>
+                </div>
+                <ul className="mt-1 space-y-0.5">
+                  {p.detalhes.map((d, i) => (
+                    <li key={i} className="text-xs text-muted">• {d}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -2276,6 +2368,40 @@ export function FestaDetalhe() {
               </ul>
             </Card>
           )}
+
+          <Card title="Histórico da festa — quem fez o quê" action={<History className="w-4 h-4 text-muted" />} className="md:col-span-2">
+            {auditEntries.length === 0 ? (
+              <p className="text-sm text-muted">Nenhuma alteração registrada ainda.</p>
+            ) : (
+              <>
+                <ul className="divide-y divide-line text-sm">
+                  {(showFullHistory ? auditEntries : auditEntries.slice(0, 8)).map((entry) => {
+                    const desc = describeAudit(entry)
+                    return (
+                      <li key={entry.id} className="py-2.5">
+                        <p>
+                          <strong className="font-medium">{desc.who}</strong> {desc.text}
+                        </p>
+                        {desc.changes.length > 0 && (
+                          <ul className="mt-0.5 space-y-0.5">
+                            {desc.changes.map((c, i) => (
+                              <li key={i} className="text-xs text-ink/80">• {c}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="text-xs text-muted mt-0.5">{new Date(entry.created_at).toLocaleString('pt-BR')}</p>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {auditEntries.length > 8 && (
+                  <button onClick={() => setShowFullHistory((v) => !v)} className="text-xs text-purple font-medium mt-2">
+                    {showFullHistory ? 'Mostrar menos' : `Ver histórico completo (${auditEntries.length})`}
+                  </button>
+                )}
+              </>
+            )}
+          </Card>
 
           <Card title="Documentos da festa">
             <ul className="divide-y divide-line mb-3">

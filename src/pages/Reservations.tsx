@@ -1078,10 +1078,11 @@ export function Reservations() {
                     onChange={(e) => setFormStatus(e.target.value as ReservationStatus)}
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                   >
-                    {(Object.keys(statusLabel) as ReservationStatus[]).map((s) => (
+                    {(['orcamento', 'confirmada'] as ReservationStatus[]).map((s) => (
                       <option key={s} value={s}>{statusLabel[s]}</option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-muted mt-1">Vira Quitada sozinha quando o total for pago.</p>
                 </div>
               </div>
 

@@ -10,6 +10,7 @@ import { QuickActionsBar } from '../components/layout/QuickActionsBar'
 import logo from '../assets/logo-brava-park-fest.png'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
+import { describeAudit, type AuditEntry } from '../lib/auditLabels'
 import { currentMonthValue, monthBounds, lastNMonths, daysInMonth } from '../lib/monthUtils'
 import { loadMonthByUnit, loadExpectedRemainingByUnit, type MonthResult } from '../lib/financeAggregates'
 
@@ -324,14 +325,22 @@ export function Dashboard() {
         })),
     )
 
-    const { data: auditData } = await supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(10)
+    const { data: auditData } = await supabase
+      .from('audit_log')
+      .select('id, created_at, user_name, action, entity, details')
+      .order('created_at', { ascending: false })
+      .limit(40)
     setAtividade(
-      (auditData ?? []).map((a) => ({
-        id: a.id,
-        usuario: a.user_name || 'Alguém da equipe',
-        acao: `${a.action} ${a.entity}`,
-        quando: new Date(a.created_at).toLocaleString('pt-BR'),
-      })),
+      ((auditData ?? []) as AuditEntry[])
+        .map((a) => ({ a, desc: describeAudit(a) }))
+        .filter(({ a, desc }) => a.action !== 'alterou' || desc.changes.length > 0)
+        .slice(0, 10)
+        .map(({ a, desc }) => ({
+          id: a.id,
+          usuario: desc.who,
+          acao: desc.changes.length > 0 ? `${desc.text} (${desc.changes.join('; ')})` : desc.text,
+          quando: new Date(a.created_at).toLocaleString('pt-BR'),
+        })),
     )
 
     setLoading(false)

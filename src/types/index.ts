@@ -331,6 +331,9 @@ export interface Expense {
   status: PayableStatus
   payment_method: PaymentMethod | null
   recurring_expense_id: string | null
+  // Conta que paga custos já lançados nas festas (ex: nota do fornecedor de
+  // docinhos) — fica na lista, mas não entra em nenhum total.
+  covers_festa_costs: boolean
 }
 
 export interface RecurringExpense {

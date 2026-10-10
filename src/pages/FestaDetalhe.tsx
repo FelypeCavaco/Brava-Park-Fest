@@ -1696,6 +1696,8 @@ export function FestaDetalhe() {
       .from('expenses')
       .select('id, description, supplier, category, amount')
       .eq('unit_id', festa.unitId)
+      // Conta já marcada como "paga custos das festas" não conta em dobro.
+      .eq('covers_festa_costs', false)
       .gte('due_date', startIso)
       .lt('due_date', endIso)
 

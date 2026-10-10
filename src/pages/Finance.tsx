@@ -64,9 +64,23 @@ interface UnitSummary {
   aPagar: number
   atrasado: number
   totalDespesas: number
+  custosFestas: number
+  custosFestasRestantes: number
   saldo: number
   recebimentosPrevistos: number
   saldoProjetado: number
+}
+
+function todayIso() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Conta não paga: vencimento antes de hoje = Atrasado, senão A vencer (o
+// banco faz a mesma regra ao salvar e quando o Financeiro/Painel abrem).
+function effectiveStatus(status: PayableStatus, dueDate: string): PayableStatus {
+  if (status !== 'a_vencer' && status !== 'atrasado') return status
+  return dueDate < todayIso() ? 'atrasado' : 'a_vencer'
 }
 
 export function Finance() {
@@ -87,7 +101,13 @@ export function Finance() {
   const [description, setDescription] = useState('')
   const [supplier, setSupplier] = useState('')
   const [amount, setAmount] = useState('')
-  const [dueDate, setDueDate] = useState('2026-09-07')
+  const [dueDate, setDueDate] = useState(todayIso)
+  const [coversFestaCosts, setCoversFestaCosts] = useState(false)
+  const [editCoversFestaCosts, setEditCoversFestaCosts] = useState(false)
+  // Custos lançados nas festas do mês atual, por unidade: das festas que já
+  // aconteceram (saem do saldo do mês) e das que ainda vão acontecer (saem
+  // do saldo projetado).
+  const [festaCostsByUnit, setFestaCostsByUnit] = useState<Record<string, { realizados: number; restantes: number }>>({})
 
   const [fluxoDetalhe, setFluxoDetalhe] = useState<{
     tipo: 'entradas' | 'saidas'
@@ -192,9 +212,10 @@ export function Finance() {
         amount: Number(e.amount),
         due_date: e.due_date,
         paid_date: e.paid_date,
-        status: e.status,
+        status: effectiveStatus(e.status, e.due_date),
         payment_method: e.payment_method,
         recurring_expense_id: e.recurring_expense_id,
+        covers_festa_costs: !!e.covers_festa_costs,
       })),
     )
     setRecurring(
@@ -244,6 +265,27 @@ export function Finance() {
     }
     setRecebimentosPrevistosByUnit(previsto)
 
+    const { startIso, endIso } = monthBounds(currentMonth)
+    const hoje = todayIso()
+    const slugByUnitId: Record<string, string> = {}
+    for (const slug of Object.keys(unitIdBySlug)) slugByUnitId[unitIdBySlug[slug]] = slug
+    const { data: festasMes } = await supabase
+      .from('reservations')
+      .select('unit_id, event_date, reservation_costs(amount)')
+      .neq('status', 'cancelada')
+      .gte('event_date', startIso)
+      .lt('event_date', endIso)
+    const custos: Record<string, { realizados: number; restantes: number }> = {}
+    for (const slug of Object.keys(unitIdBySlug)) custos[slug] = { realizados: 0, restantes: 0 }
+    for (const r of (festasMes ?? []) as { unit_id: string; event_date: string; reservation_costs: { amount: number | string }[] }[]) {
+      const slug = slugByUnitId[r.unit_id]
+      if (!slug) continue
+      const total = (r.reservation_costs ?? []).reduce((s, c) => s + Number(c.amount), 0)
+      if (r.event_date <= hoje) custos[slug].realizados += total
+      else custos[slug].restantes += total
+    }
+    setFestaCostsByUnit(custos)
+
     const months = lastNMonths(6)
     const fluxoPorUnidade: Record<string, { mes: string; mesValue: string; entradas: number; saidas: number }[]> = {}
     for (const slug of Object.keys(unitIdBySlug)) fluxoPorUnidade[slug] = []
@@ -291,7 +333,7 @@ export function Finance() {
     // recurring_expense_id preenchido), então já vem junto na busca abaixo —
     // não precisa buscar separado.
     const [{ data: expensesData }, { data: reservationsData }] = await Promise.all([
-      supabase.from('expenses').select('description, supplier, amount, recurring_expense_id').in('unit_id', unitIds).eq('status', 'pago').gte('paid_date', startIso).lt('paid_date', endIso),
+      supabase.from('expenses').select('description, supplier, amount, recurring_expense_id').in('unit_id', unitIds).eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', startIso).lt('paid_date', endIso),
       supabase
         .from('reservations')
         .select('id, client:clients(name), reservation_costs(description, amount)')
@@ -323,7 +365,9 @@ export function Finance() {
       // Despesa fixa já vira lançamento de verdade em `expenses` todo mês
       // (ver ensure_recurring_expenses_current_month), então já está contada
       // aqui dentro — não soma separado, senão conta em dobro.
-      const expensesForUnit = expenses.filter((e) => e.unit_id === slug)
+      // Conta que paga custos já lançados nas festas não entra em total
+      // nenhum — o valor dela já está em custosFestas (senão conta em dobro).
+      const expensesForUnit = expenses.filter((e) => e.unit_id === slug && !e.covers_festa_costs)
       // Só o que já foi pago de verdade este mês sai do saldo — uma conta "a
       // vencer" ainda não tirou dinheiro nenhum do caixa.
       const despesasPagas = expensesForUnit
@@ -333,13 +377,17 @@ export function Finance() {
       const atrasado = expensesForUnit.filter((e) => e.status === 'atrasado').reduce((s, e) => s + e.amount, 0)
       const entradas = receitaByUnit[slug] ?? 0
       const totalDespesas = despesasPagas
-      const saldo = entradas - totalDespesas
+      // Custos das festas que já aconteceram este mês (equipe, despesa fixa
+      // das festas, custos lançados na festa) também saem do saldo.
+      const custosFestas = festaCostsByUnit[slug]?.realizados ?? 0
+      const custosFestasRestantes = festaCostsByUnit[slug]?.restantes ?? 0
+      const saldo = entradas - totalDespesas - custosFestas
       const recebimentosPrevistos = recebimentosPrevistosByUnit[slug] ?? 0
-      const saldoProjetado = saldo + recebimentosPrevistos - aPagar - atrasado
-      result[slug] = { entradas, aPagar, atrasado, totalDespesas, saldo, recebimentosPrevistos, saldoProjetado }
+      const saldoProjetado = saldo + recebimentosPrevistos - aPagar - atrasado - custosFestasRestantes
+      result[slug] = { entradas, aPagar, atrasado, totalDespesas, custosFestas, custosFestasRestantes, saldo, recebimentosPrevistos, saldoProjetado }
     }
     return result
-  }, [expenses, receitaByUnit, recebimentosPrevistosByUnit])
+  }, [expenses, receitaByUnit, recebimentosPrevistosByUnit, festaCostsByUnit])
 
   // Fluxo de caixa (projeção + gráfico de 6 meses) soma as duas unidades
   // quando "Ambas as unidades" está selecionado — diferente dos cartões de
@@ -354,11 +402,13 @@ export function Finance() {
         aPagar: acc.aPagar + s.aPagar,
         atrasado: acc.atrasado + s.atrasado,
         totalDespesas: acc.totalDespesas + s.totalDespesas,
+        custosFestas: acc.custosFestas + s.custosFestas,
+        custosFestasRestantes: acc.custosFestasRestantes + s.custosFestasRestantes,
         saldo: acc.saldo + s.saldo,
         recebimentosPrevistos: acc.recebimentosPrevistos + s.recebimentosPrevistos,
         saldoProjetado: acc.saldoProjetado + s.saldoProjetado,
       }),
-      { entradas: 0, aPagar: 0, atrasado: 0, totalDespesas: 0, saldo: 0, recebimentosPrevistos: 0, saldoProjetado: 0 },
+      { entradas: 0, aPagar: 0, atrasado: 0, totalDespesas: 0, custosFestas: 0, custosFestasRestantes: 0, saldo: 0, recebimentosPrevistos: 0, saldoProjetado: 0 },
     )
   }, [selectedUnit, summaryByUnit])
 
@@ -404,11 +454,11 @@ export function Finance() {
   // senão conta em dobro.
   const porCategoria = useMemo(() => {
     const map = new Map<string, number>()
-    for (const e of filteredExpenses) map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
+    for (const e of filteredExpenses) if (!e.covers_festa_costs) map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
   }, [filteredExpenses])
 
-  const totalDespesasGeral = useMemo(() => filteredExpenses.reduce((s, e) => s + e.amount, 0), [filteredExpenses])
+  const totalDespesasGeral = useMemo(() => filteredExpenses.reduce((s, e) => s + (e.covers_festa_costs ? 0 : e.amount), 0), [filteredExpenses])
 
   function addPurchaseItem() {
     const item = purchaseInventory.find((i) => i.id === purchaseItemId)
@@ -465,7 +515,8 @@ export function Finance() {
         supplier: supplier.trim() || null,
         amount: value,
         due_date: dueDate,
-        status: 'a_vencer',
+        status: effectiveStatus('a_vencer', dueDate),
+        covers_festa_costs: coversFestaCosts,
       })
       .select()
       .single()
@@ -499,9 +550,10 @@ export function Finance() {
 
     setExpenses((prev) => [
       ...prev,
-      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null },
+      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs },
     ])
     setDescription('')
+    setCoversFestaCosts(false)
     setSupplier('')
     setAmount('')
     setCategoryOutro('')
@@ -563,7 +615,8 @@ export function Finance() {
     setEditDueDate(expense.due_date)
     setEditStatus(forcedStatus ?? expense.status)
     setEditPaymentMethod(expense.payment_method ?? 'pix')
-    setEditPaidDate(expense.paid_date ?? new Date().toISOString().slice(0, 10))
+    setEditPaidDate(expense.paid_date ?? todayIso())
+    setEditCoversFestaCosts(expense.covers_festa_costs)
   }
 
   async function handleSaveEditExpense(e: FormEvent) {
@@ -579,9 +632,10 @@ export function Finance() {
       category: finalCategory,
       amount: value,
       due_date: editDueDate,
-      status: editStatus,
+      status: effectiveStatus(editStatus, editDueDate),
       payment_method: editStatus === 'pago' ? editPaymentMethod : null,
       paid_date: editStatus === 'pago' ? editPaidDate : null,
+      covers_festa_costs: editCoversFestaCosts,
     }
 
     setSavingEditExpense(true)
@@ -602,9 +656,10 @@ export function Finance() {
               category: finalCategory as ExpenseCategory,
               amount: value,
               due_date: editDueDate,
-              status: editStatus,
+              status: effectiveStatus(editStatus, editDueDate),
               payment_method: editStatus === 'pago' ? editPaymentMethod : null,
               paid_date: editStatus === 'pago' ? editPaidDate : null,
+              covers_festa_costs: editCoversFestaCosts,
             }
           : exp,
       ),
@@ -712,10 +767,17 @@ export function Finance() {
         return (
           <div key={slug} className="space-y-4">
             {selectedUnit === 'todas' && <p className="text-sm font-display font-semibold">{unitName}</p>}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Card>
                 <p className="text-xs text-muted">Entradas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
+              </Card>
+              <Card>
+                <p className="text-xs text-muted">Custos das festas do mês</p>
+                <p className="text-xl font-display font-semibold mt-1">{currency(s.custosFestas)}</p>
+                <p className="text-[11px] text-muted mt-0.5">
+                  festas já realizadas{s.custosFestasRestantes > 0 ? ` · + ${currency(s.custosFestasRestantes)} das próximas` : ''}
+                </p>
               </Card>
               <Card>
                 <p className="text-xs text-muted">A pagar (a vencer)</p>
@@ -728,6 +790,7 @@ export function Finance() {
               <Card className={s.saldo >= 0 ? 'border-teal' : 'border-danger'}>
                 <p className="text-xs text-muted">Saldo do mês</p>
                 <p className={`text-xl font-display font-semibold mt-1 ${s.saldo >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(s.saldo)}</p>
+                <p className="text-[11px] text-muted mt-0.5">entradas − contas pagas − custos das festas</p>
               </Card>
             </div>
           </div>
@@ -743,6 +806,12 @@ export function Finance() {
               <span className="text-teal">Recebimentos previstos {currency(fluxoResumo.recebimentosPrevistos)}</span>
               <span className="text-muted">−</span>
               <span className="text-danger">Contas a pagar {currency(fluxoResumo.aPagar + fluxoResumo.atrasado)}</span>
+              {fluxoResumo.custosFestasRestantes > 0 && (
+                <>
+                  <span className="text-muted">−</span>
+                  <span className="text-danger">Custos das próximas festas do mês {currency(fluxoResumo.custosFestasRestantes)}</span>
+                </>
+              )}
               <span className="text-muted">=</span>
               <span className={`font-display font-semibold text-base ${fluxoResumo.saldoProjetado >= 0 ? 'text-teal' : 'text-danger'}`}>
                 Saldo projetado {currency(fluxoResumo.saldoProjetado)}
@@ -1084,6 +1153,22 @@ export function Finance() {
               )}
             </div>
 
+            <label className="sm:col-span-2 flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={coversFestaCosts}
+                onChange={(e) => setCoversFestaCosts(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Esta conta paga custos que já estão lançados nas festas
+                <span className="block text-xs text-muted">
+                  Ex: nota do fornecedor de docinhos que já entra sozinha como despesa fixa de cada festa. Ela fica na
+                  lista para você controlar o vencimento, mas não entra nos totais — senão o gasto conta duas vezes.
+                </span>
+              </span>
+            </label>
+
             <div className="sm:col-span-2 flex items-end">
               <Button type="submit" className="w-full justify-center">
                 <Plus className="w-4 h-4" /> Adicionar conta
@@ -1091,8 +1176,8 @@ export function Finance() {
             </div>
           </form>
           <p className="text-xs text-muted mt-3">
-            Use esta área para gastos gerais do negócio. Custos de uma festa específica (buffet, decoração, DJ) ficam
-            em "Lucro por festa", não aqui.
+            Use esta área para gastos gerais do negócio. Custos de uma festa específica (buffet, decoração, DJ, equipe)
+            são lançados na própria festa (Central da festa → Financeiro), não aqui.
           </p>
         </Card>
         </Can>
@@ -1152,6 +1237,11 @@ export function Finance() {
                   <Badge tone={statusTone[e.status]}>{statusLabel[e.status]}</Badge>
                   {e.status === 'pago' && e.payment_method && (
                     <p className="text-xs text-muted mt-0.5">{PAYMENT_METHOD_LABEL[e.payment_method]}</p>
+                  )}
+                  {e.covers_festa_costs && (
+                    <p className="text-xs text-purple mt-0.5" title="Não entra nos totais — o valor já está nos custos das festas">
+                      Já nos custos das festas
+                    </p>
                   )}
                 </td>
                 <td className="py-3 text-right">
@@ -1366,6 +1456,18 @@ export function Finance() {
                   </select>
                 </div>
               </div>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editCoversFestaCosts}
+                  onChange={(e) => setEditCoversFestaCosts(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Paga custos que já estão lançados nas festas
+                  <span className="block text-xs text-muted">Marcada, a conta não entra nos totais (evita contar em dobro).</span>
+                </span>
+              </label>
               {editStatus === 'pago' && (
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-line">
                   <div>

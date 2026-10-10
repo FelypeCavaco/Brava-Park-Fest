@@ -38,7 +38,9 @@ export async function loadMonthByUnit(monthValue: string, unitIdBySlug: Record<s
     // já vira um lançamento de verdade em `expenses` todo mês (ver
     // ensure_recurring_expenses_current_month) — não soma separado, senão
     // conta em dobro.
-    supabase.from('expenses').select('amount, unit_id').eq('status', 'pago').gte('paid_date', startIso).lt('paid_date', endIso),
+    // Conta marcada como "paga custos já lançados nas festas" fica de fora:
+    // o valor dela já está nos custos das festas (senão conta em dobro).
+    supabase.from('expenses').select('amount, unit_id').eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', startIso).lt('paid_date', endIso),
     loadFeePercentByMethod(),
   ])
 

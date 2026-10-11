@@ -47,6 +47,7 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
       { key: 'action:festa.documentos', label: 'Anexar/remover documentos', group: 'Central da festa' },
       { key: 'action:festa.lista_convidados', label: 'Gerar link e gerenciar lista de convidados', group: 'Central da festa' },
       { key: 'action:festa.excluir_festa', label: 'Excluir a festa inteira', group: 'Central da festa' },
+      { key: 'action:festa.estorno', label: 'Registrar estorno de cancelamento', group: 'Central da festa' },
     ],
   },
   {
@@ -104,6 +105,14 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     ],
   },
   {
+    group: 'Acertos entre unidades',
+    items: [
+      { key: 'page:acertos', label: 'Ver acertos entre unidades', group: 'Acertos entre unidades', route: '/acertos-entre-unidades' },
+      { key: 'action:acertos.confirmar', label: 'Confirmar ou cancelar acerto entre unidades', group: 'Acertos entre unidades' },
+      { key: 'action:acertos.desfazer', label: 'Desfazer confirmação de acerto (restrita)', group: 'Acertos entre unidades' },
+    ],
+  },
+  {
     group: 'Resultado do mês',
     items: [{ key: 'page:resultado_do_mes', label: 'Ver Resultado do mês', group: 'Resultado do mês', route: '/resultado-do-mes' }],
   },
@@ -117,7 +126,10 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
   },
   {
     group: 'Estoque',
-    items: [{ key: 'page:estoque', label: 'Ver Estoque', group: 'Estoque', route: '/estoque' }],
+    items: [
+      { key: 'page:estoque', label: 'Ver Estoque', group: 'Estoque', route: '/estoque' },
+      { key: 'action:estoque.custo_inicial', label: 'Definir custo inicial do estoque', group: 'Estoque' },
+    ],
   },
   {
     group: 'Fornecedores',
@@ -157,6 +169,8 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/lucro-por-festa', key: 'page:lucro_por_festa' },
   { test: (p) => p === '/relatorios', key: 'page:relatorios' },
   { test: (p) => p === '/estoque', key: 'page:estoque' },
+  { test: (p) => p === '/consumo-por-convidado', key: 'page:estoque' },
+  { test: (p) => p === '/acertos-entre-unidades', key: 'page:acertos' },
   { test: (p) => p === '/fornecedores', key: 'page:fornecedores' },
   { test: (p) => p === '/escalas', key: 'page:escalas' },
   { test: (p) => p === '/relatorio-aniversariantes', key: 'page:relatorio_aniversariantes' },

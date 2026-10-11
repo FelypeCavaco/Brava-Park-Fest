@@ -95,8 +95,9 @@ export function Reports() {
   const comparativo = useMemo(
     () =>
       unitIds.map((id) => {
-        const r = byUnit[id] ?? { receita: 0, taxasCartao: 0, despesas: 0, custos: 0, festas: 0, ticketMedio: 0 }
-        const despesasTotais = r.taxasCartao + r.despesas + r.custos
+        const r = byUnit[id] ?? { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0 }
+        // Estornos somam às saídas; acerto recebido de outra unidade reduz despesa.
+        const despesasTotais = r.taxasCartao + r.despesas + r.custos + r.estornos - r.recuperacao
         return {
           id,
           name: UNITS.find((u) => u.id === id)?.name ?? id,
@@ -126,11 +127,66 @@ export function Reports() {
     setGoalInput('')
   }
 
-  function handleExport() {
+  async function handleExport() {
     const rows: (string | number)[][] = [
       ['Unidade', 'Faturamento', 'Despesas', 'Lucro líquido', 'Festas realizadas', 'Ticket médio'],
       ...comparativo.map((c) => [c.name, c.faturamento, c.despesas, c.lucro, c.festas, Math.round(c.ticketMedio)]),
     ]
+
+    // Custo dos insumos do estoque por festa do mês (informativo, Lucro por festa).
+    const { startIso, endIso } = monthBounds(currentMonth)
+    const unitDbList = unitIds.map((id) => unitDbIds[id]?.unitId).filter(Boolean) as string[]
+    const unitNameById: Record<string, string> = {}
+    for (const u of UNITS) if (unitDbIds[u.id]) unitNameById[unitDbIds[u.id].unitId] = u.name
+    const [{ data: festasMes }, { data: acertos }] = await Promise.all([
+      supabase
+        .from('reservations')
+        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, client:clients(name), reservation_stock_consumption(total_cost, no_cost, inventory_item_id), reservation_costs(amount)')
+        .in('unit_id', unitDbList)
+        .neq('status', 'cancelada')
+        .gte('event_date', startIso)
+        .lt('event_date', endIso)
+        .order('event_date'),
+      supabase.from('unit_settlements').select('*').order('numero'),
+    ])
+    rows.push([])
+    rows.push(['Festas do mês — insumos do estoque', 'Data', 'Unidade', 'Valor firmado', 'Custos lançados', 'Insumos (estoque)', 'Itens sem custo', 'Convidados', 'Insumos por convidado', 'Lucro'])
+    for (const f of (festasMes ?? []) as any[]) {
+      const consumo = (f.reservation_stock_consumption ?? []).filter((c: any) => c.inventory_item_id)
+      const insumos = consumo.reduce((s: number, c: any) => s + (c.total_cost != null ? Number(c.total_cost) : 0), 0)
+      const semCusto = consumo.filter((c: any) => c.no_cost || c.total_cost == null).length
+      const custos = (f.reservation_costs ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0)
+      const convidados = (f.guest_count ?? 0) + (f.courtesy_guests ?? 0)
+      rows.push([
+        f.client?.name ?? '—',
+        f.event_date.split('-').reverse().join('/'),
+        unitNameById[f.unit_id] ?? '',
+        Number(f.final_value) || 0,
+        Math.round(custos * 100) / 100,
+        Math.round(insumos * 100) / 100,
+        semCusto,
+        convidados,
+        convidados > 0 ? Math.round((insumos / convidados) * 100) / 100 : '',
+        Math.round(((Number(f.final_value) || 0) - custos - insumos) * 100) / 100,
+      ])
+    }
+
+    rows.push([])
+    rows.push(['Acertos entre unidades — nº', 'Data da transferência', 'Item', 'Quantidade', 'Valor', 'Quem paga', 'Quem recebe', 'Status', 'Data do pagamento', 'Forma'])
+    for (const a of acertos ?? []) {
+      rows.push([
+        a.numero,
+        (a.transfer_date ?? '').split('-').reverse().join('/'),
+        a.item_name,
+        `${Number(a.quantity)} ${a.unit_of_measure ?? ''}`.trim(),
+        Number(a.amount),
+        unitNameById[a.to_unit_id] ?? '',
+        unitNameById[a.from_unit_id] ?? '',
+        a.status,
+        a.paid_date ? a.paid_date.split('-').reverse().join('/') : '',
+        a.payment_method ?? '',
+      ])
+    }
     downloadCsv('relatorio-brava-park-fest.csv', rows)
     setExportLog((prev) => [{ id: crypto.randomUUID(), quando: new Date().toLocaleString('pt-BR'), usuario: currentUserName }, ...prev])
   }

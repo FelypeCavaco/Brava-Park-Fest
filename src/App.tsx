@@ -28,6 +28,8 @@ import { Proposals } from './pages/Proposals'
 import { Feedback } from './pages/Feedback'
 import { Marketing } from './pages/Marketing'
 import { Funnel } from './pages/Funnel'
+import { Settlements } from './pages/Settlements'
+import { ConsumptionAverages } from './pages/ConsumptionAverages'
 
 export default function App() {
   return (
@@ -55,6 +57,8 @@ export default function App() {
           <Route path="/resultado-do-mes" element={<MonthlyResult />} />
           <Route path="/lucro-por-festa" element={<Profitability />} />
           <Route path="/estoque" element={<Inventory />} />
+          <Route path="/consumo-por-convidado" element={<ConsumptionAverages />} />
+          <Route path="/acertos-entre-unidades" element={<Settlements />} />
           <Route path="/escalas" element={<Schedules />} />
           <Route path="/relatorio-aniversariantes" element={<BirthdayReport />} />
           <Route path="/fornecedores" element={<Suppliers />} />

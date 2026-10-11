@@ -44,6 +44,8 @@ const ENTITY_LABEL: Record<string, string> = {
   waitlist: 'a lista de espera',
   unit_goals: 'a meta da unidade',
   marketing_spend: 'o gasto com tráfego',
+  unit_settlements: 'um acerto entre unidades',
+  other_incomes: 'uma entrada de acerto entre unidades',
   reservation: 'a festa',
 }
 
@@ -94,6 +96,27 @@ const FIELD_LABEL: Record<string, string> = {
   substitution_reason: 'motivo da substituição',
   substituted_by_name: 'substituído por',
   cancellation_reason: 'motivo do cancelamento',
+  consumption_type: 'tipo de consumo',
+  quantity_per_guest: 'consumo por convidado',
+  refund_amount: 'valor devolvido',
+  cancellation_fee_percent: 'multa retida (%)',
+  consumption_finalized: 'consumo finalizado',
+  exclude_from_averages: 'fora das médias de consumo',
+  exclude_reason: 'motivo de ficar fora das médias',
+  covers_festa_costs: 'paga custos das festas',
+  other_items_value: 'outros itens da nota',
+  received_date: 'data do recebimento',
+  cancel_reason: 'motivo do cancelamento',
+  item_name: 'item',
+}
+
+// Mesmo nome de campo com sentido diferente conforme a tabela.
+const FIELD_LABEL_BY_ENTITY: Record<string, Record<string, string>> = {
+  inventory_items: { total_value: 'valor em estoque', quantity: 'quantidade em estoque' },
+}
+
+function fieldLabel(entity: string, field: string) {
+  return FIELD_LABEL_BY_ENTITY[entity]?.[field] ?? FIELD_LABEL[field] ?? field
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -106,13 +129,15 @@ const STATUS_LABEL: Record<string, string> = {
   substituido: 'Substituído',
 }
 
-const MONEY_FIELDS = new Set(['total_value', 'final_value', 'amount', 'price', 'base_price', 'weekday_price', 'weekend_price', 'discount_value'])
+const MONEY_FIELDS = new Set(['total_value', 'final_value', 'refund_amount', 'other_items_value', 'line_value', 'unit_cost', 'total_cost', 'amount', 'price', 'base_price', 'weekday_price', 'weekend_price', 'discount_value'])
 
 // Campos técnicos que não interessam a quem lê o histórico.
 const HIDDEN_FIELDS = new Set([
   'id', 'reservation_id', 'unit_id', 'client_id', 'space_id', 'lead_id', 'staff_member_id', 'payment_cost_id',
   'fixed_cost_id', 'inventory_item_id', 'expense_id', 'recurring_expense_id', 'replaces_assignment_id', 'token',
   'attended_at', 'arrived_at', 'created_by_name', 'generated_at', 'storage_path', 'extra_item_id', 'created_at', 'updated_at',
+  'has_cost', 'last_unit_cost', 'stock_value', 'settlement_batch_id', 'batch_id', 'from_unit_id', 'to_unit_id', 'from_item_id', 'to_item_id',
+  'is_stock_purchase', 'confirmed_at', 'confirmed_by_name', 'cancelled_by_name', 'cancelled_at', 'numero',
 ])
 
 function formatValue(field: string, value: unknown): string {
@@ -149,7 +174,7 @@ export function describeAudit(entry: AuditEntry) {
   if (entry.action === 'alterou' && d.changes) {
     const changes = Object.entries(d.changes)
       .filter(([field]) => !HIDDEN_FIELDS.has(field))
-      .map(([field, c]) => `${FIELD_LABEL[field] ?? field}: ${formatValue(field, c.de)} → ${formatValue(field, c.para)}`)
+      .map(([field, c]) => `${fieldLabel(entry.entity, field)}: ${formatValue(field, c.de)} → ${formatValue(field, c.para)}`)
     return { who, text: `alterou ${what}`, changes }
   }
 

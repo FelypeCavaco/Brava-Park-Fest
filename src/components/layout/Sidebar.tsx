@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabaseClient'
 import {
@@ -25,6 +25,8 @@ import {
   BellRing,
   UserCog,
   Repeat,
+  ArrowLeftRight,
+  Gauge,
   ChevronDown,
   LogOut,
   X,
@@ -93,6 +95,7 @@ const groups: Group[] = [
       { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/financeiro', label: 'Financeiro', icon: Banknote },
       { to: '/despesas-fixas-festas', label: 'Despesa fixa das festas', icon: Repeat },
+      { to: '/acertos-entre-unidades', label: 'Acertos entre unidades', icon: ArrowLeftRight },
       { to: '/resultado-do-mes', label: 'Resultado do mês', icon: FileSpreadsheet },
       { to: '/lucro-por-festa', label: 'Lucro por festa', icon: PiggyBank },
       { to: '/relatorios', label: 'Relatórios e metas', icon: ClipboardList },
@@ -104,6 +107,7 @@ const groups: Group[] = [
     icon: Boxes,
     items: [
       { to: '/estoque', label: 'Estoque', icon: Boxes },
+      { to: '/consumo-por-convidado', label: 'Consumo por convidado', icon: Gauge },
       { to: '/fornecedores', label: 'Fornecedores', icon: Truck },
       { to: '/escalas', label: 'Escalas', icon: ClipboardCheck },
       { to: '/relatorio-aniversariantes', label: 'Relatório de aniversariantes', icon: Cake },
@@ -129,6 +133,18 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
 
   const role = profile?.role ?? null
+  const canSeeAcertos = canAccessRoute(role, can, '/acertos-entre-unidades')
+
+  // Selo no menu enquanto houver acerto entre unidades pendente.
+  const [acertosPendentes, setAcertosPendentes] = useState(0)
+  useEffect(() => {
+    if (!canSeeAcertos) return
+    supabase
+      .from('unit_settlements')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pendente')
+      .then(({ count }) => setAcertosPendentes(count ?? 0))
+  }, [canSeeAcertos, location.pathname])
   const visibleTopLinks = topLinks.filter((i) => canAccessRoute(role, can, i.to))
   const visibleGroups = groups
     .map((g) => ({ ...g, items: g.items.filter((i) => canAccessRoute(role, can, i.to)) }))
@@ -233,6 +249,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
               >
                 <group.icon className="w-4 h-4" strokeWidth={1.75} />
                 <span className="flex-1 text-left">{group.label}</span>
+                {group.id === 'financeiro' && acertosPendentes > 0 && !isOpen && <span className="w-2 h-2 rounded-full bg-orange" aria-label="Acertos pendentes" />}
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
               </button>
               {isOpen && (
@@ -252,7 +269,10 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                       }
                     >
                       <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
-                      {label}
+                      <span className="flex-1">{label}</span>
+                      {to === '/acertos-entre-unidades' && acertosPendentes > 0 && (
+                        <span className="text-[10px] font-semibold bg-orange text-ink rounded-full px-1.5" aria-label={`${acertosPendentes} acertos pendentes`}>{acertosPendentes}</span>
+                      )}
                     </NavLink>
                   ))}
                 </div>

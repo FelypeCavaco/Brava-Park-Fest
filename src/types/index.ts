@@ -334,6 +334,12 @@ export interface Expense {
   // Conta que paga custos já lançados nas festas (ex: nota do fornecedor de
   // docinhos) — fica na lista, mas não entra em nenhum total.
   covers_festa_costs: boolean
+  // Lançamentos "travados" (só mudam pela origem): compra de estoque (tela
+  // Estoque), acerto entre unidades e estorno de cancelamento (festa).
+  is_stock_purchase: boolean
+  settlement_batch_id: string | null
+  reservation_id: string | null
+  other_items_value: number
 }
 
 export interface RecurringExpense {
@@ -368,6 +374,11 @@ export interface InventoryItem {
   minimum_quantity: number
   quantity_per_guest: number | null
   supplier: string | null
+  // Valor total em estoque (R$) — custo médio = total_value ÷ quantity.
+  total_value: number
+  has_cost: boolean
+  last_unit_cost: number | null
+  consumption_type: 'por_convidado' | 'por_festa'
 }
 
 export const SUPPLIER_SERVICE_TYPES = ['Buffet externo', 'DJ', 'Fotógrafo', 'Decorador', 'Outro'] as const

@@ -1,19 +1,28 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Plus, Trash2, X, Trophy } from 'lucide-react'
+import { Plus, Trash2, X, Trophy, Info, AlertTriangle } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { useUnit } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
+import { todayIso } from '../lib/format'
+import { normalizeAverages, type AverageRow } from './ConsumptionAverages'
 
 interface Festa {
   id: string
   unitId: string
   cliente: string
   data: string
+  eventDateIso: string
+  convidados: number
   valorContrato: number
+}
+
+interface InsumoInfo {
+  custo: number
+  semCusto: number
 }
 
 interface CostItem {
@@ -31,6 +40,10 @@ export function Profitability() {
   const { scheduleDelete } = useUndo()
   const [festas, setFestas] = useState<Festa[]>([])
   const [costsByFesta, setCostsByFesta] = useState<Record<string, CostItem[]>>({})
+  // Custo dos insumos do estoque consumidos em cada festa (Consumo pós-festa) —
+  // só aqui, informativo; no caixa a compra já foi contada quando foi paga.
+  const [insumosByFesta, setInsumosByFesta] = useState<Record<string, InsumoInfo>>({})
+  const [averages, setAverages] = useState<AverageRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,13 +57,15 @@ export function Profitability() {
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: reservationsData, error: resErr }, { data: costsData }] = await Promise.all([
+    const [{ data: reservationsData, error: resErr }, { data: costsData }, { data: consData }, { data: avgData }] = await Promise.all([
       supabase
         .from('reservations')
-        .select('id, unit_id, event_date, final_value, client:clients(name)')
+        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, client:clients(name)')
         .neq('status', 'cancelada')
         .order('event_date', { ascending: false }),
       supabase.from('reservation_costs').select('*'),
+      supabase.from('reservation_stock_consumption').select('reservation_id, inventory_item_id, total_cost, no_cost'),
+      supabase.rpc('consumption_averages', { p_unit: null, p_limit: 10 }),
     ])
 
     if (resErr) {
@@ -65,6 +80,8 @@ export function Profitability() {
         unitId: r.unit_id,
         cliente: r.client?.name ?? '—',
         data: format(parseISO(r.event_date), 'dd/MM/yyyy'),
+        eventDateIso: r.event_date,
+        convidados: (r.guest_count ?? 0) + (r.courtesy_guests ?? 0),
         valorContrato: Number(r.final_value) || 0,
       })),
     )
@@ -76,7 +93,31 @@ export function Profitability() {
       grouped[c.reservation_id] = list
     }
     setCostsByFesta(grouped)
+
+    const insumos: Record<string, InsumoInfo> = {}
+    for (const c of consData ?? []) {
+      if (!c.inventory_item_id) continue
+      const cur = insumos[c.reservation_id] ?? { custo: 0, semCusto: 0 }
+      if (c.no_cost || c.total_cost == null) cur.semCusto += 1
+      else cur.custo += Number(c.total_cost)
+      insumos[c.reservation_id] = cur
+    }
+    setInsumosByFesta(insumos)
+    setAverages(normalizeAverages(avgData as Record<string, unknown>[] | null))
     setLoading(false)
+  }
+
+  const hoje = todayIso()
+
+  // Previsão dos insumos de uma festa futura: média real por item da unidade ×
+  // convidados (ou média por festa) × custo médio atual. Só estimativa.
+  function insumosPrevistos(f: Festa): number | null {
+    const doUnit = averages.filter((a) => a.unit_id === f.unitId)
+    if (doUnit.length === 0) return null
+    return doUnit.reduce((s, a) => {
+      const quantidade = a.consumption_type === 'por_convidado' ? (a.avg_per_guest ?? 0) * f.convidados : a.avg_per_festa ?? 0
+      return s + quantidade * (a.current_unit_cost ?? 0)
+    }, 0)
   }
 
   const filteredFestas = useMemo(() => {
@@ -90,20 +131,26 @@ export function Profitability() {
       filteredFestas.map((f) => {
         const custos = costsByFesta[f.id] ?? []
         const totalCustos = custos.reduce((s, c) => s + c.amount, 0)
-        const lucro = f.valorContrato - totalCustos
+        const ins = insumosByFesta[f.id] ?? { custo: 0, semCusto: 0 }
+        const lucro = f.valorContrato - totalCustos - ins.custo
         const margem = f.valorContrato > 0 ? (lucro / f.valorContrato) * 100 : 0
-        return { ...f, totalCustos, lucro, margem }
+        const futura = f.eventDateIso >= hoje
+        const previstos = futura ? insumosPrevistos(f) : null
+        const lucroEstimado = previstos != null ? f.valorContrato - totalCustos - previstos : null
+        return { ...f, totalCustos, insumos: ins.custo, semCusto: ins.semCusto, lucro, margem, futura, previstos, lucroEstimado }
       }),
-    [filteredFestas, costsByFesta],
+    [filteredFestas, costsByFesta, insumosByFesta, averages],
   )
 
   const lucroTotal = rows.reduce((s, r) => s + r.lucro, 0)
+  const itensSemCusto = rows.reduce((s, r) => s + r.semCusto, 0)
   const margemMedia = rows.length > 0 ? rows.reduce((s, r) => s + r.margem, 0) / rows.length : 0
   const maisLucrativa = rows.length > 0 ? rows.reduce((a, b) => (b.lucro > a.lucro ? b : a)) : null
 
   const selectedCosts = selected ? costsByFesta[selected.id] ?? [] : []
   const selectedTotalCustos = selectedCosts.reduce((s, c) => s + c.amount, 0)
-  const selectedLucro = selected ? selected.valorContrato - selectedTotalCustos : 0
+  const selectedInsumos = selected ? insumosByFesta[selected.id] ?? { custo: 0, semCusto: 0 } : { custo: 0, semCusto: 0 }
+  const selectedLucro = selected ? selected.valorContrato - selectedTotalCustos - selectedInsumos.custo : 0
 
   async function handleAddCost(e: FormEvent) {
     e.preventDefault()
@@ -160,6 +207,16 @@ export function Profitability() {
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 
+      <p className="text-xs text-muted flex items-start gap-1.5 -mt-2">
+        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        Lucro da festa = valor firmado − custos lançados na festa − insumos do estoque consumidos. O custo dos insumos aparece só aqui, para medir a rentabilidade da festa. No caixa e no Resultado do mês, a compra já foi contada quando foi paga.
+      </p>
+      {itensSemCusto > 0 && (
+        <p className="text-xs text-amber flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5" /> {itensSemCusto} itens consumidos sem custo, o lucro pode estar superestimado. Defina o custo em Estoque.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <p className="text-xs text-muted">Lucro total do período</p>
@@ -197,6 +254,7 @@ export function Profitability() {
               <th className="pb-3 font-medium">Data</th>
               <th className="pb-3 font-medium">Valor do contrato</th>
               <th className="pb-3 font-medium">Custos</th>
+              <th className="pb-3 font-medium">Insumos (estoque)</th>
               <th className="pb-3 font-medium">Lucro</th>
               <th className="pb-3 font-medium">Margem</th>
               <th className="pb-3 font-medium"></th>
@@ -209,7 +267,19 @@ export function Profitability() {
                 <td className="py-3 text-muted">{r.data}</td>
                 <td className="py-3">{currency(r.valorContrato)}</td>
                 <td className="py-3 text-danger">{currency(r.totalCustos)}</td>
-                <td className={`py-3 font-medium ${r.lucro >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(r.lucro)}</td>
+                <td className="py-3 text-danger">
+                  {r.insumos > 0 ? currency(r.insumos) : '—'}
+                  {r.semCusto > 0 && <span className="block text-[11px] text-amber">{r.semCusto} sem custo</span>}
+                  {r.insumos > 0 && r.convidados > 0 && <span className="block text-[11px] text-muted">{currency(r.insumos / r.convidados)}/convidado</span>}
+                </td>
+                <td className={`py-3 font-medium ${r.lucro >= 0 ? 'text-teal' : 'text-danger'}`}>
+                  {currency(r.lucro)}
+                  {r.lucroEstimado != null && (
+                    <span className="block text-[11px] font-normal text-muted" title="Estimado: valor − custos lançados − insumos previstos pelas médias de consumo">
+                      estimado {currency(r.lucroEstimado)} (insumos ≈ {currency(r.previstos ?? 0)})
+                    </span>
+                  )}
+                </td>
                 <td className="py-3">
                   <Badge tone={r.margem >= 40 ? 'teal' : r.margem >= 20 ? 'amber' : 'danger'}>{r.margem.toFixed(0)}%</Badge>
                 </td>
@@ -222,7 +292,7 @@ export function Profitability() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-muted">
+                <td colSpan={8} className="py-6 text-center text-muted">
                   Nenhuma festa encontrada para esta unidade.
                 </td>
               </tr>
@@ -259,7 +329,16 @@ export function Profitability() {
               </Card>
             </div>
 
-            <p className="text-sm font-semibold mb-2">Custos</p>
+            <div className="mb-4 bg-paper rounded-lg px-3 py-2 text-sm">
+              <div className="flex justify-between"><span>Insumos (estoque)</span><span className="font-medium text-danger">{currency(selectedInsumos.custo)}</span></div>
+              {selected.convidados > 0 && selectedInsumos.custo > 0 && (
+                <p className="text-xs text-muted">{currency(selectedInsumos.custo / selected.convidados)} por convidado ({selected.convidados} convidados)</p>
+              )}
+              {selectedInsumos.semCusto > 0 && <p className="text-xs text-amber">{selectedInsumos.semCusto} item(ns) consumido(s) sem custo</p>}
+              <p className="text-[11px] text-muted mt-1">Vem do Consumo pós-festa (Central da festa). Só informativo.</p>
+            </div>
+
+            <p className="text-sm font-semibold mb-2">Custos lançados</p>
             <ul className="divide-y divide-line mb-4">
               {selectedCosts.map((c) => (
                 <li key={c.id} className="py-2.5 flex items-center justify-between text-sm">

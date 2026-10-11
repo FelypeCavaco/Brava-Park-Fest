@@ -1,12 +1,16 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Plus, Minus, Trash2, AlertTriangle, Pencil, ArrowLeftRight } from 'lucide-react'
+import { Plus, Minus, Trash2, AlertTriangle, Pencil, ArrowLeftRight, ShoppingCart, History, X, Info } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
+import { Can } from '../components/Can'
+import { StockPurchaseModal, type StockPurchasePrefill } from '../components/StockPurchaseModal'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
+import { brl, qtd, parseDecimal, friendlyDbError } from '../lib/format'
 import { INVENTORY_CATEGORIES, type InventoryItem, type InventoryCategory } from '../types'
 
 interface NextFesta { date: string; guests: number }
@@ -21,21 +25,56 @@ const purchaseStatusLabel: Record<PurchaseStatus, string> = {
   cancelado: 'Cancelado',
 }
 
+const ADJUST_REASONS = ['Perda', 'Quebra', 'Vencimento', 'Contagem', 'Outro'] as const
+
+const MOVEMENT_LABEL: Record<string, string> = {
+  compra: 'Compra',
+  compra_ajuste: 'Compra editada',
+  compra_excluida: 'Compra excluída',
+  consumo: 'Consumo pós-festa',
+  consumo_ajuste: 'Consumo editado',
+  consumo_desfeito: 'Consumo desfeito',
+  ajuste_entrada: 'Ajuste (entrada)',
+  ajuste_saida: 'Ajuste (saída)',
+  custo_inicial: 'Custo definido',
+  transferencia_saida: 'Transferência (saída)',
+  transferencia_entrada: 'Transferência (entrada)',
+  cadastro: 'Cadastro do item',
+}
+
+interface Movement {
+  id: string
+  kind: string
+  quantity: number
+  value: number
+  reason: string | null
+  expense_id: string | null
+  created_by_name: string | null
+  created_at: string
+}
+
+function unitCost(i: InventoryItem) {
+  if (!i.has_cost) return null
+  return i.quantity > 0 ? i.total_value / i.quantity : i.last_unit_cost
+}
+
 export function Inventory() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({})
-  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [nextFestaByUnit, setNextFestaByUnit] = useState<Record<string, NextFesta>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [purchaseStatus, setPurchaseStatus] = useState<Record<string, PurchaseStatus>>({})
 
   const [name, setName] = useState('')
   const [category, setCategory] = useState<InventoryCategory>(INVENTORY_CATEGORIES[0])
   const [unitOfMeasure, setUnitOfMeasure] = useState('un')
   const [quantity, setQuantity] = useState('')
+  const [initialCost, setInitialCost] = useState('')
   const [minimumQuantity, setMinimumQuantity] = useState('')
   const [quantityPerGuest, setQuantityPerGuest] = useState('')
   const [supplier, setSupplier] = useState('')
@@ -46,15 +85,39 @@ export function Inventory() {
   const [editUnitOfMeasure, setEditUnitOfMeasure] = useState('')
   const [editMinimumQuantity, setEditMinimumQuantity] = useState('')
   const [editSupplier, setEditSupplier] = useState('')
+  const [editConsumptionType, setEditConsumptionType] = useState<'por_convidado' | 'por_festa'>('por_convidado')
 
   const [transferringItem, setTransferringItem] = useState<InventoryItem | null>(null)
   const [transferDestUnit, setTransferDestUnit] = useState('')
   const [transferQuantity, setTransferQuantity] = useState('')
   const [transferError, setTransferError] = useState<string | null>(null)
+  const [transferZeroConfirm, setTransferZeroConfirm] = useState(false)
+  const [transferring, setTransferring] = useState(false)
+
+  // Ajuste para baixo: pede o motivo antes de gravar.
+  const [pendingAdjust, setPendingAdjust] = useState<{ item: InventoryItem; newQuantity: number } | null>(null)
+  const [adjustReason, setAdjustReason] = useState<string>('Contagem')
+  const [adjustOther, setAdjustOther] = useState('')
+
+  const [costItem, setCostItem] = useState<InventoryItem | null>(null)
+  const [costValue, setCostValue] = useState('')
+  const [costError, setCostError] = useState<string | null>(null)
+
+  const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null)
+  const [movements, setMovements] = useState<Movement[]>([])
+
+  const [purchaseModal, setPurchaseModal] = useState<{ expenseId: string | null; prefill: StockPurchasePrefill | null } | null>(null)
 
   useEffect(() => {
     if (!unitDbIdsLoading) loadItems()
   }, [unitDbIdsLoading, unitDbIds])
+
+  // Atalhos: /estoque?entrada=1 abre a Entrada de compra; ?compra=<id> abre a edição.
+  useEffect(() => {
+    const compra = searchParams.get('compra')
+    if (compra) setPurchaseModal({ expenseId: compra, prefill: null })
+    else if (searchParams.get('entrada')) setPurchaseModal({ expenseId: null, prefill: null })
+  }, [searchParams])
 
   async function loadItems() {
     setLoading(true)
@@ -64,12 +127,7 @@ export function Inventory() {
     const today = new Date().toISOString().slice(0, 10)
     const [{ data, error }, { data: upcoming }] = await Promise.all([
       supabase.from('inventory_items').select('*').order('name'),
-      supabase
-        .from('reservations')
-        .select('unit_id, event_date, guest_count')
-        .neq('status', 'cancelada')
-        .gte('event_date', today)
-        .order('event_date'),
+      supabase.from('reservations').select('unit_id, event_date, guest_count').neq('status', 'cancelada').gte('event_date', today).order('event_date'),
     ])
 
     if (error) {
@@ -85,11 +143,8 @@ export function Inventory() {
       const slug = dbIdToSlug[r.unit_id]
       if (!slug) continue
       const current = nextByUnit[slug]
-      if (!current || r.event_date < current.date) {
-        nextByUnit[slug] = { date: r.event_date, guests: r.guest_count ?? 0 }
-      } else if (r.event_date === current.date) {
-        current.guests += r.guest_count ?? 0
-      }
+      if (!current || r.event_date < current.date) nextByUnit[slug] = { date: r.event_date, guests: r.guest_count ?? 0 }
+      else if (r.event_date === current.date) current.guests += r.guest_count ?? 0
     }
     setNextFestaByUnit(nextByUnit)
 
@@ -104,6 +159,10 @@ export function Inventory() {
         minimum_quantity: Number(i.minimum_quantity),
         quantity_per_guest: i.quantity_per_guest !== null ? Number(i.quantity_per_guest) : null,
         supplier: i.supplier,
+        total_value: Number(i.total_value ?? 0),
+        has_cost: !!i.has_cost,
+        last_unit_cost: i.last_unit_cost != null ? Number(i.last_unit_cost) : null,
+        consumption_type: i.consumption_type ?? 'por_convidado',
       })),
     )
     setLoading(false)
@@ -137,57 +196,70 @@ export function Inventory() {
       const match = item.name.match(VELA_REGEX)
       if (!match) continue
       const digito = Number(match[1])
-      const cor = match[2]
       if (!byUnit[item.unit_id]) byUnit[item.unit_id] = Array.from({ length: 10 }, (_, d) => ({ digito: d }))
       const row = byUnit[item.unit_id][digito]
-      if (cor === 'Azul') row.azul = item
+      if (match[2] === 'Azul') row.azul = item
       else row.rosa = item
     }
     return byUnit
   }, [velaItems])
 
   const precisamRepor = useMemo(() => filtered.filter((i) => i.quantity < effectiveMinimum(i)), [filtered, nextFestaByUnit])
+  const valorEmEstoque = useMemo(() => filtered.reduce((s, i) => s + i.total_value, 0), [filtered])
+  const semCusto = useMemo(() => filtered.filter((i) => !i.has_cost && i.quantity > 0).length, [filtered])
+
+  // ---------- Ajuste manual (+/− e digitação) ----------
+  async function applyAdjust(item: InventoryItem, newQuantity: number, reason: string | null) {
+    const { error: rpcError } = await supabase.rpc('adjust_stock', { p_item: item.id, p_new_quantity: newQuantity, p_reason: reason })
+    if (rpcError) setError(friendlyDbError(rpcError.message))
+    await loadItems()
+  }
+
+  function requestAdjust(item: InventoryItem, newQuantity: number) {
+    const q = Math.max(0, Math.round(newQuantity * 1000) / 1000)
+    clearDraft(item.id)
+    if (q === item.quantity) return
+    if (q > item.quantity) {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, quantity: q } : i)))
+      applyAdjust(item, q, 'Ajuste manual (entrada)')
+    } else {
+      setAdjustReason('Contagem')
+      setAdjustOther('')
+      setPendingAdjust({ item, newQuantity: q })
+    }
+  }
 
   // +/− anda de número inteiro em número inteiro: de 6,5 o "+" vai pra 7 (não
   // 7,5) e o "−" vai pra 6. Valores quebrados continuam podendo ser digitados.
-  async function adjustQuantity(id: string, direction: 1 | -1) {
-    const item = items.find((i) => i.id === id)
-    if (!item) return
+  function stepQuantity(item: InventoryItem, direction: 1 | -1) {
     const q = item.quantity
     const next = direction > 0 ? (Number.isInteger(q) ? q + 1 : Math.ceil(q)) : Number.isInteger(q) ? q - 1 : Math.floor(q)
-    const newQuantity = Math.max(0, next)
-    setQtyDrafts((prev) => {
-      const { [id]: _, ...rest } = prev
-      return rest
-    })
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: newQuantity } : i)))
-    await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id)
+    requestAdjust(item, Math.max(0, next))
   }
 
-  // Digitação livre (aceita "6,5" ou "6.5"): a tela — incluindo a lista de
-  // compras — atualiza na hora; o banco é salvo meio segundo depois da
-  // última tecla, sem precisar sair do campo.
-  function changeQuantityTyped(id: string, raw: string) {
-    setQtyDrafts((prev) => ({ ...prev, [id]: raw }))
-    const parsed = Number(raw.trim().replace(',', '.'))
-    if (raw.trim() === '' || !Number.isFinite(parsed) || parsed < 0) return
-    const newQuantity = Math.round(parsed * 100) / 100
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: newQuantity } : i)))
-    clearTimeout(saveTimers.current[id])
-    saveTimers.current[id] = setTimeout(async () => {
-      await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id)
-    }, 500)
-  }
-
-  function finishQuantityTyping(id: string) {
+  function clearDraft(id: string) {
     setQtyDrafts((prev) => {
       const { [id]: _, ...rest } = prev
       return rest
     })
   }
 
-  function formatQty(q: number) {
-    return q.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+  function commitTyped(item: InventoryItem) {
+    const raw = qtyDrafts[item.id]
+    if (raw === undefined) return
+    const parsed = parseDecimal(raw)
+    if (parsed === null || parsed < 0) return clearDraft(item.id)
+    requestAdjust(item, parsed)
+  }
+
+  async function confirmPendingAdjust(e: FormEvent) {
+    e.preventDefault()
+    if (!pendingAdjust) return
+    const reason = adjustReason === 'Outro' ? adjustOther.trim() : adjustReason
+    if (!reason) return
+    const { item, newQuantity } = pendingAdjust
+    setPendingAdjust(null)
+    await applyAdjust(item, newQuantity, reason)
   }
 
   async function updateQuantityPerGuest(id: string, value: number | null) {
@@ -205,8 +277,22 @@ export function Inventory() {
         await supabase.from('inventory_items').delete().eq('id', item.id)
       },
       undo: async () => {
-        await supabase.from('inventory_items').insert(item)
-        setItems((prev) => [...prev, item].sort((a, b) => a.name.localeCompare(b.name)))
+        await supabase.from('inventory_items').insert({
+          id: item.id,
+          unit_id: unitDbIds[item.unit_id]?.unitId,
+          name: item.name,
+          category: item.category,
+          unit_of_measure: item.unit_of_measure,
+          quantity: item.quantity,
+          minimum_quantity: item.minimum_quantity,
+          quantity_per_guest: item.quantity_per_guest,
+          supplier: item.supplier,
+          total_value: item.total_value,
+          has_cost: item.has_cost,
+          last_unit_cost: item.last_unit_cost,
+          consumption_type: item.consumption_type,
+        })
+        await loadItems()
       },
     })
   }
@@ -218,123 +304,111 @@ export function Inventory() {
     setEditUnitOfMeasure(item.unit_of_measure)
     setEditMinimumQuantity(String(item.minimum_quantity))
     setEditSupplier(item.supplier ?? '')
+    setEditConsumptionType(item.consumption_type)
   }
 
   async function handleSaveEditItem(e: FormEvent) {
     e.preventDefault()
     if (!editingItem || !editName.trim()) return
-
     const updates = {
       name: editName.trim(),
       category: editCategory,
       unit_of_measure: editUnitOfMeasure.trim() || 'un',
       minimum_quantity: Number(editMinimumQuantity) || 0,
       supplier: editSupplier.trim() || null,
+      consumption_type: editConsumptionType,
     }
-
     const { error } = await supabase.from('inventory_items').update(updates).eq('id', editingItem.id)
     if (error) {
       setError('Não foi possível salvar as alterações do item.')
       return
     }
-
     setItems((prev) => prev.map((i) => (i.id === editingItem.id ? { ...i, ...updates } : i)))
     setEditingItem(null)
   }
 
+  // ---------- Transferência (com acerto entre unidades) ----------
   function openTransferItem(item: InventoryItem) {
     setTransferringItem(item)
     setTransferDestUnit(UNITS.find((u) => u.id !== item.unit_id)?.id ?? '')
-    setTransferQuantity(String(item.quantity))
+    setTransferQuantity(String(item.quantity).replace('.', ','))
     setTransferError(null)
+    setTransferZeroConfirm(false)
   }
 
-  async function handleConfirmTransfer(e: FormEvent) {
+  async function handleConfirmTransfer(e: FormEvent, allowZero = false) {
     e.preventDefault()
-    if (!transferringItem) return
-    const amount = Number(transferQuantity)
-    if (!amount || amount <= 0) {
-      setTransferError('Informe uma quantidade válida.')
-      return
-    }
-    if (amount > transferringItem.quantity) {
-      setTransferError('Essa quantidade é maior do que o disponível.')
-      return
-    }
+    if (!transferringItem || transferring) return
+    const amount = parseDecimal(transferQuantity)
+    if (!amount || amount <= 0) return setTransferError('Informe uma quantidade válida.')
+    if (amount > transferringItem.quantity) return setTransferError('Essa quantidade é maior do que o disponível.')
     const destDbIds = unitDbIds[transferDestUnit]
-    if (!destDbIds) {
-      setTransferError('Não encontrei essa unidade no banco de dados ainda.')
+    if (!destDbIds) return setTransferError('Não encontrei essa unidade no banco de dados ainda.')
+
+    setTransferring(true)
+    const { data, error: rpcError } = await supabase.rpc('transfer_stock', {
+      p_item: transferringItem.id,
+      p_dest_unit: destDbIds.unitId,
+      p_quantity: amount,
+      p_allow_zero: allowZero,
+    })
+    setTransferring(false)
+    if (rpcError) {
+      if (rpcError.message.includes('SEM_CUSTO')) {
+        setTransferZeroConfirm(true)
+        setTransferError(null)
+        return
+      }
+      setTransferError(friendlyDbError(rpcError.message))
       return
     }
-
-    const { data: existing } = await supabase
-      .from('inventory_items')
-      .select('id, quantity')
-      .eq('unit_id', destDbIds.unitId)
-      .eq('name', transferringItem.name)
-      .maybeSingle()
-
-    const newSourceQuantity = Math.round((transferringItem.quantity - amount) * 100) / 100
-
-    if (existing) {
-      const newDestQuantity = Math.round((Number(existing.quantity) + amount) * 100) / 100
-      const { error } = await supabase.from('inventory_items').update({ quantity: newDestQuantity }).eq('id', existing.id)
-      if (error) {
-        setTransferError('Não foi possível transferir o item.')
-        return
-      }
-      await supabase.from('inventory_items').update({ quantity: newSourceQuantity }).eq('id', transferringItem.id)
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id === transferringItem.id) return { ...i, quantity: newSourceQuantity }
-          if (i.id === existing.id) return { ...i, quantity: newDestQuantity }
-          return i
-        }),
-      )
-    } else {
-      const { data: created, error } = await supabase
-        .from('inventory_items')
-        .insert({
-          unit_id: destDbIds.unitId,
-          name: transferringItem.name,
-          category: transferringItem.category,
-          unit_of_measure: transferringItem.unit_of_measure,
-          quantity: amount,
-          minimum_quantity: transferringItem.minimum_quantity,
-          quantity_per_guest: transferringItem.quantity_per_guest,
-          supplier: transferringItem.supplier,
-        })
-        .select()
-        .single()
-      if (error) {
-        setTransferError('Não foi possível transferir o item.')
-        return
-      }
-      await supabase.from('inventory_items').update({ quantity: newSourceQuantity }).eq('id', transferringItem.id)
-      setItems((prev) => [
-        ...prev.map((i) => (i.id === transferringItem.id ? { ...i, quantity: newSourceQuantity } : i)),
-        {
-          id: created.id,
-          unit_id: transferDestUnit,
-          name: created.name,
-          category: created.category,
-          unit_of_measure: created.unit_of_measure,
-          quantity: Number(created.quantity),
-          minimum_quantity: Number(created.minimum_quantity),
-          quantity_per_guest: created.quantity_per_guest !== null ? Number(created.quantity_per_guest) : null,
-          supplier: created.supplier,
-        },
-      ])
-    }
-
+    const r = data as { amount: number; status: string; from_unit: string; to_unit: string; item: string; quantity: number; unit_of_measure: string }
     setTransferringItem(null)
+    setNotice(
+      r.status === 'pendente'
+        ? `Transferência registrada. ${qtd(r.quantity)} ${r.unit_of_measure} de ${r.item} foram transferidas de ${r.from_unit} para ${r.to_unit}. Acerto pendente: ${brl(r.amount)}. ${r.to_unit} precisa enviar ${brl(r.amount)} para ${r.from_unit}. Depois de enviar, confirme o acerto em Financeiro → Acertos entre unidades.`
+        : `Transferência registrada. ${qtd(r.quantity)} ${r.unit_of_measure} de ${r.item} foram de ${r.from_unit} para ${r.to_unit}, sem valor (o item estava sem custo).`,
+    )
+    await loadItems()
   }
 
-  function setStatusFor(id: string, status: PurchaseStatus) {
-    setPurchaseStatus((prev) => ({ ...prev, [id]: status }))
+  // ---------- Custo inicial ----------
+  function openCost(item: InventoryItem) {
+    setCostItem(item)
+    setCostValue('')
+    setCostError(null)
+  }
+
+  async function handleSaveCost(e: FormEvent) {
+    e.preventDefault()
+    if (!costItem) return
+    const v = parseDecimal(costValue)
+    if (v === null || v < 0) return setCostError('Informe um custo unitário válido.')
+    const { error: rpcError } = await supabase.rpc('set_initial_stock_cost', { p_item: costItem.id, p_unit_cost: v })
+    if (rpcError) return setCostError(friendlyDbError(rpcError.message))
+    setCostItem(null)
+    await loadItems()
+  }
+
+  // ---------- Histórico do item ----------
+  async function openHistory(item: InventoryItem) {
+    setHistoryItem(item)
+    setMovements([])
+    const { data } = await supabase
+      .from('inventory_movements')
+      .select('id, kind, quantity, value, reason, expense_id, created_by_name, created_at')
+      .eq('inventory_item_id', item.id)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    setMovements((data ?? []).map((m) => ({ ...m, quantity: Number(m.quantity), value: Number(m.value) })))
+  }
+
+  function setStatusFor(item: InventoryItem, status: PurchaseStatus) {
+    setPurchaseStatus((prev) => ({ ...prev, [item.id]: status }))
+    // Recebeu a compra: lança pela Entrada de compra (com valor), já com o item e a quantidade que faltava.
     if (status === 'recebido') {
-      const item = items.find((i) => i.id === id)
-      if (item && item.quantity < item.minimum_quantity) changeQuantityTyped(id, String(item.minimum_quantity))
+      const falta = Math.max(effectiveMinimum(item) - item.quantity, 0)
+      setPurchaseModal({ expenseId: null, prefill: { itemId: item.id, quantity: Math.ceil(falta * 100) / 100 } })
     }
   }
 
@@ -347,7 +421,6 @@ export function Inventory() {
       setError('Não encontrei essa unidade no banco de dados ainda.')
       return
     }
-
     const { data, error } = await supabase
       .from('inventory_items')
       .insert({
@@ -355,50 +428,86 @@ export function Inventory() {
         name: name.trim(),
         category,
         unit_of_measure: unitOfMeasure.trim() || 'un',
-        quantity: Number(quantity) || 0,
+        quantity: parseDecimal(quantity) ?? 0,
         minimum_quantity: Number(minimumQuantity) || 0,
         quantity_per_guest: quantityPerGuest ? Number(quantityPerGuest) : null,
+        consumption_type: quantityPerGuest ? 'por_convidado' : 'por_festa',
         supplier: supplier.trim() || null,
       })
       .select()
       .single()
-
     if (error) {
       setError('Não foi possível cadastrar o item.')
       return
     }
-
-    setItems((prev) => [
-      ...prev,
-      {
-        id: data.id,
-        unit_id: unitSlug,
-        name: data.name,
-        category: data.category,
-        unit_of_measure: data.unit_of_measure,
-        quantity: Number(data.quantity),
-        minimum_quantity: Number(data.minimum_quantity),
-        quantity_per_guest: data.quantity_per_guest !== null ? Number(data.quantity_per_guest) : null,
-        supplier: data.supplier,
-      },
-    ])
+    const cost = parseDecimal(initialCost)
+    if (cost !== null && cost >= 0) {
+      const { error: costErr } = await supabase.rpc('set_initial_stock_cost', { p_item: data.id, p_unit_cost: cost })
+      if (costErr) setError(`Item cadastrado, mas o custo não foi salvo: ${friendlyDbError(costErr.message)}`)
+    }
     setName('')
     setQuantity('')
+    setInitialCost('')
     setMinimumQuantity('')
     setQuantityPerGuest('')
     setSupplier('')
+    await loadItems()
+  }
+
+  function closePurchaseModal() {
+    setPurchaseModal(null)
+    if (searchParams.get('compra') || searchParams.get('entrada')) setSearchParams({}, { replace: true })
+  }
+
+  function quantityInput(i: InventoryItem, compact = false) {
+    return (
+      <input
+        type="text"
+        inputMode="decimal"
+        value={qtyDrafts[i.id] ?? qtd(i.quantity, 2)}
+        onChange={(e) => setQtyDrafts((prev) => ({ ...prev, [i.id]: e.target.value }))}
+        onBlur={() => commitTyped(i)}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        onFocus={(e) => e.target.select()}
+        aria-label={`Quantidade de ${i.name}`}
+        className={compact
+          ? `w-10 text-center border rounded px-1 py-1 text-xs ${i.quantity < i.minimum_quantity ? 'border-danger text-danger' : 'border-line'}`
+          : 'w-14 text-center border border-line rounded px-1 py-0.5 text-sm'}
+      />
+    )
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Estoque</h1>
-        <p className="text-sm text-muted mt-1">Quantidade de insumos por unidade e o que precisa ser comprado</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Estoque</h1>
+          <p className="text-sm text-muted mt-1">Quantidade e valor dos insumos por unidade, e o que precisa ser comprado</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/consumo-por-convidado" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-paper border border-line hover:bg-line/40">
+            Consumo por convidado
+          </Link>
+          <Button onClick={() => setPurchaseModal({ expenseId: null, prefill: null })}>
+            <ShoppingCart className="w-4 h-4" /> Entrada de compra
+          </Button>
+        </div>
       </div>
 
-      {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
+      {error && (
+        <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5 flex justify-between gap-3">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+      {notice && (
+        <div className="bg-teal-light text-teal text-sm rounded-lg px-4 py-3 flex justify-between gap-3">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <p className="text-xs text-muted">Itens cadastrados</p>
           <p className="text-2xl font-display font-semibold mt-1">{filtered.length}</p>
@@ -407,13 +516,17 @@ export function Inventory() {
           <p className="text-xs text-muted flex items-center gap-1.5">
             {precisamRepor.length > 0 && <AlertTriangle className="w-3.5 h-3.5 text-danger" />} Precisam de reposição
           </p>
-          <p className={`text-2xl font-display font-semibold mt-1 ${precisamRepor.length > 0 ? 'text-danger' : ''}`}>
-            {precisamRepor.length}
-          </p>
+          <p className={`text-2xl font-display font-semibold mt-1 ${precisamRepor.length > 0 ? 'text-danger' : ''}`}>{precisamRepor.length}</p>
         </Card>
         <Card>
-          <p className="text-xs text-muted">Categorias em uso</p>
-          <p className="text-2xl font-display font-semibold mt-1">{new Set(filtered.map((i) => i.category)).size}</p>
+          <p className="text-xs text-muted">Valor em estoque</p>
+          <p className="text-2xl font-display font-semibold mt-1">{brl(valorEmEstoque)}</p>
+          <p className="text-[11px] text-muted mt-0.5">pelo custo médio de cada item</p>
+        </Card>
+        <Card className={semCusto > 0 ? 'border-amber' : ''}>
+          <p className="text-xs text-muted">Itens sem custo</p>
+          <p className={`text-2xl font-display font-semibold mt-1 ${semCusto > 0 ? 'text-amber' : ''}`}>{semCusto}</p>
+          <p className="text-[11px] text-muted mt-0.5">use "Definir custo" na tabela</p>
         </Card>
       </div>
 
@@ -431,20 +544,14 @@ export function Inventory() {
                   <div>
                     <p className="font-medium">{i.name}</p>
                     <p className="text-xs text-muted">
-                      Tem {i.quantity} {i.unit_of_measure} · mínimo é {minimo} {i.unit_of_measure}
-                      {i.quantity_per_guest != null && nextFesta
-                        ? ` (calculado para a festa de ${format(parseISO(nextFesta.date), 'dd/MM')}, ${nextFesta.guests} convidados)`
-                        : ''}
+                      Tem {qtd(i.quantity)} {i.unit_of_measure} · mínimo é {qtd(minimo)} {i.unit_of_measure}
+                      {i.quantity_per_guest != null && nextFesta ? ` (calculado para a festa de ${format(parseISO(nextFesta.date), 'dd/MM')}, ${nextFesta.guests} convidados)` : ''}
                       {i.supplier ? ` · fornecedor: ${i.supplier}` : ''}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge tone="danger">Comprar {Math.max(minimo - i.quantity, 0)} {i.unit_of_measure}</Badge>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatusFor(i.id, e.target.value as PurchaseStatus)}
-                      className="border border-line rounded-lg px-2 py-1 text-xs"
-                    >
+                    <Badge tone="danger">Comprar {qtd(Math.max(minimo - i.quantity, 0))} {i.unit_of_measure}</Badge>
+                    <select value={status} onChange={(e) => setStatusFor(i, e.target.value as PurchaseStatus)} className="border border-line rounded-lg px-2 py-1 text-xs" aria-label="Situação da compra">
                       {(Object.keys(purchaseStatusLabel) as PurchaseStatus[]).map((s) => (
                         <option key={s} value={s}>{purchaseStatusLabel[s]}</option>
                       ))}
@@ -455,100 +562,53 @@ export function Inventory() {
             })}
           </ul>
         )}
+        <p className="text-xs text-muted mt-2">Ao marcar "Recebido", abre a Entrada de compra já com o item, para lançar com o valor pago.</p>
       </Card>
 
       <Card title="Cadastrar item">
-        <form onSubmit={handleAddItem} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <form onSubmit={handleAddItem} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs text-muted mb-1">Nome do item</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Copo descartável"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Copo descartável" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="block text-xs text-muted mb-1">Categoria</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as InventoryCategory)}
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            >
-              {INVENTORY_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+            <select value={category} onChange={(e) => setCategory(e.target.value as InventoryCategory)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+              {INVENTORY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-muted mb-1">Unidade de medida</label>
-            <input
-              type="text"
-              value={unitOfMeasure}
-              onChange={(e) => setUnitOfMeasure(e.target.value)}
-              placeholder="un, kg, litro, pacote..."
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Quantidade atual</label>
-            <input
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="0"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Estoque mínimo fixo</label>
-            <input
-              type="number"
-              value={minimumQuantity}
-              onChange={(e) => setMinimumQuantity(e.target.value)}
-              placeholder="0"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1">Quantidade por convidado (opcional)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={quantityPerGuest}
-              onChange={(e) => setQuantityPerGuest(e.target.value)}
-              placeholder="Ex: 1 copo por convidado"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
-            <p className="text-xs text-muted mt-1">
-              Se preenchido, o mínimo do dia passa a ser calculado pelos convidados da próxima festa da unidade —
-              o que for maior entre esse cálculo e o mínimo fixo.
-            </p>
+            <input type="text" value={unitOfMeasure} onChange={(e) => setUnitOfMeasure(e.target.value)} placeholder="un, kg, litro, pacote..." className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
-            <input
-              type="text"
-              value={supplier}
-              onChange={(e) => setSupplier(e.target.value)}
-              placeholder="Nome do fornecedor"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-            />
+            <input type="text" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Nome do fornecedor" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
           </div>
-          <div className="flex items-end sm:col-span-2 lg:col-span-3">
-            <Button type="submit">
-              <Plus className="w-4 h-4" /> Adicionar item
-            </Button>
+          <div>
+            <label className="block text-xs text-muted mb-1">Quantidade atual</label>
+            <input type="text" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Custo unitário (opcional)</label>
+            <input type="text" inputMode="decimal" value={initialCost} onChange={(e) => setInitialCost(e.target.value)} placeholder="R$ por unidade" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Estoque mínimo fixo</label>
+            <input type="number" value={minimumQuantity} onChange={(e) => setMinimumQuantity(e.target.value)} placeholder="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Quantidade por convidado (opcional)</label>
+            <input type="number" step="0.01" value={quantityPerGuest} onChange={(e) => setQuantityPerGuest(e.target.value)} placeholder="Ex: 1 copo por convidado" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex items-end sm:col-span-2 lg:col-span-4">
+            <Button type="submit"><Plus className="w-4 h-4" /> Adicionar item</Button>
           </div>
         </form>
-        {selectedUnit === 'todas' && (
-          <p className="text-xs text-muted mt-3">
-            Como "Ambas as unidades" está selecionado, o novo item é cadastrado em {UNITS[0].name}.
-          </p>
-        )}
+        <p className="text-xs text-muted mt-3">
+          Para registrar uma compra (com valor e conta a pagar), use <strong>Entrada de compra</strong>.
+          {selectedUnit === 'todas' && ` Como "Ambas as unidades" está selecionado, o novo item é cadastrado em ${UNITS[0].name}.`}
+        </p>
       </Card>
 
       {Object.keys(velaGroupsByUnit).length > 0 && (
@@ -561,9 +621,7 @@ export function Inventory() {
                   <thead>
                     <tr>
                       <th className="pr-2 pb-1 text-left text-xs text-muted font-medium"></th>
-                      {rows.map((r) => (
-                        <th key={r.digito} className="px-1 pb-1 text-center text-xs text-muted font-medium w-10">{r.digito}</th>
-                      ))}
+                      {rows.map((r) => <th key={r.digito} className="px-1 pb-1 text-center text-xs text-muted font-medium w-10">{r.digito}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -574,21 +632,7 @@ export function Inventory() {
                           const item = r[cor]
                           return (
                             <td key={r.digito} className="px-1 py-1">
-                              {item ? (
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={qtyDrafts[item.id] ?? formatQty(item.quantity)}
-                                  onChange={(e) => changeQuantityTyped(item.id, e.target.value)}
-                                  onBlur={() => finishQuantityTyping(item.id)}
-                                  onFocus={(e) => e.target.select()}
-                                  className={`w-10 text-center border rounded px-1 py-1 text-xs ${
-                                    item.quantity < item.minimum_quantity ? 'border-danger text-danger' : 'border-line'
-                                  }`}
-                                />
-                              ) : (
-                                <span className="text-muted text-xs">—</span>
-                              )}
+                              {item ? quantityInput(item, true) : <span className="text-muted text-xs">—</span>}
                             </td>
                           )
                         })}
@@ -600,123 +644,225 @@ export function Inventory() {
             </div>
           ))}
           <p className="text-xs text-muted mt-2">
-            Números em vermelho estão abaixo do mínimo (1 unidade). Clique no número e digite a quantidade — salva
-            sozinho e já atualiza a lista de compras.
+            Números em vermelho estão abaixo do mínimo (1 unidade). Clique no número, digite a quantidade e aperte Enter. Para diminuir, o sistema pede o motivo.
           </p>
         </Card>
       )}
 
       <Card title="Todos os itens">
+        <p className="text-xs text-muted mb-3 flex items-start gap-1.5">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          Os botões +/− e o campo de quantidade são só para ajuste (contagem, perda, quebra) e não criam despesa. Compras devem ser lançadas por Entrada de compra, para não duplicar o estoque.
+        </p>
         {loading ? (
           <p className="text-sm text-muted py-4 text-center">Carregando...</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                <th className="pb-3 font-medium">Item</th>
-                <th className="pb-3 font-medium">Categoria</th>
-                <th className="pb-3 font-medium">Quantidade</th>
-                <th className="pb-3 font-medium">Por convidado</th>
-                <th className="pb-3 font-medium">Mínimo</th>
-                <th className="pb-3 font-medium">Status</th>
-                <th className="pb-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {outrosItens.map((i) => {
-                const minimo = effectiveMinimum(i)
-                return (
-                <tr key={i.id}>
-                  <td className="py-3 font-medium">
-                    {i.name}
-                    {i.supplier && <p className="text-xs text-muted font-normal">{i.supplier}</p>}
-                  </td>
-                  <td className="py-3 text-muted">{i.category}</td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => adjustQuantity(i.id, -1)}
-                        className="w-6 h-6 rounded border border-line flex items-center justify-center hover:bg-paper"
-                        aria-label="Diminuir quantidade"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <div className="flex items-center gap-1">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted border-b border-line">
+                  <th className="pb-3 font-medium">Item</th>
+                  <th className="pb-3 font-medium">Quantidade</th>
+                  <th className="pb-3 font-medium">Valor em estoque</th>
+                  <th className="pb-3 font-medium">Por convidado</th>
+                  <th className="pb-3 font-medium">Mínimo</th>
+                  <th className="pb-3 font-medium">Status</th>
+                  <th className="pb-3 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {outrosItens.map((i) => {
+                  const minimo = effectiveMinimum(i)
+                  const custo = unitCost(i)
+                  return (
+                    <tr key={i.id}>
+                      <td className="py-3 font-medium">
+                        {i.name}
+                        <p className="text-xs text-muted font-normal">{i.category}{i.supplier ? ` · ${i.supplier}` : ''}</p>
+                      </td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => stepQuantity(i, -1)} className="w-6 h-6 rounded border border-line flex items-center justify-center hover:bg-paper" aria-label="Diminuir quantidade">
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {quantityInput(i)}
+                            <span className="text-xs text-muted">{i.unit_of_measure}</span>
+                          </div>
+                          <button onClick={() => stepQuantity(i, 1)} className="w-6 h-6 rounded border border-line flex items-center justify-center hover:bg-paper" aria-label="Aumentar quantidade">
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3">
+                        {i.has_cost ? (
+                          <>
+                            <p>{brl(i.total_value)}</p>
+                            <p className="text-[11px] text-muted">{custo != null ? `${brl(custo)} / ${i.unit_of_measure}` : ''}</p>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge tone="amber">Sem custo</Badge>
+                            <Can permission="action:estoque.custo_inicial">
+                              <button onClick={() => openCost(i)} className="text-xs text-purple font-medium">Definir custo</button>
+                            </Can>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3">
                         <input
-                          type="text"
-                          inputMode="decimal"
-                          value={qtyDrafts[i.id] ?? formatQty(i.quantity)}
-                          onChange={(e) => changeQuantityTyped(i.id, e.target.value)}
-                          onBlur={() => finishQuantityTyping(i.id)}
-                          onFocus={(e) => e.target.select()}
-                          aria-label={`Quantidade de ${i.name}`}
-                          className="w-14 text-center border border-line rounded px-1 py-0.5 text-sm"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          defaultValue={i.quantity_per_guest ?? ''}
+                          key={i.quantity_per_guest ?? 'none'}
+                          placeholder="—"
+                          aria-label={`Consumo por convidado de ${i.name}`}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim()
+                            const value = raw === '' ? null : Number(raw)
+                            if (value !== i.quantity_per_guest) updateQuantityPerGuest(i.id, value)
+                          }}
+                          className="w-20 border border-line rounded-lg px-2 py-1 text-xs"
                         />
-                        <span className="text-xs text-muted">{i.unit_of_measure}</span>
-                      </div>
-                      <button
-                        onClick={() => adjustQuantity(i.id, 1)}
-                        className="w-6 h-6 rounded border border-line flex items-center justify-center hover:bg-paper"
-                        aria-label="Aumentar quantidade"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="py-3">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      defaultValue={i.quantity_per_guest ?? ''}
-                      key={i.quantity_per_guest ?? 'none'}
-                      placeholder="—"
-                      onBlur={(e) => {
-                        const raw = e.target.value.trim()
-                        const value = raw === '' ? null : Number(raw)
-                        if (value !== i.quantity_per_guest) updateQuantityPerGuest(i.id, value)
-                      }}
-                      className="w-20 border border-line rounded-lg px-2 py-1 text-xs"
-                    />
-                    <span className="text-[10px] text-muted block">{i.unit_of_measure}/convidado</span>
-                  </td>
-                  <td className="py-3 text-muted">
-                    {minimo} {i.unit_of_measure}
-                    {i.quantity_per_guest != null && <span className="text-[10px] block">(varia por convidado)</span>}
-                  </td>
-                  <td className="py-3">
-                    {i.quantity < minimo ? (
-                      <Badge tone="danger">Repor</Badge>
-                    ) : (
-                      <Badge tone="teal">OK</Badge>
-                    )}
-                  </td>
-                  <td className="py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => openTransferItem(i)} className="text-muted hover:text-purple" aria-label="Transferir para outra unidade">
-                        <ArrowLeftRight className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => openEditItem(i)} className="text-muted hover:text-purple" aria-label="Editar item">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleRemove(i.id)} className="text-muted hover:text-danger" aria-label="Remover item">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )})}
-              {outrosItens.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-6 text-center text-muted">
-                    Nenhum item cadastrado ainda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                        <span className="text-[10px] text-muted block">{i.unit_of_measure}/convidado</span>
+                      </td>
+                      <td className="py-3 text-muted">
+                        {qtd(minimo)} {i.unit_of_measure}
+                        {i.quantity_per_guest != null && <span className="text-[10px] block">(varia por convidado)</span>}
+                      </td>
+                      <td className="py-3">{i.quantity < minimo ? <Badge tone="danger">Repor</Badge> : <Badge tone="teal">OK</Badge>}</td>
+                      <td className="py-3 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button onClick={() => openHistory(i)} className="text-muted hover:text-purple" aria-label="Histórico do item"><History className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openTransferItem(i)} className="text-muted hover:text-purple" aria-label="Transferir para outra unidade"><ArrowLeftRight className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openEditItem(i)} className="text-muted hover:text-purple" aria-label="Editar item"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => handleRemove(i.id)} className="text-muted hover:text-danger" aria-label="Remover item"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {outrosItens.length === 0 && (
+                  <tr><td colSpan={7} className="py-6 text-center text-muted">Nenhum item cadastrado ainda.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
+
+      {purchaseModal && (
+        <StockPurchaseModal
+          expenseId={purchaseModal.expenseId}
+          prefill={purchaseModal.prefill}
+          defaultUnitSlug={(purchaseModal.prefill && items.find((i) => i.id === purchaseModal.prefill?.itemId)?.unit_id) || (selectedUnit === 'todas' ? UNITS[0].id : selectedUnit)}
+          onClose={closePurchaseModal}
+          onSaved={(msg) => {
+            closePurchaseModal()
+            setNotice(msg)
+            loadItems()
+          }}
+        />
+      )}
+
+      {pendingAdjust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setPendingAdjust(null)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Diminuir estoque</h2>
+            <p className="text-sm text-muted mb-4">
+              {pendingAdjust.item.name}: de {qtd(pendingAdjust.item.quantity)} para {qtd(pendingAdjust.newQuantity)} {pendingAdjust.item.unit_of_measure}. Qual o motivo?
+            </p>
+            <form onSubmit={confirmPendingAdjust} className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {ADJUST_REASONS.map((r) => (
+                  <button key={r} type="button" onClick={() => setAdjustReason(r)} className={`px-3 py-1.5 rounded-lg text-sm border ${adjustReason === r ? 'bg-purple text-white border-purple' : 'border-line'}`}>{r}</button>
+                ))}
+              </div>
+              {adjustReason === 'Outro' && (
+                <input autoFocus value={adjustOther} onChange={(e) => setAdjustOther(e.target.value)} placeholder="Descreva o motivo" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              )}
+              <p className="text-xs text-muted">Sai pelo custo médio e fica no histórico do item. Não vira despesa no Financeiro.</p>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setPendingAdjust(null)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center" disabled={adjustReason === 'Outro' && !adjustOther.trim()}>Confirmar</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {costItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setCostItem(null)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Definir custo inicial</h2>
+            <p className="text-sm text-muted mb-4">
+              {costItem.name} — {qtd(costItem.quantity)} {costItem.unit_of_measure} em estoque. O valor passa a valer para o estoque atual, sem mudar a quantidade e sem criar lançamento no Financeiro.
+            </p>
+            <form onSubmit={handleSaveCost} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Custo por {costItem.unit_of_measure} (R$)</label>
+                <input autoFocus value={costValue} onChange={(e) => setCostValue(e.target.value)} inputMode="decimal" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                {parseDecimal(costValue) != null && (
+                  <p className="text-xs text-muted mt-1">Valor em estoque: {brl((parseDecimal(costValue) ?? 0) * costItem.quantity)}</p>
+                )}
+              </div>
+              {costError && <div className="bg-danger-light text-danger text-sm rounded-lg px-3 py-2">{costError}</div>}
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setCostItem(null)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center">Salvar</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {historyItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setHistoryItem(null)} />
+          <div className="relative w-full max-w-2xl bg-surface rounded-card p-6 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h2 className="text-lg font-display font-semibold">Histórico — {historyItem.name}</h2>
+                <p className="text-sm text-muted">Hoje: {qtd(historyItem.quantity)} {historyItem.unit_of_measure} · {historyItem.has_cost ? brl(historyItem.total_value) : 'sem custo'}</p>
+              </div>
+              <button onClick={() => setHistoryItem(null)} aria-label="Fechar"><X className="w-5 h-5 text-muted" /></button>
+            </div>
+            {movements.length === 0 ? (
+              <p className="text-sm text-muted">Nenhuma movimentação registrada ainda.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted border-b border-line">
+                    <th className="pb-2 font-medium">Quando</th>
+                    <th className="pb-2 font-medium">O quê</th>
+                    <th className="pb-2 font-medium text-right">Qtd</th>
+                    <th className="pb-2 font-medium text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {movements.map((m) => (
+                    <tr key={m.id}>
+                      <td className="py-2 text-xs text-muted whitespace-nowrap">{new Date(m.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                      <td className="py-2">
+                        <p>{MOVEMENT_LABEL[m.kind] ?? m.kind}{m.created_by_name ? <span className="text-xs text-muted"> · {m.created_by_name}</span> : null}</p>
+                        {m.reason && <p className="text-xs text-muted">{m.reason}</p>}
+                        {m.expense_id && (m.kind === 'compra' || m.kind === 'compra_ajuste') && (
+                          <button onClick={() => { setHistoryItem(null); setPurchaseModal({ expenseId: m.expense_id, prefill: null }) }} className="text-xs text-purple font-medium">Editar compra</button>
+                        )}
+                      </td>
+                      <td className={`py-2 text-right ${m.quantity < 0 ? 'text-danger' : 'text-teal'}`}>{m.quantity > 0 ? '+' : ''}{qtd(m.quantity)}</td>
+                      <td className="py-2 text-right text-muted">{m.value !== 0 ? brl(m.value) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -726,63 +872,39 @@ export function Inventory() {
             <form onSubmit={handleSaveEditItem} className="space-y-3">
               <div>
                 <label className="block text-xs text-muted mb-1">Nome do item</label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                />
+                <input type="text" required value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="block text-xs text-muted mb-1">Categoria</label>
-                <select
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value as InventoryCategory)}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                >
-                  {INVENTORY_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                <select value={editCategory} onChange={(e) => setEditCategory(e.target.value as InventoryCategory)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  {INVENTORY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-muted mb-1">Unidade de medida</label>
-                  <input
-                    type="text"
-                    value={editUnitOfMeasure}
-                    onChange={(e) => setEditUnitOfMeasure(e.target.value)}
-                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                  />
+                  <input type="text" value={editUnitOfMeasure} onChange={(e) => setEditUnitOfMeasure(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs text-muted mb-1">Estoque mínimo fixo</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={editMinimumQuantity}
-                    onChange={(e) => setEditMinimumQuantity(e.target.value)}
-                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                  />
+                  <input type="number" min={0} value={editMinimumQuantity} onChange={(e) => setEditMinimumQuantity(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
-                <input
-                  type="text"
-                  value={editSupplier}
-                  onChange={(e) => setEditSupplier(e.target.value)}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                />
+                <label className="block text-xs text-muted mb-1">Tipo de consumo</label>
+                <select value={editConsumptionType} onChange={(e) => setEditConsumptionType(e.target.value as 'por_convidado' | 'por_festa')} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  <option value="por_convidado">Por convidado (varia com o público)</option>
+                  <option value="por_festa">Por festa (velas, toalhas…)</option>
+                </select>
               </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
+                <input type="text" value={editSupplier} onChange={(e) => setEditSupplier(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <p className="text-xs text-muted">A quantidade é ajustada na tabela (+/−). O valor muda só por Entrada de compra, consumo, ajuste ou transferência.</p>
               <div className="flex gap-2 pt-2">
-                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditingItem(null)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" className="flex-1 justify-center">
-                  Salvar
-                </Button>
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditingItem(null)}>Cancelar</Button>
+                <Button type="submit" className="flex-1 justify-center">Salvar</Button>
               </div>
             </form>
           </div>
@@ -795,47 +917,42 @@ export function Inventory() {
           <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
             <h2 className="text-lg font-display font-semibold mb-1">Transferir item</h2>
             <p className="text-sm text-muted mb-4">
-              "{transferringItem.name}" — tem {transferringItem.quantity} {transferringItem.unit_of_measure} em{' '}
-              {UNITS.find((u) => u.id === transferringItem.unit_id)?.name}.
+              "{transferringItem.name}" — tem {qtd(transferringItem.quantity)} {transferringItem.unit_of_measure} em {UNITS.find((u) => u.id === transferringItem.unit_id)?.name}
+              {unitCost(transferringItem) != null ? `, a ${brl(unitCost(transferringItem))} por ${transferringItem.unit_of_measure}` : ', sem custo'}.
             </p>
             {transferError && <div className="bg-danger-light text-danger text-sm rounded-lg px-3 py-2 mb-3">{transferError}</div>}
-            <form onSubmit={handleConfirmTransfer} className="space-y-3">
+            <form onSubmit={(e) => handleConfirmTransfer(e)} className="space-y-3">
               <div>
                 <label className="block text-xs text-muted mb-1">Transferir para</label>
-                <select
-                  value={transferDestUnit}
-                  onChange={(e) => setTransferDestUnit(e.target.value)}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                >
-                  {UNITS.filter((u) => u.id !== transferringItem.unit_id).map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
+                <select value={transferDestUnit} onChange={(e) => setTransferDestUnit(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  {UNITS.filter((u) => u.id !== transferringItem.unit_id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-muted mb-1">Quantidade a transferir</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  max={transferringItem.quantity}
-                  value={transferQuantity}
-                  onChange={(e) => setTransferQuantity(e.target.value)}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                />
+                <input inputMode="decimal" value={transferQuantity} onChange={(e) => setTransferQuantity(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                {unitCost(transferringItem) != null && parseDecimal(transferQuantity) != null && (
+                  <p className="text-xs text-muted mt-1">Valor do acerto: {brl(Math.round((parseDecimal(transferQuantity) ?? 0) * (unitCost(transferringItem) ?? 0) * 100) / 100)} (pelo custo médio, sem margem)</p>
+                )}
               </div>
               <p className="text-xs text-muted">
-                Se já existir um item com esse nome na unidade de destino, a quantidade soma nele — senão, cria um
-                item novo lá com os mesmos dados (categoria, unidade de medida, mínimo).
+                A unidade que recebe "compra" da outra pelo custo. Fica um acerto pendente, que é confirmado em Financeiro → Acertos entre unidades quando o dinheiro for enviado.
               </p>
-              <div className="flex gap-2 pt-2">
-                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setTransferringItem(null)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" className="flex-1 justify-center">
-                  Transferir
-                </Button>
-              </div>
+              {transferZeroConfirm ? (
+                <div className="bg-amber-light rounded-lg p-3 text-sm space-y-2">
+                  <p className="font-medium text-amber">Este item está sem custo.</p>
+                  <p>O valor do acerto entre as unidades vai ficar zerado. É isso mesmo?</p>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="secondary" onClick={() => setTransferZeroConfirm(false)}>Não, voltar</Button>
+                    <Button type="button" disabled={transferring} onClick={(e) => handleConfirmTransfer(e as unknown as FormEvent, true)}>Sim, transferir com valor zero</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setTransferringItem(null)}>Cancelar</Button>
+                  <Button type="submit" className="flex-1 justify-center" disabled={transferring}>{transferring ? 'Transferindo...' : 'Transferir'}</Button>
+                </div>
+              )}
             </form>
           </div>
         </div>

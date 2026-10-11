@@ -7,6 +7,13 @@ import { useUnit, UNITS } from '../lib/UnitContext'
 import { currentMonthValue, lastNMonths } from '../lib/monthUtils'
 import { loadMonthByUnit, type MonthResult } from '../lib/financeAggregates'
 
+// Lucro = receita − estornos − taxas − despesas gerais − custos das festas
+// + recuperação de custo de estoque (acerto recebido de outra unidade, que
+// reduz despesa e não conta como faturamento).
+function lucroDe(r: MonthResult) {
+  return r.receita - r.estornos - r.taxasCartao - r.despesas - r.custos + r.recuperacao
+}
+
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
@@ -35,7 +42,7 @@ export function MonthlyResult() {
     const hist = await Promise.all(
       months.map(async ({ value, label }) => {
         const data = await loadMonthByUnit(value, unitIdBySlug)
-        const lucro = Object.values(data).reduce((s, r) => s + (r.receita - r.taxasCartao - r.despesas - r.custos), 0)
+        const lucro = Object.values(data).reduce((s, r) => s + lucroDe(r), 0)
         return { mes: label, lucro }
       }),
     )
@@ -46,8 +53,8 @@ export function MonthlyResult() {
   const porUnidade = useMemo(
     () =>
       unitIds.map((id) => {
-        const r = byUnit[id] ?? { receita: 0, taxasCartao: 0, despesas: 0, custos: 0 }
-        const lucro = r.receita - r.taxasCartao - r.despesas - r.custos
+        const r = byUnit[id] ?? { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0 }
+        const lucro = lucroDe(r)
         const margem = r.receita > 0 ? (lucro / r.receita) * 100 : 0
         return {
           id,
@@ -55,6 +62,8 @@ export function MonthlyResult() {
           receita: r.receita,
           taxasCartao: r.taxasCartao,
           despesas: r.despesas,
+          estornos: r.estornos,
+          recuperacao: r.recuperacao,
           custos: r.custos,
           lucro,
           margem,
@@ -68,11 +77,13 @@ export function MonthlyResult() {
       acc.receita += u.receita
       acc.taxasCartao += u.taxasCartao
       acc.despesas += u.despesas
+      acc.estornos += u.estornos
+      acc.recuperacao += u.recuperacao
       acc.custos += u.custos
       acc.lucro += u.lucro
       return acc
     },
-    { receita: 0, taxasCartao: 0, despesas: 0, custos: 0, lucro: 0 },
+    { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, lucro: 0 },
   )
   const margemTotal = totais.receita > 0 ? (totais.lucro / totais.receita) * 100 : 0
 
@@ -90,10 +101,15 @@ export function MonthlyResult() {
       ) : (
         <>
           <Card>
-            <div className="grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-line gap-y-3">
+            <div className="grid grid-cols-2 lg:grid-cols-7 divide-y lg:divide-y-0 lg:divide-x divide-line gap-y-3">
               <div className="pb-3 sm:pb-0 sm:pr-4">
                 <p className="text-xs text-muted">Receita recebida</p>
                 <p className="text-xl font-display font-semibold mt-1">{currency(totais.receita)}</p>
+              </div>
+              <div className="py-3 sm:py-0 sm:px-4">
+                <p className="text-xs text-muted">(−) Estornos</p>
+                <p className="text-xl font-display font-semibold mt-1 text-danger">{currency(totais.estornos)}</p>
+                <p className="text-[11px] text-muted mt-0.5">devoluções de festas canceladas</p>
               </div>
               <div className="py-3 sm:py-0 sm:px-4">
                 <p className="text-xs text-muted">(−) Taxas de cartão</p>
@@ -106,6 +122,11 @@ export function MonthlyResult() {
               <div className="py-3 sm:py-0 sm:px-4">
                 <p className="text-xs text-muted">(−) Custos das festas</p>
                 <p className="text-xl font-display font-semibold mt-1 text-danger">{currency(totais.custos)}</p>
+              </div>
+              <div className="py-3 sm:py-0 sm:px-4">
+                <p className="text-xs text-muted">(+) Recuperação de custo de estoque</p>
+                <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(totais.recuperacao)}</p>
+                <p className="text-[11px] text-muted mt-0.5">acertos recebidos de outra unidade</p>
               </div>
               <div className="pt-3 sm:pt-0 sm:pl-4">
                 <p className="text-xs text-muted">= Lucro líquido</p>
@@ -120,7 +141,8 @@ export function MonthlyResult() {
             Receita = pagamentos recebidos este mês (valor bruto). Como os pagamentos podem chegar antes ou depois da
             festa, esse número não é exatamente "faturamento das festas deste mês" — é o dinheiro que entrou de fato.
             O lucro líquido já desconta a taxa estimada da maquininha de cada pagamento, conforme a forma de pagamento
-            (ajustável em Pagamentos).
+            (ajustável em Pagamentos). Estornos reduzem a receita no mês em que foram devolvidos. Acertos entre unidades
+            recebidos entram como recuperação de custo (reduzem despesa) e não contam como faturamento.
           </p>
 
           {selectedUnit === 'todas' && (
@@ -130,9 +152,11 @@ export function MonthlyResult() {
                   <tr className="text-left text-xs text-muted border-b border-line">
                     <th className="pb-3 font-medium">Unidade</th>
                     <th className="pb-3 font-medium">Receita</th>
+                    <th className="pb-3 font-medium">Estornos</th>
                     <th className="pb-3 font-medium">Taxas de cartão</th>
                     <th className="pb-3 font-medium">Despesas gerais</th>
                     <th className="pb-3 font-medium">Custos de festa</th>
+                    <th className="pb-3 font-medium">Recuperação</th>
                     <th className="pb-3 font-medium">Lucro líquido</th>
                     <th className="pb-3 font-medium">Margem</th>
                   </tr>
@@ -142,9 +166,11 @@ export function MonthlyResult() {
                     <tr key={u.id}>
                       <td className="py-3 font-medium">{u.name}</td>
                       <td className="py-3">{currency(u.receita)}</td>
+                      <td className="py-3 text-danger">{currency(u.estornos)}</td>
                       <td className="py-3 text-danger">{currency(u.taxasCartao)}</td>
                       <td className="py-3 text-danger">{currency(u.despesas)}</td>
                       <td className="py-3 text-danger">{currency(u.custos)}</td>
+                      <td className="py-3 text-teal">{currency(u.recuperacao)}</td>
                       <td className={`py-3 font-medium ${u.lucro >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(u.lucro)}</td>
                       <td className="py-3">
                         <div className="flex items-center gap-1.5">

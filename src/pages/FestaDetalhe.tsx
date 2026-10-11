@@ -42,6 +42,7 @@ import { SendReviewModal } from '../components/SendReviewModal'
 import { monthBounds } from '../lib/monthUtils'
 import { downloadPdf } from '../lib/pdfExport'
 import { describeAudit, type AuditEntry } from '../lib/auditLabels'
+import { todayIso, friendlyDbError, brl } from '../lib/format'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABEL, type MessageTemplateKey } from '../lib/whatsapp'
 import {
   PAYMENT_METHODS,
@@ -87,6 +88,9 @@ interface FestaDetalhada {
   cancellationReason: string | null
   cancellationFeePercent: number | null
   refundAmount: number | null
+  consumptionFinalized: boolean
+  excludeFromAverages: boolean
+  excludeReason: string | null
 }
 
 interface FestaNote {
@@ -230,6 +234,18 @@ interface StockConsumptionEntry {
   itemName: string
   quantity: number
   hasInventoryLink: boolean
+  // Custo congelado no momento do consumo (só informativo, Lucro por festa).
+  totalCost: number | null
+  noCost: boolean
+}
+
+interface RefundExpense {
+  id: string
+  amount: number
+  status: string
+  dueDate: string
+  paidDate: string | null
+  paymentMethod: string | null
 }
 
 function currency(v: number) {
@@ -316,6 +332,17 @@ export function FestaDetalhe() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelFeePercent, setCancelFeePercent] = useState('20')
+  // Estorno (valor devolvido): vira saída "Estorno" no Financeiro da unidade.
+  const [refundValue, setRefundValue] = useState('')
+  const [refundPaid, setRefundPaid] = useState(true)
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>('pix')
+  const [refundDate, setRefundDate] = useState(todayIso())
+  const [refundDueDate, setRefundDueDate] = useState(todayIso())
+  const [refundDuplicates, setRefundDuplicates] = useState<{ description: string | null; amount: number; due_date: string }[] | null>(null)
+  const [refundExpense, setRefundExpense] = useState<RefundExpense | null>(null)
+  const [showRefundEdit, setShowRefundEdit] = useState(false)
+  const [savingRefund, setSavingRefund] = useState(false)
+  const [excludeDraft, setExcludeDraft] = useState<string | null>(null)
 
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -636,8 +663,12 @@ export function FestaDetalhe() {
       cancellationReason: data.cancellation_reason,
       cancellationFeePercent: data.cancellation_fee_percent !== null ? Number(data.cancellation_fee_percent) : null,
       refundAmount: data.refund_amount !== null ? Number(data.refund_amount) : null,
+      consumptionFinalized: !!data.consumption_finalized,
+      excludeFromAverages: !!data.exclude_from_averages,
+      excludeReason: data.exclude_reason ?? null,
     })
     setLoading(false)
+    if (data.status === 'cancelada') loadRefundExpense()
 
     if (data.unit_id) {
       const { data: pkgs } = await supabase
@@ -1290,12 +1321,41 @@ export function FestaDetalhe() {
   async function loadStockConsumption() {
     const { data } = await supabase
       .from('reservation_stock_consumption')
-      .select('id, item_name, quantity, inventory_item_id')
+      .select('id, item_name, quantity, inventory_item_id, total_cost, no_cost')
       .eq('reservation_id', id)
       .order('created_at', { ascending: false })
     setStockConsumption(
-      (data ?? []).map((c) => ({ id: c.id, itemName: c.item_name, quantity: Number(c.quantity), hasInventoryLink: c.inventory_item_id !== null })),
+      (data ?? []).map((c) => ({
+        id: c.id,
+        itemName: c.item_name,
+        quantity: Number(c.quantity),
+        hasInventoryLink: c.inventory_item_id !== null,
+        totalCost: c.total_cost != null ? Number(c.total_cost) : null,
+        noCost: !!c.no_cost,
+      })),
     )
+  }
+
+  async function handleConsumptionStatus(finalized: boolean, exclude: boolean, reason: string | null) {
+    if (!festa) return
+    const { error: rpcError } = await supabase.rpc('set_consumption_status', { p_id: festa.id, p_finalized: finalized, p_exclude: exclude, p_reason: reason })
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message))
+      return
+    }
+    setFesta((prev) => (prev ? { ...prev, consumptionFinalized: finalized, excludeFromAverages: exclude, excludeReason: exclude ? reason : null } : prev))
+    setExcludeDraft(null)
+  }
+
+  async function loadRefundExpense() {
+    const { data } = await supabase
+      .from('expenses')
+      .select('id, amount, status, due_date, paid_date, payment_method')
+      .eq('reservation_id', id)
+      .eq('category', 'Estorno')
+      .neq('status', 'cancelado')
+      .maybeSingle()
+    setRefundExpense(data ? { id: data.id, amount: Number(data.amount), status: data.status, dueDate: data.due_date, paidDate: data.paid_date, paymentMethod: data.payment_method } : null)
   }
 
   async function handleSaveConsumption(e: FormEvent) {
@@ -1358,6 +1418,7 @@ export function FestaDetalhe() {
       return
     }
     if (festa) await loadUnitInventory(festa.unitId)
+    await loadStockConsumption()
   }
 
   function startEditConsumption(entry: StockConsumptionEntry) {
@@ -1377,31 +1438,105 @@ export function FestaDetalhe() {
       return
     }
     if (festa) await loadUnitInventory(festa.unitId)
+    await loadStockConsumption()
   }
 
-  async function handleConfirmCancel(e: FormEvent) {
+  function openCancelModal() {
+    setCancelFeePercent('20')
+    setRefundValue(String(Math.round(totalPago * 0.8 * 100) / 100).replace('.', ','))
+    setRefundPaid(true)
+    setRefundDate(todayIso())
+    setRefundDueDate(todayIso())
+    setRefundDuplicates(null)
+    setShowCancelModal(true)
+  }
+
+  // Aviso anti-duplicidade: devolução já lançada à mão como conta a pagar no mesmo mês.
+  async function findRefundDuplicates(amount: number, refDate: string) {
+    if (!festa) return []
+    const month = refDate.slice(0, 7)
+    const [y, m] = month.split('-').map(Number)
+    const end = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`
+    const { data } = await supabase
+      .from('expenses')
+      .select('id, description, supplier, amount, due_date, category, reservation_id')
+      .eq('unit_id', festa.unitId)
+      .gte('due_date', `${month}-01`)
+      .lt('due_date', end)
+    const nome = festa.cliente.toLowerCase()
+    return (data ?? [])
+      .filter((e) => !(e.category === 'Estorno' && e.reservation_id === festa.id))
+      .filter((e) => Math.abs(Number(e.amount) - amount) < 0.01 || (nome.length > 2 && `${e.description ?? ''} ${e.supplier ?? ''}`.toLowerCase().includes(nome)))
+      .map((e) => ({ description: e.description, amount: Number(e.amount), due_date: e.due_date }))
+  }
+
+  async function handleConfirmCancel(e: FormEvent, skipDuplicateCheck = false) {
     e.preventDefault()
     const feePercent = Math.min(100, Math.max(0, Number(cancelFeePercent) || 0))
-    const refund = Math.round(totalPago * (1 - feePercent / 100) * 100) / 100
+    const refund = Math.max(0, Math.round((parseDecimal(refundValue) || 0) * 100) / 100)
+    if (refund > 0 && !can('action:festa.estorno')) {
+      setError('Seu perfil não tem permissão para registrar estorno. Peça para o Administrador, Financeiro ou Comercial cancelar esta festa.')
+      return
+    }
+    if (refund > 0 && !skipDuplicateCheck) {
+      const dups = await findRefundDuplicates(refund, refundPaid ? refundDate : refundDueDate)
+      if (dups.length > 0) {
+        setRefundDuplicates(dups)
+        return
+      }
+    }
 
-    const { error } = await supabase
-      .from('reservations')
-      .update({
-        status: 'cancelada',
-        cancellation_reason: cancelReason.trim() || null,
-        cancellation_fee_percent: feePercent,
-        refund_amount: refund,
-        cancelled_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-
-    if (error) {
-      setError('Não foi possível cancelar a festa.')
+    const { error: rpcError } = await supabase.rpc('cancel_reservation', {
+      p_id: id,
+      p_reason: cancelReason.trim() || null,
+      p_fee_percent: feePercent,
+      p_refund: refund,
+      p_refund_paid: refundPaid,
+      p_payment_method: refundPaid ? refundMethod : null,
+      p_paid_date: refundPaid ? refundDate : null,
+      p_due_date: refundPaid ? null : refundDueDate,
+    })
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message) || 'Não foi possível cancelar a festa.')
       return
     }
 
     setFesta((prev) => (prev ? { ...prev, status: 'cancelada', cancellationReason: cancelReason.trim() || null, cancellationFeePercent: feePercent, refundAmount: refund } : prev))
     setShowCancelModal(false)
+    setRefundDuplicates(null)
+    await loadRefundExpense()
+  }
+
+  function openRefundEdit() {
+    const current = refundExpense?.amount ?? festa?.refundAmount ?? 0
+    setRefundValue(String(current).replace('.', ','))
+    setRefundPaid(refundExpense ? refundExpense.status === 'pago' : true)
+    setRefundMethod((refundExpense?.paymentMethod as PaymentMethod) ?? 'pix')
+    setRefundDate(refundExpense?.paidDate ?? todayIso())
+    setRefundDueDate(refundExpense?.dueDate ?? todayIso())
+    setShowRefundEdit(true)
+  }
+
+  async function handleSaveRefund(e: FormEvent) {
+    e.preventDefault()
+    const refund = Math.max(0, Math.round((parseDecimal(refundValue) || 0) * 100) / 100)
+    setSavingRefund(true)
+    const { error: rpcError } = await supabase.rpc('save_cancellation_refund', {
+      p_id: id,
+      p_refund: refund,
+      p_refund_paid: refundPaid,
+      p_payment_method: refundPaid ? refundMethod : null,
+      p_paid_date: refundPaid ? refundDate : null,
+      p_due_date: refundPaid ? null : refundDueDate,
+    })
+    setSavingRefund(false)
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message))
+      return
+    }
+    setFesta((prev) => (prev ? { ...prev, refundAmount: refund } : prev))
+    setShowRefundEdit(false)
+    await loadRefundExpense()
   }
 
   async function toggleChecklistItem(itemId: string, currentlyDone: boolean) {
@@ -2139,7 +2274,7 @@ export function FestaDetalhe() {
             </button>
           </Can>
           {festa.status !== 'cancelada' && (
-            <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setShowCancelModal(true)}>
+            <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={openCancelModal}>
               <Ban className="w-3.5 h-3.5" /> Cancelar festa
             </Button>
           )}
@@ -2151,12 +2286,27 @@ export function FestaDetalhe() {
         </div>
       </div>
 
-      {festa.status === 'cancelada' && festa.cancellationReason !== null && (
+      {festa.status === 'cancelada' && (
         <Card className="border-danger">
           <p className="text-sm font-medium text-danger">Festa cancelada</p>
           <p className="text-xs text-muted mt-1">
-            Motivo: {festa.cancellationReason} · Multa retida: {festa.cancellationFeePercent}% · Valor devolvido ao cliente: {currency(festa.refundAmount ?? 0)}
+            Motivo: {festa.cancellationReason ?? 'não informado'} · Multa retida: {festa.cancellationFeePercent}% · Valor devolvido ao cliente: {brl(festa.refundAmount ?? 0)}
           </p>
+          <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+            {refundExpense ? (
+              <span className={refundExpense.status === 'pago' ? 'text-teal' : 'text-amber'}>
+                Estorno no Financeiro: {brl(refundExpense.amount)} ·{' '}
+                {refundExpense.status === 'pago'
+                  ? `devolvido em ${(refundExpense.paidDate ?? '').split('-').reverse().join('/')}`
+                  : `a devolver até ${refundExpense.dueDate.split('-').reverse().join('/')}`}
+              </span>
+            ) : (
+              (festa.refundAmount ?? 0) > 0 && <span className="text-amber">O valor devolvido ainda não está lançado como estorno no Financeiro.</span>
+            )}
+            <Can permission="action:festa.estorno">
+              <button onClick={openRefundEdit} className="text-purple font-medium">{refundExpense ? 'Editar estorno' : 'Lançar estorno'}</button>
+            </Can>
+          </div>
         </Card>
       )}
 
@@ -3044,6 +3194,9 @@ export function FestaDetalhe() {
                         placeholder="0"
                         className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                       />
+                      {(parseDecimal(consumptionForm[item.id] ?? '') || 0) > item.quantity && (
+                        <p className="text-[11px] text-amber mt-0.5">Maior que o estoque: o estoque vai a zero (nunca fica negativo).</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3083,6 +3236,62 @@ export function FestaDetalhe() {
             </form>
           </Can>
 
+          {(() => {
+            const convidados = (festa.convidados ?? 0) + (festa.courtesyGuests ?? 0)
+            const custoTotal = stockConsumption.reduce((s, c) => s + (c.totalCost ?? 0), 0)
+            const semCusto = stockConsumption.filter((c) => c.hasInventoryLink && c.noCost).length
+            return (
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-paper rounded-lg px-3 py-2">
+                  <p className="text-xs text-muted">Custo dos insumos (estoque)</p>
+                  <p className="font-display font-semibold">{brl(custoTotal)}</p>
+                  {semCusto > 0 && <p className="text-[11px] text-amber">{semCusto} item(ns) sem custo</p>}
+                </div>
+                <div className="bg-paper rounded-lg px-3 py-2">
+                  <p className="text-xs text-muted">Convidados usados no cálculo</p>
+                  <p className="font-display font-semibold">{convidados > 0 ? convidados : '—'}</p>
+                  <p className="text-[11px] text-muted">{convidados > 0 ? 'contratados + cortesias' : 'sem nº de convidados: não entra nas médias'}</p>
+                </div>
+                <div className="bg-paper rounded-lg px-3 py-2">
+                  <p className="text-xs text-muted">Custo de insumos por convidado</p>
+                  <p className="font-display font-semibold">{convidados > 0 ? brl(custoTotal / convidados) : '—'}</p>
+                </div>
+              </div>
+            )
+          })()}
+
+          <Can permission="action:festa.consumo_pos_festa">
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              {festa.consumptionFinalized ? (
+                <>
+                  <Badge tone="teal">Consumo finalizado</Badge>
+                  <button onClick={() => handleConsumptionStatus(false, festa.excludeFromAverages, festa.excludeReason)} className="text-xs text-muted hover:text-purple">Reabrir</button>
+                </>
+              ) : (
+                <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => handleConsumptionStatus(true, festa.excludeFromAverages, festa.excludeReason)}>
+                  Marcar consumo como finalizado
+                </Button>
+              )}
+              {festa.excludeFromAverages ? (
+                <>
+                  <Badge tone="amber">Fora das médias{festa.excludeReason ? `: ${festa.excludeReason}` : ''}</Badge>
+                  <button onClick={() => handleConsumptionStatus(festa.consumptionFinalized, false, null)} className="text-xs text-muted hover:text-purple">Voltar a contar</button>
+                </>
+              ) : excludeDraft !== null ? (
+                <span className="flex items-center gap-2">
+                  <input autoFocus value={excludeDraft} onChange={(e) => setExcludeDraft(e.target.value)} placeholder="Motivo (ex: consumo atípico)" className="border border-line rounded-lg px-2 py-1 text-xs" />
+                  <button disabled={!excludeDraft.trim()} onClick={() => handleConsumptionStatus(festa.consumptionFinalized, true, excludeDraft.trim())} className="text-xs text-purple font-medium disabled:opacity-40">Salvar</button>
+                  <button onClick={() => setExcludeDraft(null)} className="text-xs text-muted">Cancelar</button>
+                </span>
+              ) : (
+                <button onClick={() => setExcludeDraft('')} className="text-xs text-muted hover:text-purple">Excluir das médias de consumo</button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted -mt-2 mb-4">
+              Só festas com "Consumo finalizado" entram nas médias de consumo por convidado (Estoque → Consumo por convidado). O custo é só informativo: aparece no Lucro por festa e não mexe no caixa.
+            </p>
+          </Can>
+
           <p className="text-sm font-semibold mb-2">Histórico desta festa</p>
           <ul className="divide-y divide-line">
             {stockConsumption.map((c) => (
@@ -3114,6 +3323,17 @@ export function FestaDetalhe() {
                     <span>
                       {c.itemName} — {c.quantity}
                       {!c.hasInventoryLink && <span className="text-xs text-muted"> (não descontou do estoque)</span>}
+                      {c.hasInventoryLink && (
+                        <span className="block text-xs text-muted">
+                          {c.noCost || c.totalCost == null ? 'sem custo' : `custo ${brl(c.totalCost)}`}
+                          {(() => {
+                            const g = (festa.convidados ?? 0) + (festa.courtesyGuests ?? 0)
+                            if (g <= 0) return null
+                            const porConv = c.quantity / g
+                            return ` · ${porConv.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} por convidado${c.totalCost != null && !c.noCost ? ` (${brl(c.totalCost / g)})` : ''}`
+                          })()}
+                        </span>
+                      )}
                     </span>
                     <Can permission="action:festa.consumo_pos_festa">
                       <div className="flex items-center gap-3 shrink-0">
@@ -3142,7 +3362,7 @@ export function FestaDetalhe() {
             <p className="text-sm text-muted mb-4">
               Já foi pago {currency(totalPago)} até agora. Defina a multa retida para calcular o valor a devolver.
             </p>
-            <form onSubmit={handleConfirmCancel} className="space-y-3">
+            <form onSubmit={(e) => handleConfirmCancel(e)} className="space-y-3">
               <div>
                 <label className="block text-xs text-muted mb-1">Motivo do cancelamento</label>
                 <input
@@ -3164,19 +3384,103 @@ export function FestaDetalhe() {
                   className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                 />
               </div>
-              <p className="text-sm text-muted">
-                Valor a devolver ao cliente:{' '}
-                <strong className="text-ink">
-                  {currency(Math.round(totalPago * (1 - Math.min(100, Math.max(0, Number(cancelFeePercent) || 0)) / 100) * 100) / 100)}
-                </strong>
-              </p>
-              <div className="flex gap-2 pt-2">
+              <div>
+                <label className="block text-xs text-muted mb-1">Valor devolvido ao cliente (R$)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={refundValue}
+                  onChange={(e) => setRefundValue(e.target.value)}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                />
+                <p className="text-[11px] text-muted mt-1">
+                  Pela multa de {Math.min(100, Math.max(0, Number(cancelFeePercent) || 0))}%: {brl(Math.round(totalPago * (1 - Math.min(100, Math.max(0, Number(cancelFeePercent) || 0)) / 100) * 100) / 100)}.{' '}
+                  <button
+                    type="button"
+                    className="text-purple font-medium"
+                    onClick={() => setRefundValue(String(Math.round(totalPago * (1 - Math.min(100, Math.max(0, Number(cancelFeePercent) || 0)) / 100) * 100) / 100).replace('.', ','))}
+                  >
+                    Usar esse valor
+                  </button>
+                </p>
+              </div>
+              {(parseDecimal(refundValue) || 0) > 0 && (
+                <div className="border-t border-line pt-3 space-y-2">
+                  <p className="text-xs text-muted">O valor devolvido vira uma saída "Estorno" no Financeiro da unidade.</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setRefundPaid(true)} className={`px-3 py-1.5 rounded-lg text-sm border ${refundPaid ? 'bg-purple text-white border-purple' : 'border-line'}`}>Já devolvi</button>
+                    <button type="button" onClick={() => setRefundPaid(false)} className={`px-3 py-1.5 rounded-lg text-sm border ${!refundPaid ? 'bg-purple text-white border-purple' : 'border-line'}`}>Ainda não devolvi</button>
+                  </div>
+                  {refundPaid ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as PaymentMethod)} aria-label="Forma da devolução" className="border border-line rounded-lg px-2 py-2 text-sm">
+                        {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
+                      </select>
+                      <input type="date" value={refundDate} onChange={(e) => setRefundDate(e.target.value)} aria-label="Data da devolução" className="border border-line rounded-lg px-2 py-2 text-sm" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs text-muted mb-1">Vencimento da devolução</label>
+                      <input type="date" value={refundDueDate} onChange={(e) => setRefundDueDate(e.target.value)} className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
+                      <p className="text-[11px] text-muted mt-1">Fica como conta a pagar e só sai do caixa quando for marcada como paga.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {refundDuplicates && (
+                <div className="bg-amber-light rounded-lg p-3 text-sm">
+                  <p className="font-medium text-amber flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Já existe conta parecida neste mês</p>
+                  <ul className="text-xs mt-1 space-y-0.5">
+                    {refundDuplicates.map((d, i) => <li key={i}>• {d.description ?? 'Despesa'} — {brl(d.amount)} (venc. {d.due_date.split('-').reverse().join('/')})</li>)}
+                  </ul>
+                  <p className="text-xs mt-1">Se a devolução já foi lançada à mão, confira antes para não contar duas vezes.</p>
+                  <div className="flex gap-2 mt-2">
+                    <Button type="button" variant="secondary" onClick={() => setRefundDuplicates(null)}>Voltar</Button>
+                    <Button type="button" onClick={(e) => { setRefundDuplicates(null); handleConfirmCancel(e as unknown as FormEvent, true) }}>Cancelar a festa mesmo assim</Button>
+                  </div>
+                </div>
+              )}
+              <div className={`flex gap-2 pt-2 ${refundDuplicates ? 'hidden' : ''}`}>
                 <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setShowCancelModal(false)}>
                   Voltar
                 </Button>
                 <Button type="submit" className="flex-1 justify-center !bg-danger hover:!bg-danger">
                   Confirmar cancelamento
                 </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showRefundEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setShowRefundEdit(false)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">{refundExpense ? 'Editar estorno' : 'Lançar estorno'}</h2>
+            <p className="text-sm text-muted mb-4">Atualiza o mesmo lançamento "Estorno" no Financeiro — nunca cria outro. Valor zero remove o estorno.</p>
+            <form onSubmit={handleSaveRefund} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Valor devolvido (R$)</label>
+                <input type="text" inputMode="decimal" value={refundValue} onChange={(e) => setRefundValue(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setRefundPaid(true)} className={`px-3 py-1.5 rounded-lg text-sm border ${refundPaid ? 'bg-purple text-white border-purple' : 'border-line'}`}>Já devolvi</button>
+                <button type="button" onClick={() => setRefundPaid(false)} className={`px-3 py-1.5 rounded-lg text-sm border ${!refundPaid ? 'bg-purple text-white border-purple' : 'border-line'}`}>Ainda não devolvi</button>
+              </div>
+              {refundPaid ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as PaymentMethod)} aria-label="Forma da devolução" className="border border-line rounded-lg px-2 py-2 text-sm">
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
+                  </select>
+                  <input type="date" value={refundDate} onChange={(e) => setRefundDate(e.target.value)} aria-label="Data da devolução" className="border border-line rounded-lg px-2 py-2 text-sm" />
+                </div>
+              ) : (
+                <input type="date" value={refundDueDate} onChange={(e) => setRefundDueDate(e.target.value)} aria-label="Vencimento da devolução" className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
+              )}
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setShowRefundEdit(false)}>Voltar</Button>
+                <Button type="submit" className="flex-1 justify-center" disabled={savingRefund}>{savingRefund ? 'Salvando...' : 'Salvar'}</Button>
               </div>
             </form>
           </div>

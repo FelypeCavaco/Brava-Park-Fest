@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X } from 'lucide-react'
+import { Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -21,6 +22,7 @@ import {
 import { currentMonthValue, lastNMonths, monthBounds, addMonthsToValue } from '../lib/monthUtils'
 import { loadMonthByUnit, loadExpectedRemainingByUnit } from '../lib/financeAggregates'
 import { useUndo } from '../lib/UndoContext'
+import { friendlyDbError } from '../lib/format'
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -40,27 +42,9 @@ const statusTone: Record<PayableStatus, 'amber' | 'teal' | 'danger' | 'neutral'>
   cancelado: 'neutral',
 }
 
-interface InventoryItemLite {
-  id: string
-  name: string
-  quantity: number
-  unitOfMeasure: string
-}
-
-interface PurchaseItemRow {
-  itemId: string
-  itemName: string // já vem descritivo (ex: "Suco de laranja — 2x 5L (10 L)"), pra ficar claro no histórico depois
-  quantity: number
-}
-
-interface PurchaseVariant {
-  id: string
-  label: string
-  volumeAmount: number
-}
-
 interface UnitSummary {
   entradas: number
+  acertosRecebidos: number
   aPagar: number
   atrasado: number
   totalDespesas: number
@@ -76,6 +60,11 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Saída de estorno de cancelamento (só muda pela festa).
+function isEstorno(e: Expense) {
+  return (e.category as string) === 'Estorno' && !!e.reservation_id
+}
+
 // Conta não paga: vencimento antes de hoje = Atrasado, senão A vencer (o
 // banco faz a mesma regra ao salvar e quando o Financeiro/Painel abrem).
 function effectiveStatus(status: PayableStatus, dueDate: string): PayableStatus {
@@ -88,10 +77,12 @@ export function Finance() {
   const { scheduleDelete } = useUndo()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
-  const [expenseItemsByExpense, setExpenseItemsByExpense] = useState<Record<string, { id: string; itemName: string; quantity: number; inventoryItemId: string | null }[]>>({})
+  const [expenseItemsByExpense, setExpenseItemsByExpense] = useState<Record<string, { id: string; itemName: string; quantity: number; inventoryItemId: string | null; lineValue?: number | null }[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [receitaByUnit, setReceitaByUnit] = useState<Record<string, number>>({})
+  // Recebido de outra unidade por estoque transferido: entra no caixa, mas não é faturamento.
+  const [acertosRecebidosByUnit, setAcertosRecebidosByUnit] = useState<Record<string, number>>({})
   const [recebimentosPrevistosByUnit, setRecebimentosPrevistosByUnit] = useState<Record<string, number>>({})
   const [fluxoCaixaByUnit, setFluxoCaixaByUnit] = useState<Record<string, { mes: string; mesValue: string; entradas: number; saidas: number }[]>>({})
 
@@ -130,12 +121,9 @@ export function Finance() {
   const [editPaidDate, setEditPaidDate] = useState('')
   const [savingEditExpense, setSavingEditExpense] = useState(false)
 
-  const [purchaseInventory, setPurchaseInventory] = useState<InventoryItemLite[]>([])
-  const [purchaseVariants, setPurchaseVariants] = useState<Record<string, PurchaseVariant[]>>({})
-  const [purchaseItems, setPurchaseItems] = useState<PurchaseItemRow[]>([])
-  const [purchaseItemId, setPurchaseItemId] = useState('')
-  const [purchaseItemVariantId, setPurchaseItemVariantId] = useState('')
-  const [purchaseItemQty, setPurchaseItemQty] = useState('')
+  // Excluir compra de estoque cujo estoque já foi consumido pede justificativa.
+  const [purchaseDeletion, setPurchaseDeletion] = useState<{ expense: Expense; justification: string; error: string | null } | null>(null)
+  const [expandedPurchase, setExpandedPurchase] = useState<string | null>(null)
 
   const [recUnit, setRecUnit] = useState(selectedUnit === 'todas' ? UNITS[0].id : selectedUnit)
   const [recCategory, setRecCategory] = useState<ExpenseCategory>(EXPENSE_CATEGORIES[0])
@@ -149,41 +137,10 @@ export function Finance() {
     if (!unitDbIdsLoading) loadAll()
   }, [unitDbIdsLoading, unitDbIds])
 
-  useEffect(() => {
-    if (!unitDbIdsLoading) loadPurchaseInventory(expenseUnit)
-  }, [expenseUnit, unitDbIdsLoading, unitDbIds])
-
   function dbIdToSlugMap() {
     const map: Record<string, string> = {}
     for (const slug of Object.keys(unitDbIds)) map[unitDbIds[slug].unitId] = slug
     return map
-  }
-
-  async function loadPurchaseInventory(unitSlug: string) {
-    const dbIds = unitDbIds[unitSlug]
-    if (!dbIds) return
-    const { data } = await supabase.from('inventory_items').select('id, name, quantity, unit_of_measure').eq('unit_id', dbIds.unitId).order('name')
-    const items = (data ?? []).map((i) => ({ id: i.id, name: i.name, quantity: Number(i.quantity), unitOfMeasure: i.unit_of_measure }))
-    setPurchaseInventory(items)
-
-    const itemIds = items.map((i) => i.id)
-    const variantsMap: Record<string, PurchaseVariant[]> = {}
-    if (itemIds.length > 0) {
-      const { data: variantsData } = await supabase
-        .from('inventory_purchase_variants')
-        .select('id, inventory_item_id, label, volume_amount')
-        .in('inventory_item_id', itemIds)
-      for (const v of variantsData ?? []) {
-        if (!variantsMap[v.inventory_item_id]) variantsMap[v.inventory_item_id] = []
-        variantsMap[v.inventory_item_id].push({ id: v.id, label: v.label, volumeAmount: Number(v.volume_amount) })
-      }
-    }
-    setPurchaseVariants(variantsMap)
-
-    setPurchaseItems([])
-    setPurchaseItemId('')
-    setPurchaseItemVariantId('')
-    setPurchaseItemQty('')
   }
 
   async function loadAll() {
@@ -197,7 +154,7 @@ export function Finance() {
     const [{ data: exp, error: expErr }, { data: rec }, { data: expItems }] = await Promise.all([
       supabase.from('expenses').select('*').order('due_date', { ascending: false }),
       supabase.from('recurring_expenses').select('*').order('day_of_month'),
-      supabase.from('expense_items').select('id, expense_id, item_name, quantity, inventory_item_id'),
+      supabase.from('expense_items').select('id, expense_id, item_name, quantity, inventory_item_id, line_value'),
     ])
 
     if (expErr) setError('Não foi possível carregar as despesas.')
@@ -216,6 +173,10 @@ export function Finance() {
         payment_method: e.payment_method,
         recurring_expense_id: e.recurring_expense_id,
         covers_festa_costs: !!e.covers_festa_costs,
+        is_stock_purchase: !!e.is_stock_purchase,
+        settlement_batch_id: e.settlement_batch_id ?? null,
+        reservation_id: e.reservation_id ?? null,
+        other_items_value: Number(e.other_items_value ?? 0),
       })),
     )
     setRecurring(
@@ -231,10 +192,10 @@ export function Finance() {
       })),
     )
 
-    const grouped: Record<string, { id: string; itemName: string; quantity: number; inventoryItemId: string | null }[]> = {}
+    const grouped: Record<string, { id: string; itemName: string; quantity: number; inventoryItemId: string | null; lineValue?: number | null }[]> = {}
     for (const it of expItems ?? []) {
       const list = grouped[it.expense_id] ?? []
-      list.push({ id: it.id, itemName: it.item_name, quantity: Number(it.quantity), inventoryItemId: it.inventory_item_id })
+      list.push({ id: it.id, itemName: it.item_name, quantity: Number(it.quantity), inventoryItemId: it.inventory_item_id, lineValue: it.line_value != null ? Number(it.line_value) : null })
       grouped[it.expense_id] = list
     }
     setExpenseItemsByExpense(grouped)
@@ -256,8 +217,13 @@ export function Finance() {
     const currentMonth = currentMonthValue()
     const monthData = await loadMonthByUnit(currentMonth, unitIdBySlug)
     const receita: Record<string, number> = {}
-    for (const slug of Object.keys(unitIdBySlug)) receita[slug] = monthData[slug]?.receita ?? 0
+    const acertos: Record<string, number> = {}
+    for (const slug of Object.keys(unitIdBySlug)) {
+      receita[slug] = monthData[slug]?.receita ?? 0
+      acertos[slug] = monthData[slug]?.recuperacao ?? 0
+    }
     setReceitaByUnit(receita)
+    setAcertosRecebidosByUnit(acertos)
 
     const previsto: Record<string, number> = {}
     for (const slug of Object.keys(unitIdBySlug)) {
@@ -295,8 +261,8 @@ export function Finance() {
         fluxoPorUnidade[slug].push({
           mes: label,
           mesValue: value,
-          entradas: data[slug]?.receita ?? 0,
-          saidas: (data[slug]?.despesas ?? 0) + (data[slug]?.custos ?? 0),
+          entradas: (data[slug]?.receita ?? 0) + (data[slug]?.recuperacao ?? 0),
+          saidas: (data[slug]?.despesas ?? 0) + (data[slug]?.estornos ?? 0) + (data[slug]?.custos ?? 0),
         })
       }
     }
@@ -325,6 +291,16 @@ export function Finance() {
         data: format(parseISO(p.payment_date), 'dd/MM/yyyy'),
         metodo: p.payment_method,
       }))
+      // Acertos recebidos de outra unidade também entram no caixa do mês.
+      const { data: incomes } = await supabase
+        .from('other_incomes')
+        .select('amount, received_date, payment_method, description')
+        .in('unit_id', unitIds)
+        .gte('received_date', startIso)
+        .lt('received_date', endIso)
+      for (const inc of incomes ?? []) {
+        entradas.push({ cliente: 'Acerto entre unidades', valor: Number(inc.amount), data: format(parseISO(inc.received_date), 'dd/MM/yyyy'), metodo: inc.payment_method })
+      }
       setFluxoDetalhe({ tipo, mesLabel, loading: false, entradas, despesasPagas: [], custosFesta: [] })
       return
     }
@@ -381,13 +357,14 @@ export function Finance() {
       // das festas, custos lançados na festa) também saem do saldo.
       const custosFestas = festaCostsByUnit[slug]?.realizados ?? 0
       const custosFestasRestantes = festaCostsByUnit[slug]?.restantes ?? 0
-      const saldo = entradas - totalDespesas - custosFestas
+      const acertosRecebidos = acertosRecebidosByUnit[slug] ?? 0
+      const saldo = entradas + acertosRecebidos - totalDespesas - custosFestas
       const recebimentosPrevistos = recebimentosPrevistosByUnit[slug] ?? 0
       const saldoProjetado = saldo + recebimentosPrevistos - aPagar - atrasado - custosFestasRestantes
-      result[slug] = { entradas, aPagar, atrasado, totalDespesas, custosFestas, custosFestasRestantes, saldo, recebimentosPrevistos, saldoProjetado }
+      result[slug] = { entradas, acertosRecebidos, aPagar, atrasado, totalDespesas, custosFestas, custosFestasRestantes, saldo, recebimentosPrevistos, saldoProjetado }
     }
     return result
-  }, [expenses, receitaByUnit, recebimentosPrevistosByUnit, festaCostsByUnit])
+  }, [expenses, receitaByUnit, acertosRecebidosByUnit, recebimentosPrevistosByUnit, festaCostsByUnit])
 
   // Fluxo de caixa (projeção + gráfico de 6 meses) soma as duas unidades
   // quando "Ambas as unidades" está selecionado — diferente dos cartões de
@@ -399,6 +376,7 @@ export function Finance() {
     return unidades.reduce(
       (acc, s) => ({
         entradas: acc.entradas + s.entradas,
+        acertosRecebidos: acc.acertosRecebidos + s.acertosRecebidos,
         aPagar: acc.aPagar + s.aPagar,
         atrasado: acc.atrasado + s.atrasado,
         totalDespesas: acc.totalDespesas + s.totalDespesas,
@@ -408,7 +386,7 @@ export function Finance() {
         recebimentosPrevistos: acc.recebimentosPrevistos + s.recebimentosPrevistos,
         saldoProjetado: acc.saldoProjetado + s.saldoProjetado,
       }),
-      { entradas: 0, aPagar: 0, atrasado: 0, totalDespesas: 0, custosFestas: 0, custosFestasRestantes: 0, saldo: 0, recebimentosPrevistos: 0, saldoProjetado: 0 },
+      { entradas: 0, acertosRecebidos: 0, aPagar: 0, atrasado: 0, totalDespesas: 0, custosFestas: 0, custosFestasRestantes: 0, saldo: 0, recebimentosPrevistos: 0, saldoProjetado: 0 },
     )
   }, [selectedUnit, summaryByUnit])
 
@@ -460,39 +438,6 @@ export function Finance() {
 
   const totalDespesasGeral = useMemo(() => filteredExpenses.reduce((s, e) => s + (e.covers_festa_costs ? 0 : e.amount), 0), [filteredExpenses])
 
-  function addPurchaseItem() {
-    const item = purchaseInventory.find((i) => i.id === purchaseItemId)
-    if (!item) return
-    const variants = purchaseVariants[item.id] ?? []
-
-    if (variants.length > 0) {
-      const variant = variants.find((v) => v.id === purchaseItemVariantId)
-      const bottles = Number(purchaseItemQty)
-      if (!variant || !bottles) return
-      const totalQuantity = Math.round(variant.volumeAmount * bottles * 1000) / 1000
-      setPurchaseItems((prev) => [
-        ...prev,
-        {
-          itemId: item.id,
-          itemName: `${item.name} — ${bottles}x ${variant.label} (${totalQuantity} ${item.unitOfMeasure})`,
-          quantity: totalQuantity,
-        },
-      ])
-    } else {
-      const qty = Number(purchaseItemQty)
-      if (!qty) return
-      setPurchaseItems((prev) => [...prev, { itemId: item.id, itemName: `${item.name} — ${qty} ${item.unitOfMeasure}`, quantity: qty }])
-    }
-
-    setPurchaseItemId('')
-    setPurchaseItemVariantId('')
-    setPurchaseItemQty('')
-  }
-
-  function removePurchaseItem(index: number) {
-    setPurchaseItems((prev) => prev.filter((_, i) => i !== index))
-  }
-
   async function handleAddExpense(e: FormEvent) {
     e.preventDefault()
     const value = Number(amount)
@@ -526,44 +471,66 @@ export function Finance() {
       return
     }
 
-    if (purchaseItems.length > 0) {
-      const results = await Promise.all(
-        purchaseItems.map((p) =>
-          supabase.rpc('record_stock_purchase', {
-            p_expense_id: data.id,
-            p_inventory_item_id: p.itemId,
-            p_item_name: p.itemName,
-            p_quantity: p.quantity,
-          }),
-        ),
-      )
-      if (results.some((r: any) => r.error)) {
-        setError('A despesa foi salva, mas não deu para atualizar todo o estoque — confira em Estoque.')
-      } else {
-        setExpenseItemsByExpense((prev) => ({
-          ...prev,
-          [data.id]: purchaseItems.map((p, i) => ({ id: results[i].data as string, itemName: p.itemName, quantity: p.quantity, inventoryItemId: p.itemId })),
-        }))
-      }
-      await loadPurchaseInventory(expenseUnit)
-    }
-
     setExpenses((prev) => [
       ...prev,
-      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs },
+      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs, is_stock_purchase: false, settlement_batch_id: null, reservation_id: null, other_items_value: 0 },
     ])
     setDescription('')
     setCoversFestaCosts(false)
     setSupplier('')
     setAmount('')
     setCategoryOutro('')
-    setPurchaseItems([])
     await loadAggregates()
+  }
+
+  // Compra de estoque: exclui pelo banco (desconta estoque e valor juntos). O
+  // "Desfazer" relança a mesma compra com os mesmos itens e valores.
+  async function removeStockPurchase(expense: Expense, justification: string | null) {
+    const { data: lines } = await supabase.from('expense_items').select('inventory_item_id, item_name, quantity, line_value').eq('expense_id', expense.id)
+    const { error: rpcError } = await supabase.rpc('delete_stock_purchase', { p_expense_id: expense.id, p_justification: justification })
+    if (rpcError) {
+      if (rpcError.message.includes('ESTOQUE_NEGATIVO')) {
+        setPurchaseDeletion({ expense, justification: '', error: friendlyDbError(rpcError.message) })
+      } else {
+        setError(friendlyDbError(rpcError.message))
+      }
+      return
+    }
+    setPurchaseDeletion(null)
+    setExpenses((prev) => prev.filter((e) => e.id !== expense.id))
+    await loadAggregates()
+    scheduleDelete({
+      label: `Compra de estoque removida`,
+      commit: async () => {},
+      undo: async () => {
+        await supabase.rpc('save_stock_purchase', {
+          p_expense_id: null,
+          p_unit_id: unitDbIds[expense.unit_id]?.unitId,
+          p_supplier: expense.supplier,
+          p_purchase_date: expense.due_date,
+          p_category: expense.category,
+          p_paid: expense.status === 'pago',
+          p_payment_method: expense.payment_method,
+          p_paid_date: expense.paid_date,
+          p_due_date: expense.due_date,
+          p_other_value: expense.other_items_value,
+          p_items: (lines ?? [])
+            .filter((l) => l.inventory_item_id)
+            .map((l) => ({ inventory_item_id: l.inventory_item_id, item_name: l.item_name, quantity: Number(l.quantity), value: l.line_value != null ? Number(l.line_value) : null })),
+          p_justification: null,
+        })
+        await loadAll()
+      },
+    })
   }
 
   function handleRemove(id: string) {
     const expense = expenses.find((e) => e.id === id)
     if (!expense) return
+    if (expense.is_stock_purchase) {
+      removeStockPurchase(expense, null)
+      return
+    }
     const linkedItems = expenseItemsByExpense[id] ?? []
     setExpenses((prev) => prev.filter((e) => e.id !== id))
     setExpenseItemsByExpense((prev) => {
@@ -771,6 +738,7 @@ export function Finance() {
               <Card>
                 <p className="text-xs text-muted">Entradas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
+                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de acertos entre unidades</p>}
               </Card>
               <Card>
                 <p className="text-xs text-muted">Custos das festas do mês</p>
@@ -790,7 +758,7 @@ export function Finance() {
               <Card className={s.saldo >= 0 ? 'border-teal' : 'border-danger'}>
                 <p className="text-xs text-muted">Saldo do mês</p>
                 <p className={`text-xl font-display font-semibold mt-1 ${s.saldo >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(s.saldo)}</p>
-                <p className="text-[11px] text-muted mt-0.5">entradas − contas pagas − custos das festas</p>
+                <p className="text-[11px] text-muted mt-0.5">entradas + acertos − contas pagas − custos das festas</p>
               </Card>
             </div>
           </div>
@@ -1071,86 +1039,11 @@ export function Finance() {
               />
             </div>
 
-            <div className="sm:col-span-2 pt-2 border-t border-line">
-              <p className="text-xs text-muted mb-2">
-                Comprou insumo pro estoque? Especifica o item e a quantidade — soma sozinho no estoque de {UNITS.find((u) => u.id === expenseUnit)?.name}.
+            <div className="sm:col-span-2 pt-2 border-t border-line flex flex-wrap items-center justify-between gap-2 bg-purple-light/60 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-purple-dark">
+                Para compras de estoque, use <strong>Estoque → Entrada de compra</strong>: ela soma no estoque e cria esta conta sozinha.
               </p>
-              {purchaseItems.length > 0 && (
-                <ul className="mb-2 space-y-1">
-                  {purchaseItems.map((p, index) => (
-                    <li key={`${p.itemId}-${index}`} className="flex items-center justify-between text-xs bg-paper rounded-lg px-3 py-1.5">
-                      {p.itemName}
-                      <button type="button" onClick={() => removePurchaseItem(index)} className="text-muted hover:text-danger">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {purchaseInventory.length > 0 ? (
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap gap-2">
-                    <select
-                      value={purchaseItemId}
-                      onChange={(e) => {
-                        setPurchaseItemId(e.target.value)
-                        setPurchaseItemVariantId('')
-                        setPurchaseItemQty('')
-                      }}
-                      className="flex-1 min-w-[140px] border border-line rounded-lg px-3 py-1.5 text-sm"
-                    >
-                      <option value="">Escolha um item...</option>
-                      {purchaseInventory.map((i) => (
-                        <option key={i.id} value={i.id}>{i.name} (tem {i.quantity} {i.unitOfMeasure})</option>
-                      ))}
-                    </select>
-                    {(purchaseVariants[purchaseItemId]?.length ?? 0) > 0 ? (
-                      <>
-                        <select
-                          value={purchaseItemVariantId}
-                          onChange={(e) => setPurchaseItemVariantId(e.target.value)}
-                          className="border border-line rounded-lg px-3 py-1.5 text-sm"
-                        >
-                          <option value="">Tamanho...</option>
-                          {purchaseVariants[purchaseItemId].map((v) => (
-                            <option key={v.id} value={v.id}>{v.label}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min={0}
-                          value={purchaseItemQty}
-                          onChange={(e) => setPurchaseItemQty(e.target.value)}
-                          placeholder="Quantas garrafas"
-                          className="w-36 border border-line rounded-lg px-3 py-1.5 text-sm"
-                        />
-                      </>
-                    ) : (
-                      <input
-                        type="number"
-                        min={0}
-                        value={purchaseItemQty}
-                        onChange={(e) => setPurchaseItemQty(e.target.value)}
-                        placeholder="Qtd"
-                        className="w-24 border border-line rounded-lg px-3 py-1.5 text-sm"
-                      />
-                    )}
-                    <Button type="button" variant="secondary" className="text-xs px-3 py-1.5" onClick={addPurchaseItem}>
-                      <Plus className="w-3.5 h-3.5" /> Adicionar item
-                    </Button>
-                  </div>
-                  {purchaseItemVariantId && purchaseItemQty && (
-                    <p className="text-xs text-muted">
-                      = {(
-                        Number(purchaseItemQty) * (purchaseVariants[purchaseItemId]?.find((v) => v.id === purchaseItemVariantId)?.volumeAmount ?? 0)
-                      ).toLocaleString('pt-BR')}{' '}
-                      {purchaseInventory.find((i) => i.id === purchaseItemId)?.unitOfMeasure} no estoque
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-muted">Nenhum item cadastrado no estoque desta unidade ainda.</p>
-              )}
+              <Link to="/estoque?entrada=1" className="text-xs font-medium text-purple whitespace-nowrap">Abrir Entrada de compra →</Link>
             </div>
 
             <label className="sm:col-span-2 flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
@@ -1224,11 +1117,20 @@ export function Finance() {
                 <td className="py-3 text-muted">{new Date(e.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
                 <td className="py-3">{e.category}</td>
                 <td className="py-3 font-medium">
-                  {e.description}
-                  {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (
-                    <p className="text-xs text-muted font-normal">
-                      Estoque: {expenseItemsByExpense[e.id].map((it) => (it.itemName.includes('—') ? it.itemName : `${it.quantity}x ${it.itemName}`)).join(', ')}
-                    </p>
+                  {e.is_stock_purchase && (
+                    <button onClick={() => setExpandedPurchase((prev) => (prev === e.id ? null : e.id))} className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold text-purple bg-purple-light rounded px-1.5 py-0.5">
+                      Compra de estoque <ChevronDown className={`w-3 h-3 transition-transform ${expandedPurchase === e.id ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
+                  {e.settlement_batch_id && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
+                  {isEstorno(e) && <span className="mb-1 inline-flex text-[11px] font-semibold text-danger bg-danger-light rounded px-1.5 py-0.5">Estorno</span>}
+                  <p className={e.is_stock_purchase && expandedPurchase !== e.id ? 'line-clamp-1' : ''}>{e.description}</p>
+                  {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (!e.is_stock_purchase || expandedPurchase === e.id) && (
+                    <ul className="text-xs text-muted font-normal mt-1 space-y-0.5">
+                      {expenseItemsByExpense[e.id].map((it) => (
+                        <li key={it.id}>• {it.itemName.includes('—') ? it.itemName : `${it.quantity}x ${it.itemName}`}{it.lineValue != null ? ` — ${currency(it.lineValue)}` : ''}</li>
+                      ))}
+                    </ul>
                   )}
                 </td>
                 <td className="py-3 text-muted">{e.supplier ?? '—'}</td>
@@ -1253,16 +1155,34 @@ export function Finance() {
                         </button>
                       </Can>
                     )}
-                    <Can permission="action:financeiro.registrar_despesa">
-                      <button onClick={() => openEditExpense(e)} className="text-muted hover:text-purple" aria-label="Editar despesa">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </Can>
-                    <Can permission="action:financeiro.remover">
-                      <button onClick={() => handleRemove(e.id)} className="text-muted hover:text-danger" aria-label="Remover despesa">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </Can>
+                    {e.settlement_batch_id ? (
+                      <Link to="/acertos-entre-unidades" className="text-muted hover:text-purple" title="Só muda pela tela Acertos entre unidades" aria-label="Lançamento travado — abrir Acertos entre unidades">
+                        <Lock className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : isEstorno(e) ? (
+                      <Link to={`/reservas/${e.reservation_id}`} className="text-muted hover:text-purple" title="O valor do estorno muda pela festa cancelada" aria-label="Estorno — abrir a festa">
+                        <Lock className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : (
+                      <>
+                        <Can permission="action:financeiro.registrar_despesa">
+                          {e.is_stock_purchase ? (
+                            <Link to={`/estoque?compra=${e.id}`} className="text-muted hover:text-purple" aria-label="Editar compra de estoque" title="Editar pela Entrada de compra">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Link>
+                          ) : (
+                            <button onClick={() => openEditExpense(e)} className="text-muted hover:text-purple" aria-label="Editar despesa">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </Can>
+                        <Can permission="action:financeiro.remover">
+                          <button onClick={() => handleRemove(e.id)} className="text-muted hover:text-danger" aria-label="Remover despesa">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Can>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -1277,6 +1197,35 @@ export function Finance() {
           </tbody>
         </table>
       </Card>
+
+      {purchaseDeletion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setPurchaseDeletion(null)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+            <h2 className="text-lg font-display font-semibold mb-1">Excluir compra já consumida</h2>
+            <p className="text-sm text-muted mb-3">{purchaseDeletion.error}</p>
+            <p className="text-sm mb-3">Se continuar, o estoque desse item vai a zero (nunca fica negativo) e a justificativa fica registrada no histórico.</p>
+            <textarea
+              value={purchaseDeletion.justification}
+              onChange={(e) => setPurchaseDeletion((prev) => (prev ? { ...prev, justification: e.target.value } : prev))}
+              rows={2}
+              placeholder="Justificativa (obrigatória)"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+            />
+            <div className="flex gap-2 mt-3">
+              <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setPurchaseDeletion(null)}>Cancelar</Button>
+              <Button
+                type="button"
+                className="flex-1 justify-center"
+                disabled={!purchaseDeletion.justification.trim()}
+                onClick={() => removeStockPurchase(purchaseDeletion.expense, purchaseDeletion.justification.trim())}
+              >
+                Excluir mesmo assim
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fluxoDetalhe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { addDays, format, parseISO, differenceInCalendarDays, differenceInCalendarMonths } from 'date-fns'
-import { AlertTriangle, Sparkles, BellRing } from 'lucide-react'
+import { AlertTriangle, Sparkles, BellRing, ArrowLeftRight } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -118,9 +118,32 @@ export function Dashboard() {
   const [reativacoesProximas, setReativacoesProximas] = useState<ReativacaoProxima[]>([])
   const [contasAPagar, setContasAPagar] = useState<ContaAPagar[]>([])
   const [lembretes, setLembretes] = useState<LembreteObservacao[]>([])
+  // Acertos entre unidades pendentes, somados por direção (quem paga → quem recebe).
+  const [acertosPendentes, setAcertosPendentes] = useState<{ de: string; para: string; total: number; count: number }[]>([])
 
   const unitIds = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
   const unitLabel = selectedUnit === 'todas' ? 'Ambas as unidades' : UNITS.find((u) => u.id === selectedUnit)?.name
+
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    const nomePorId: Record<string, string> = {}
+    for (const u of UNITS) if (unitDbIds[u.id]) nomePorId[unitDbIds[u.id].unitId] = u.name
+    supabase
+      .from('unit_settlements')
+      .select('from_unit_id, to_unit_id, amount')
+      .eq('status', 'pendente')
+      .then(({ data }) => {
+        const map = new Map<string, { de: string; para: string; total: number; count: number }>()
+        for (const r of data ?? []) {
+          const k = r.to_unit_id + '>' + r.from_unit_id
+          const cur = map.get(k) ?? { de: nomePorId[r.to_unit_id] ?? '', para: nomePorId[r.from_unit_id] ?? '', total: 0, count: 0 }
+          cur.total += Number(r.amount)
+          cur.count += 1
+          map.set(k, cur)
+        }
+        setAcertosPendentes(Array.from(map.values()))
+      })
+  }, [unitDbIdsLoading, unitDbIds])
 
   useEffect(() => {
     if (!unitDbIdsLoading) loadAll()
@@ -428,6 +451,24 @@ export function Dashboard() {
         <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
       ) : (
         <>
+          {acertosPendentes.length > 0 && (
+            <Card className="border-orange/50 bg-orange-light">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-start gap-2 text-sm">
+                  <ArrowLeftRight className="w-4 h-4 text-orange mt-0.5" />
+                  <div>
+                    <p className="font-medium">Acertos entre unidades pendentes</p>
+                    {acertosPendentes.map((a) => (
+                      <p key={a.de + a.para} className="text-xs text-ink/80">
+                        {a.de} precisa enviar {a.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para {a.para} ({a.count} transferência{a.count > 1 ? 's' : ''})
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <Link to="/acertos-entre-unidades" className="text-sm font-medium text-purple">Ver acertos →</Link>
+              </div>
+            </Card>
+          )}
           {lembretes.length > 0 && (
             <Card className="border-purple/40 bg-purple-light">
               <div className="flex items-center gap-2 mb-3">

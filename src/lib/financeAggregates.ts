@@ -4,7 +4,9 @@ import { monthBounds } from './monthUtils'
 export interface MonthResult {
   receita: number // pagamentos recebidos no mês (bruto)
   taxasCartao: number // taxa de maquininha estimada sobre os pagamentos do mês
-  despesas: number // despesas (avulsas e as geradas por despesa fixa) já pagas, pelo paid_date
+  despesas: number // despesas (avulsas e as geradas por despesa fixa) já pagas, pelo paid_date — sem estornos
+  estornos: number // devoluções de festas canceladas pagas no mês (reduzem a receita líquida)
+  recuperacao: number // recebido de outra unidade por estoque transferido (reduz despesas; não é faturamento)
   custos: number // custos de festas com evento no mês
   festas: number // festas (não canceladas) com evento no mês
   ticketMedio: number // média de final_value dessas festas
@@ -24,12 +26,12 @@ async function loadFeePercentByMethod(): Promise<Record<string, number>> {
 export async function loadMonthByUnit(monthValue: string, unitIdBySlug: Record<string, string>): Promise<Record<string, MonthResult>> {
   const { startIso, endIso } = monthBounds(monthValue)
   const result: Record<string, MonthResult> = {}
-  for (const slug of Object.keys(unitIdBySlug)) result[slug] = { receita: 0, taxasCartao: 0, despesas: 0, custos: 0, festas: 0, ticketMedio: 0 }
+  for (const slug of Object.keys(unitIdBySlug)) result[slug] = { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0 }
 
   const slugByUnitId: Record<string, string> = {}
   for (const slug of Object.keys(unitIdBySlug)) slugByUnitId[unitIdBySlug[slug]] = slug
 
-  const [{ data: paymentsData }, { data: reservationsData }, { data: expensesData }, feePercentByMethod] = await Promise.all([
+  const [{ data: paymentsData }, { data: reservationsData }, { data: expensesData }, feePercentByMethod, { data: incomesData }] = await Promise.all([
     supabase.from('payments').select('amount, payment_date, payment_method, reservation:reservations(unit_id)').gte('payment_date', startIso).lt('payment_date', endIso),
     supabase.from('reservations').select('id, unit_id, final_value').neq('status', 'cancelada').gte('event_date', startIso).lt('event_date', endIso),
     // Só conta despesa que já foi paga de verdade este mês (pelo paid_date,
@@ -40,8 +42,11 @@ export async function loadMonthByUnit(monthValue: string, unitIdBySlug: Record<s
     // conta em dobro.
     // Conta marcada como "paga custos já lançados nas festas" fica de fora:
     // o valor dela já está nos custos das festas (senão conta em dobro).
-    supabase.from('expenses').select('amount, unit_id').eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', startIso).lt('paid_date', endIso),
+    supabase.from('expenses').select('amount, unit_id, category').eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', startIso).lt('paid_date', endIso),
     loadFeePercentByMethod(),
+    // Entradas que não são festa (acerto entre unidades): entram no caixa, mas
+    // não no faturamento — no resultado reduzem as despesas.
+    supabase.from('other_incomes').select('amount, unit_id').gte('received_date', startIso).lt('received_date', endIso),
   ])
 
   for (const p of paymentsData ?? []) {
@@ -52,7 +57,13 @@ export async function loadMonthByUnit(monthValue: string, unitIdBySlug: Record<s
   }
   for (const e of expensesData ?? []) {
     const slug = slugByUnitId[e.unit_id]
-    if (slug) result[slug].despesas += Number(e.amount)
+    if (!slug) continue
+    if (e.category === 'Estorno') result[slug].estornos += Number(e.amount)
+    else result[slug].despesas += Number(e.amount)
+  }
+  for (const inc of incomesData ?? []) {
+    const slug = slugByUnitId[inc.unit_id]
+    if (slug) result[slug].recuperacao += Number(inc.amount)
   }
 
   const reservationIds = (reservationsData ?? []).map((r) => r.id)

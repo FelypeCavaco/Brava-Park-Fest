@@ -296,7 +296,7 @@ export function FestaDetalhe() {
   const [rejectingReceipt, setRejectingReceipt] = useState<{ id: string; reason: string } | null>(null)
   const [portalMessages, setPortalMessages] = useState<{ id: string; fromClient: boolean; author: string | null; body: string; createdAt: string }[]>([])
   const [portalEvents, setPortalEvents] = useState<{ id: string; description: string; createdAt: string }[]>([])
-  const [portalInfo, setPortalInfo] = useState<{ cakeDough: string | null; menuConfirmedAt: string | null; musicChoice: string | null } | null>(null)
+  const [portalInfo, setPortalInfo] = useState<{ cakeDough: string | null; menuConfirmedAt: string | null; musicChoice: string | null; menuLate: boolean } | null>(null)
   const [portalReply, setPortalReply] = useState('')
 
   const [payments, setPayments] = useState<PaymentRow[]>([])
@@ -1362,7 +1362,7 @@ export function FestaDetalhe() {
       supabase.from('portal_receipts').select('id, amount, status, storage_path, created_at, reject_reason, decided_by_name').eq('reservation_id', id).order('created_at', { ascending: false }),
       supabase.from('portal_messages').select('id, from_client, author_name, body, created_at').eq('reservation_id', id).order('created_at'),
       supabase.from('portal_events').select('id, description, created_at').eq('reservation_id', id).order('created_at', { ascending: false }).limit(15),
-      supabase.from('reservations').select('cake_dough, menu_confirmed_at, music_choice').eq('id', id).maybeSingle(),
+      supabase.from('reservations').select('cake_dough, menu_confirmed_at, music_choice, menu_sent_late').eq('id', id).maybeSingle(),
     ])
     const receipts = (rc ?? []).map((r) => ({
       id: r.id, amount: Number(r.amount), status: r.status, storagePath: r.storage_path, createdAt: r.created_at, rejectReason: r.reject_reason, decidedBy: r.decided_by_name,
@@ -1375,7 +1375,7 @@ export function FestaDetalhe() {
     })
     setPortalMessages((msgs ?? []).map((m) => ({ id: m.id, fromClient: m.from_client, author: m.author_name, body: m.body, createdAt: m.created_at })))
     setPortalEvents((evs ?? []).map((e) => ({ id: e.id, description: e.description, createdAt: e.created_at })))
-    setPortalInfo(info ? { cakeDough: info.cake_dough, menuConfirmedAt: info.menu_confirmed_at, musicChoice: info.music_choice } : null)
+    setPortalInfo(info ? { cakeDough: info.cake_dough, menuConfirmedAt: info.menu_confirmed_at, musicChoice: info.music_choice, menuLate: !!info.menu_sent_late } : null)
   }
 
   async function viewReceipt(path: string) {
@@ -2661,7 +2661,9 @@ export function FestaDetalhe() {
                       <>
                         <p className="font-medium">{festa.hotDishFlavors || 'Sem pratos quentes'}</p>
                         <p className="text-xs text-muted">Bolo: massa {portalInfo.cakeDough?.toLowerCase() ?? '—'}, recheio {festa.cakeFlavor ?? '—'}</p>
-                        <p className="text-[11px] text-teal">Confirmado em {new Date(portalInfo.menuConfirmedAt).toLocaleDateString('pt-BR')}</p>
+                        <p className={`text-[11px] ${portalInfo.menuLate ? 'text-amber font-semibold' : 'text-teal'}`}>
+                          {portalInfo.menuLate ? 'Enviado APÓS O PRAZO em' : 'Confirmado em'} {new Date(portalInfo.menuConfirmedAt).toLocaleDateString('pt-BR')}
+                        </p>
                       </>
                     ) : (
                       <p className="text-amber text-xs mt-0.5">Ainda não confirmado</p>

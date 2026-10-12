@@ -52,6 +52,7 @@ interface PortalData {
   bolo_sabor: string | null
   bolo_massa: string | null
   cardapio_confirmado_em: string | null
+  cardapio_apos_prazo: boolean
   musica: 'equipe' | 'cliente' | null
   playlist: string | null
   prazo_cardapio: string
@@ -190,7 +191,8 @@ export function ClientPortal() {
     return {
       dias,
       limitePratos,
-      cardapioFechado: hoje > data.prazo_cardapio,
+      cardapioAposPrazo: hoje > data.prazo_cardapio,
+      cardapioFechado: hoje > data.data,
       convidadosFechado: hoje > data.prazo_convidados,
       pagamentoVencido: hoje > data.prazo_pagamento,
     }
@@ -218,8 +220,10 @@ export function ClientPortal() {
   const tarefas = [
     {
       titulo: 'Cardápio (pratos quentes e bolo)', tab: 'cardapio' as Tab, done: !!d.cardapio_confirmado_em,
-      detalhe: d.cardapio_confirmado_em ? 'Confirmado' : x.cardapioFechado ? `Prazo encerrado em ${diaMes(d.prazo_cardapio)}` : `Escolher até ${diaMes(d.prazo_cardapio)}`,
-      atrasado: !d.cardapio_confirmado_em && x.cardapioFechado,
+      detalhe: d.cardapio_confirmado_em
+        ? d.cardapio_apos_prazo ? 'Enviado após o prazo' : 'Confirmado'
+        : x.cardapioAposPrazo ? `Prazo encerrado em ${diaMes(d.prazo_cardapio)} — ainda dá para enviar` : `Escolher até ${diaMes(d.prazo_cardapio)}`,
+      atrasado: !d.cardapio_confirmado_em && x.cardapioAposPrazo,
     },
     {
       titulo: 'Lista de convidados', tab: 'convidados' as Tab, done: guests.length > 0,
@@ -257,11 +261,11 @@ export function ClientPortal() {
   }
 
   function avisarPrazoCardapio() {
-    setAviso(`O prazo para escolher o cardápio terminou em ${diaMes(d.prazo_cardapio)} (1 semana antes da festa). Para alterar, fale com a equipe.`)
+    setAviso('A festa já aconteceu. Para alterar o cardápio, fale com a equipe.')
   }
 
   function togglePrato(nome: string) {
-    if (x.cardapioFechado) return setAviso(`O prazo para escolher o cardápio terminou em ${diaMes(d.prazo_cardapio)} (1 semana antes da festa). Para alterar, fale com a equipe.`)
+    if (x.cardapioFechado) return avisarPrazoCardapio()
     setPratos((prev) => {
       if (prev.includes(nome)) return prev.filter((p) => p !== nome)
       if (x.limitePratos === 1) return [nome]
@@ -276,7 +280,10 @@ export function ClientPortal() {
 
   async function salvarCardapio() {
     if (x.cardapioFechado || cardapioIncompleto) return
-    await run(() => supabase.rpc('portal_save_menu', { p_token: token, p_pratos: pratos, p_massa: massa, p_sabor: sabor }), 'Cardápio confirmado! A equipe já recebeu.')
+    await run(
+      () => supabase.rpc('portal_save_menu', { p_token: token, p_pratos: pratos, p_massa: massa, p_sabor: sabor }),
+      x.cardapioAposPrazo ? 'Cardápio enviado! A equipe recebeu o aviso de que foi depois do prazo.' : 'Cardápio confirmado! A equipe já recebeu.',
+    )
   }
 
   async function addConvidado(e: FormEvent) {
@@ -514,11 +521,16 @@ export function ClientPortal() {
           {/* ===== CARDÁPIO ===== */}
           {tab === 'cardapio' && (
             <>
-              <div className="rounded-xl px-3 py-2.5 flex gap-2.5 items-center text-sm" style={{ background: x.cardapioFechado ? '#F8E5E5' : '#E3EAFB', color: x.cardapioFechado ? '#B23A3A' : C.marinho }}>
-                <Clock className="w-4 h-4 shrink-0" />
-                {x.cardapioFechado
-                  ? `Prazo encerrado em ${diaMes(d.prazo_cardapio)}. Para alterar o cardápio, fale com a equipe.`
-                  : `Escolha até ${diaMes(d.prazo_cardapio)} — 1 semana antes da festa.`}
+              <div className="rounded-xl px-3 py-2.5 flex gap-2.5 items-start text-sm" style={{ background: x.cardapioFechado ? '#F8E5E5' : x.cardapioAposPrazo ? '#FCF1DF' : '#E3EAFB', color: x.cardapioFechado ? '#B23A3A' : x.cardapioAposPrazo ? '#6B4306' : C.marinho }}>
+                <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {x.cardapioFechado
+                    ? 'A festa já aconteceu. Para alterar o cardápio, fale com a equipe.'
+                    : x.cardapioAposPrazo
+                      ? `O prazo era ${diaMes(d.prazo_cardapio)} (1 semana antes da festa). Você ainda pode enviar, mas a equipe será avisada de que foi enviado depois do prazo.`
+                      : `Escolha até ${diaMes(d.prazo_cardapio)} — 1 semana antes da festa.`}
+                  {d.cardapio_confirmado_em && d.cardapio_apos_prazo && <span className="block mt-0.5 font-medium">Seu cardápio foi enviado após o prazo.</span>}
+                </span>
               </div>
 
               <section>
@@ -578,12 +590,12 @@ export function ClientPortal() {
               <button onClick={salvarCardapio} disabled={busy || x.cardapioFechado || cardapioIncompleto || !cardapioMudou}
                 className="w-full h-12 rounded-xl font-semibold text-white disabled:opacity-100"
                 style={{ background: x.cardapioFechado || cardapioIncompleto ? '#DCE3F3' : !cardapioMudou ? '#1F7A5C' : C.vermelho, color: x.cardapioFechado || cardapioIncompleto ? '#717A96' : 'white' }}>
-                {x.cardapioFechado ? 'Prazo encerrado'
+                {x.cardapioFechado ? 'A festa já aconteceu'
                   : pratos.length !== x.limitePratos ? (x.limitePratos === 1 ? 'Escolha o prato quente' : `Escolha ${x.limitePratos} pratos quentes`)
                   : !massa ? 'Escolha a massa do bolo' : !sabor ? 'Escolha o recheio do bolo'
-                  : !cardapioMudou ? 'Cardápio confirmado' : busy ? 'Salvando...' : 'Confirmar cardápio'}
+                  : !cardapioMudou ? (d.cardapio_apos_prazo ? 'Enviado após o prazo' : 'Cardápio confirmado') : busy ? 'Salvando...' : x.cardapioAposPrazo ? 'Enviar mesmo após o prazo' : 'Confirmar cardápio'}
               </button>
-              {!x.cardapioFechado && <p className="text-xs text-center" style={{ color: C.muted }}>Depois de confirmar, você ainda pode trocar até o prazo.</p>}
+              {!x.cardapioFechado && !x.cardapioAposPrazo && <p className="text-xs text-center" style={{ color: C.muted }}>Depois de confirmar, você ainda pode trocar até o prazo.</p>}
             </>
           )}
 

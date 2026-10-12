@@ -64,7 +64,7 @@ export function BirthdayReport() {
     setError(null)
     const { data, error } = await supabase
       .from('reservations')
-      .select('id, event_date, start_time, unit_id, child_name, child_age, guest_count, courtesy_guests, theme, hot_dish_flavors, cake_flavor, unit:units(name)')
+      .select('id, event_date, start_time, unit_id, child_name, child_age, guest_count, courtesy_guests, theme, hot_dish_flavors, cake_flavor, cake_dough, unit:units(name)')
       .neq('status', 'cancelada')
       .gte('event_date', from)
       .lte('event_date', to)
@@ -93,7 +93,7 @@ export function BirthdayReport() {
           convidados: `${r.guest_count ?? 0}${r.courtesy_guests ? ` + ${r.courtesy_guests} cortesia` : ''}`,
           tema: r.theme ?? '—',
           pratoQuente: r.hot_dish_flavors ?? '—',
-          bolo: r.cake_flavor ?? '—',
+          bolo: r.cake_flavor ? (r.cake_dough ? `${r.cake_flavor} (massa ${String(r.cake_dough).toLowerCase()})` : r.cake_flavor) : '—',
         }
       }),
     )

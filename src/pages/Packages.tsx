@@ -8,6 +8,7 @@ import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
+import { PortalMenuEditor } from '../components/PortalMenuEditor'
 import { PACKAGE_COST_CATEGORIES, packageValidityLabel, comparePackageNames, type PackageCostCategory } from '../types'
 
 interface PackageRow {
@@ -23,12 +24,14 @@ interface PackageRow {
   included_items: string | null
   valid_from: string | null
   valid_until: string | null
+  hot_dish_count: number
 }
 
 interface ExtraRow {
   id: string
   name: string
   price: number
+  adds_hot_dishes: number
 }
 
 interface CostItem {
@@ -66,10 +69,12 @@ export function Packages() {
   const [pkgItens, setPkgItens] = useState('')
   const [pkgValidFrom, setPkgValidFrom] = useState('')
   const [pkgValidUntil, setPkgValidUntil] = useState('')
+  const [pkgPratos, setPkgPratos] = useState('0')
 
   const [showExtraForm, setShowExtraForm] = useState(false)
   const [extraName, setExtraName] = useState('')
   const [extraPreco, setExtraPreco] = useState('')
+  const [extraPratoQuente, setExtraPratoQuente] = useState(false)
 
   const [fichaPackageId, setFichaPackageId] = useState<string | null>(null)
   const [custoCategoria, setCustoCategoria] = useState<PackageCostCategory>(PACKAGE_COST_CATEGORIES[0])
@@ -83,8 +88,8 @@ export function Packages() {
   async function loadAll() {
     setLoading(true)
     const [{ data: pkgs, error: pkgErr }, { data: extraData, error: extraErr }, { data: costData }] = await Promise.all([
-      supabase.from('packages').select('id, name, description, base_price, weekday_price, weekend_price, unit_id, guest_limit, duration_hours, included_items, valid_from, valid_until').eq('active', true).order('name'),
-      supabase.from('extra_items').select('id, name, price').order('name'),
+      supabase.from('packages').select('id, name, description, base_price, weekday_price, weekend_price, unit_id, guest_limit, duration_hours, included_items, valid_from, valid_until, hot_dish_count').eq('active', true).order('name'),
+      supabase.from('extra_items').select('id, name, price, adds_hot_dishes').order('name'),
       supabase.from('package_costs').select('*'),
     ])
 
@@ -106,9 +111,10 @@ export function Packages() {
         included_items: p.included_items,
         valid_from: p.valid_from ?? null,
         valid_until: p.valid_until ?? null,
+        hot_dish_count: Number(p.hot_dish_count ?? 0),
       })).sort(comparePackageNames),
     )
-    setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price) })))
+    setExtras((extraData ?? []).map((e) => ({ id: e.id, name: e.name, price: Number(e.price), adds_hot_dishes: Number(e.adds_hot_dishes ?? 0) })))
 
     const grouped: Record<string, CostItem[]> = {}
     for (const c of costData ?? []) {
@@ -149,6 +155,7 @@ export function Packages() {
     setPkgItens(p.included_items ?? '')
     setPkgValidFrom(p.valid_from ?? '')
     setPkgValidUntil(p.valid_until ?? '')
+    setPkgPratos(String(p.hot_dish_count ?? 0))
     setShowPackageForm(true)
   }
 
@@ -170,6 +177,7 @@ export function Packages() {
       included_items: pkgItens.trim() || null,
       valid_from: pkgValidFrom || null,
       valid_until: pkgValidUntil || null,
+      hot_dish_count: Math.max(0, Math.round(Number(pkgPratos) || 0)),
     }
 
     const query = editingPackageId
@@ -195,6 +203,7 @@ export function Packages() {
       included_items: data.included_items,
       valid_from: data.valid_from ?? null,
       valid_until: data.valid_until ?? null,
+      hot_dish_count: Number(data.hot_dish_count ?? 0),
     }
     setPackages((prev) => (editingPackageId ? prev.map((p) => (p.id === editingPackageId ? saved : p)) : [...prev, saved]).sort(comparePackageNames))
     setShowPackageForm(false)
@@ -204,14 +213,15 @@ export function Packages() {
     e.preventDefault()
     const preco = Number(extraPreco)
     if (!extraName.trim() || !preco) return
-    const { data, error } = await supabase.from('extra_items').insert({ name: extraName.trim(), price: preco }).select().single()
+    const { data, error } = await supabase.from('extra_items').insert({ name: extraName.trim(), price: preco, adds_hot_dishes: extraPratoQuente ? 1 : 0 }).select().single()
     if (error) {
       setError('Não foi possível salvar o item extra.')
       return
     }
-    setExtras((prev) => [...prev, { id: data.id, name: data.name, price: Number(data.price) }])
+    setExtras((prev) => [...prev, { id: data.id, name: data.name, price: Number(data.price), adds_hot_dishes: Number(data.adds_hot_dishes ?? 0) }])
     setExtraName('')
     setExtraPreco('')
+    setExtraPratoQuente(false)
     setShowExtraForm(false)
   }
 
@@ -372,6 +382,7 @@ export function Packages() {
                       {p.duration_hours ? `${p.duration_hours}h de duração` : ''}
                     </p>
                   )}
+                  <p className="text-xs text-muted mt-1">{p.hot_dish_count > 0 ? `${p.hot_dish_count} prato(s) quente(s) incluso(s)` : 'Sem pratos quentes inclusos'}</p>
                   {p.weekday_price != null && p.weekend_price != null ? (
                     <p className="text-sm font-semibold mt-3">
                       Seg-qui: {currency(p.weekday_price)} <br /> Sex-dom: {currency(p.weekend_price)}
@@ -430,6 +441,8 @@ export function Packages() {
           </tbody>
         </table>
       </Card>
+
+      <PortalMenuEditor />
 
       {showPackageForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -543,6 +556,11 @@ export function Packages() {
                   placeholder="Ex: Docinhos, salgados, refrigerante, bolo..."
                 />
               </div>
+              <div>
+                <label className="block text-xs text-muted mb-1" htmlFor="pkg-pratos">Pratos quentes inclusos</label>
+                <input id="pkg-pratos" type="number" min={0} value={pkgPratos} onChange={(e) => setPkgPratos(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                <p className="text-[11px] text-muted mt-1">Quantos pratos quentes o cliente escolhe no portal com este plano (0 = só coquetel).</p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-muted mb-1" htmlFor="pkg-valid-from">Vale para festas a partir de</label>
@@ -598,6 +616,10 @@ export function Packages() {
                   placeholder="0,00"
                 />
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={extraPratoQuente} onChange={(e) => setExtraPratoQuente(e.target.checked)} className="mt-0.5" />
+                <span>É um prato quente adicional<span className="block text-xs text-muted">Cada unidade vendida dá direito a escolher mais 1 prato quente no portal.</span></span>
+              </label>
               <Button type="submit" className="w-full justify-center mt-2">
                 Salvar item
               </Button>

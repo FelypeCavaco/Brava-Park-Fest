@@ -15,7 +15,10 @@ export interface PermissionDef {
 export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
   {
     group: 'Painel',
-    items: [{ key: 'page:painel', label: 'Ver o Painel principal', group: 'Painel', route: '/' }],
+    items: [
+      { key: 'page:painel', label: 'Ver o Painel principal', group: 'Painel', route: '/' },
+      { key: 'page:portal_avisos', label: 'Ver avisos do portal do cliente (alterações, comprovantes e prazos)', group: 'Painel' },
+    ],
   },
   {
     group: 'Lembretes diários',

@@ -1,8 +1,8 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { RequireAuth } from './components/layout/RequireAuth'
 import { Login } from './pages/Login'
-import { GuestListPublic } from './pages/GuestListPublic'
+import { ClientPortal } from './pages/ClientPortal'
 import { ReviewPublic } from './pages/ReviewPublic'
 import { Dashboard } from './pages/Dashboard'
 import { DailyReminders } from './pages/DailyReminders'
@@ -31,11 +31,18 @@ import { Funnel } from './pages/Funnel'
 import { Settlements } from './pages/Settlements'
 import { ConsumptionAverages } from './pages/ConsumptionAverages'
 
+function RedirectToPortal() {
+  const { token } = useParams()
+  return <Navigate to={`/portal/${token}`} replace />
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/lista-convidados/:token" element={<GuestListPublic />} />
+      <Route path="/portal/:token" element={<ClientPortal />} />
+      {/* Links antigos da lista de convidados agora abrem o portal do cliente. */}
+      <Route path="/lista-convidados/:token" element={<RedirectToPortal />} />
       <Route path="/avaliacao/:token" element={<ReviewPublic />} />
 
       <Route element={<RequireAuth />}>

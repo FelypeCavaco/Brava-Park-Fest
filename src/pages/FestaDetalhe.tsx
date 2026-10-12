@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { subDays, parseISO, isPast, format } from 'date-fns'
 import {
   ArrowLeft,
@@ -288,7 +288,16 @@ export function FestaDetalhe() {
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [tab, setTab] = useState<'geral' | 'financeiro' | 'checklist' | 'equipe' | 'estoque'>('geral')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'geral' | 'financeiro' | 'checklist' | 'equipe' | 'estoque'>(searchParams.get('aba') === 'financeiro' ? 'financeiro' : 'geral')
+  // ---------- Portal do cliente ----------
+  const [portalReceipts, setPortalReceipts] = useState<{ id: string; amount: number; status: string; storagePath: string; createdAt: string; rejectReason: string | null; decidedBy: string | null }[]>([])
+  const [receiptDrafts, setReceiptDrafts] = useState<Record<string, { amount: string; date: string; method: PaymentMethod }>>({})
+  const [rejectingReceipt, setRejectingReceipt] = useState<{ id: string; reason: string } | null>(null)
+  const [portalMessages, setPortalMessages] = useState<{ id: string; fromClient: boolean; author: string | null; body: string; createdAt: string }[]>([])
+  const [portalEvents, setPortalEvents] = useState<{ id: string; description: string; createdAt: string }[]>([])
+  const [portalInfo, setPortalInfo] = useState<{ cakeDough: string | null; menuConfirmedAt: string | null; musicChoice: string | null } | null>(null)
+  const [portalReply, setPortalReply] = useState('')
 
   const [payments, setPayments] = useState<PaymentRow[]>([])
   const [costs, setCosts] = useState<CostItem[]>([])
@@ -433,6 +442,7 @@ export function FestaDetalhe() {
     loadExtraCatalog()
     loadFestaExtras()
     loadGuestList()
+    loadPortal()
     loadDocuments()
     loadStockConsumption()
     loadPackageHistory()
@@ -852,7 +862,7 @@ export function FestaDetalhe() {
   }
 
   function guestListUrl() {
-    return guestListToken ? `${window.location.origin}/lista-convidados/${guestListToken}` : ''
+    return guestListToken ? `${window.location.origin}/portal/${guestListToken}` : ''
   }
 
   async function handleCopyLink() {
@@ -1345,6 +1355,74 @@ export function FestaDetalhe() {
     }
     setFesta((prev) => (prev ? { ...prev, consumptionFinalized: finalized, excludeFromAverages: exclude, excludeReason: exclude ? reason : null } : prev))
     setExcludeDraft(null)
+  }
+
+  async function loadPortal() {
+    const [{ data: rc }, { data: msgs }, { data: evs }, { data: info }] = await Promise.all([
+      supabase.from('portal_receipts').select('id, amount, status, storage_path, created_at, reject_reason, decided_by_name').eq('reservation_id', id).order('created_at', { ascending: false }),
+      supabase.from('portal_messages').select('id, from_client, author_name, body, created_at').eq('reservation_id', id).order('created_at'),
+      supabase.from('portal_events').select('id, description, created_at').eq('reservation_id', id).order('created_at', { ascending: false }).limit(15),
+      supabase.from('reservations').select('cake_dough, menu_confirmed_at, music_choice').eq('id', id).maybeSingle(),
+    ])
+    const receipts = (rc ?? []).map((r) => ({
+      id: r.id, amount: Number(r.amount), status: r.status, storagePath: r.storage_path, createdAt: r.created_at, rejectReason: r.reject_reason, decidedBy: r.decided_by_name,
+    }))
+    setPortalReceipts(receipts)
+    setReceiptDrafts((prev) => {
+      const next = { ...prev }
+      for (const r of receipts) if (!next[r.id]) next[r.id] = { amount: String(r.amount).replace('.', ','), date: todayIso(), method: 'pix' }
+      return next
+    })
+    setPortalMessages((msgs ?? []).map((m) => ({ id: m.id, fromClient: m.from_client, author: m.author_name, body: m.body, createdAt: m.created_at })))
+    setPortalEvents((evs ?? []).map((e) => ({ id: e.id, description: e.description, createdAt: e.created_at })))
+    setPortalInfo(info ? { cakeDough: info.cake_dough, menuConfirmedAt: info.menu_confirmed_at, musicChoice: info.music_choice } : null)
+  }
+
+  async function viewReceipt(path: string) {
+    const { data, error: err } = await supabase.storage.from('portal-comprovantes').createSignedUrl(path, 300)
+    if (err || !data) {
+      setError('Não foi possível abrir o comprovante.')
+      return
+    }
+    window.open(data.signedUrl, '_blank', 'noopener')
+  }
+
+  async function launchReceipt(receiptId: string) {
+    const draft = receiptDrafts[receiptId]
+    const amount = draft ? parseDecimal(draft.amount) : 0
+    if (!amount || amount <= 0) {
+      setError('Informe o valor do pagamento.')
+      return
+    }
+    const { error: rpcError } = await supabase.rpc('launch_portal_receipt', { p_receipt: receiptId, p_amount: amount, p_date: draft.date, p_method: draft.method })
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message))
+      return
+    }
+    await Promise.all([loadPortal(), loadPayments(), loadFesta(), loadAuditHistory()])
+  }
+
+  async function rejectReceipt() {
+    if (!rejectingReceipt || !rejectingReceipt.reason.trim()) return
+    const { error: rpcError } = await supabase.rpc('reject_portal_receipt', { p_receipt: rejectingReceipt.id, p_reason: rejectingReceipt.reason.trim() })
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message))
+      return
+    }
+    setRejectingReceipt(null)
+    await loadPortal()
+  }
+
+  async function sendPortalReply(e: FormEvent) {
+    e.preventDefault()
+    if (!portalReply.trim()) return
+    const { error: rpcError } = await supabase.rpc('staff_reply_portal', { p_reservation: id, p_body: portalReply.trim() })
+    if (rpcError) {
+      setError(friendlyDbError(rpcError.message))
+      return
+    }
+    setPortalReply('')
+    await loadPortal()
   }
 
   async function loadRefundExpense() {
@@ -2555,6 +2633,87 @@ export function FestaDetalhe() {
             )}
           </Card>
 
+          <Card title="Portal do cliente" className="md:col-span-2">
+            {!guestListToken ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-muted flex-1">O cliente escolhe o cardápio, envia a lista de convidados, acompanha os pagamentos e fala com a equipe por um link só.</p>
+                <Can permission="action:festa.lista_convidados">
+                  <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={handleGenerateGuestLink} disabled={generatingLink}>
+                    <LinkIcon className="w-3.5 h-3.5" /> {generatingLink ? 'Gerando...' : 'Gerar link do portal'}
+                  </Button>
+                </Can>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input readOnly value={guestListUrl()} aria-label="Link do portal" className="flex-1 min-w-[220px] border border-line rounded-lg px-3 py-2 text-xs text-muted bg-paper" />
+                  <button onClick={handleCopyLink} className="text-muted hover:text-purple" aria-label="Copiar link do portal"><Copy className="w-4 h-4" /></button>
+                  <Can permission="action:festa.lista_convidados">
+                    <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={handleSendGuestLinkWhatsApp}>Enviar por WhatsApp</Button>
+                  </Can>
+                  <a href={guestListUrl()} target="_blank" rel="noreferrer" className="text-xs text-purple font-medium">Abrir como o cliente vê</a>
+                </div>
+                {linkCopied && <p className="text-xs text-teal -mt-2">Link copiado!</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="bg-paper rounded-lg px-3 py-2">
+                    <p className="text-xs text-muted">Cardápio</p>
+                    {portalInfo?.menuConfirmedAt ? (
+                      <>
+                        <p className="font-medium">{festa.hotDishFlavors || 'Sem pratos quentes'}</p>
+                        <p className="text-xs text-muted">Bolo: massa {portalInfo.cakeDough?.toLowerCase() ?? '—'}, recheio {festa.cakeFlavor ?? '—'}</p>
+                        <p className="text-[11px] text-teal">Confirmado em {new Date(portalInfo.menuConfirmedAt).toLocaleDateString('pt-BR')}</p>
+                      </>
+                    ) : (
+                      <p className="text-amber text-xs mt-0.5">Ainda não confirmado</p>
+                    )}
+                  </div>
+                  <div className="bg-paper rounded-lg px-3 py-2">
+                    <p className="text-xs text-muted">Lista de convidados</p>
+                    <p className="font-medium">{guestEntries.length} nome(s)</p>
+                  </div>
+                  <div className="bg-paper rounded-lg px-3 py-2">
+                    <p className="text-xs text-muted">Música</p>
+                    <p className="font-medium">
+                      {portalInfo?.musicChoice === 'equipe' ? 'Equipe escolhe' : portalInfo?.musicChoice === 'cliente' ? 'Playlist do cliente' : '—'}
+                    </p>
+                    {guestPlaylistUrl && <a href={guestPlaylistUrl} target="_blank" rel="noreferrer" className="text-xs text-purple">Abrir playlist</a>}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold mb-2">Mensagens</p>
+                  {portalMessages.length === 0 ? (
+                    <p className="text-xs text-muted">Nenhuma mensagem pelo portal ainda.</p>
+                  ) : (
+                    <ul className="space-y-2 max-h-64 overflow-y-auto">
+                      {portalMessages.map((m) => (
+                        <li key={m.id} className={`text-sm rounded-lg px-3 py-2 ${m.fromClient ? 'bg-purple-light' : 'bg-paper'}`}>
+                          <p className="text-[11px] text-muted">{m.fromClient ? `Cliente (${m.author ?? festa.cliente})` : m.author ?? 'Equipe'} · {new Date(m.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                          <p className="whitespace-pre-wrap">{m.body}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <form onSubmit={sendPortalReply} className="flex gap-2 mt-2">
+                    <input value={portalReply} onChange={(e) => setPortalReply(e.target.value)} placeholder="Responder ao cliente pelo portal" aria-label="Resposta ao cliente" className="flex-1 border border-line rounded-lg px-3 py-2 text-sm" />
+                    <Button type="submit" variant="secondary" className="text-xs px-3">Responder</Button>
+                  </form>
+                </div>
+
+                {portalEvents.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold mb-1">O que o cliente fez no portal</p>
+                    <ul className="text-xs text-muted space-y-0.5">
+                      {portalEvents.map((ev) => (
+                        <li key={ev.id}>{new Date(ev.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} — {ev.description}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
           <Card title="Documentos da festa">
             <ul className="divide-y divide-line mb-3">
               {documents.map((d) => (
@@ -2606,7 +2765,7 @@ export function FestaDetalhe() {
                 </p>
                 <Can permission="action:festa.lista_convidados">
                   <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={handleGenerateGuestLink} disabled={generatingLink}>
-                    <LinkIcon className="w-3.5 h-3.5" /> {generatingLink ? 'Gerando...' : 'Gerar link'}
+                    <LinkIcon className="w-3.5 h-3.5" /> {generatingLink ? 'Gerando...' : 'Gerar link do portal do cliente'}
                   </Button>
                 </Can>
               </div>
@@ -2682,6 +2841,60 @@ export function FestaDetalhe() {
 
       {tab === 'financeiro' && (
         <div className="space-y-4">
+          {portalReceipts.length > 0 && (
+            <Card title="Comprovantes enviados pelo portal" className={portalReceipts.some((r) => r.status === 'em_analise') ? 'border-purple' : ''}>
+              <ul className="divide-y divide-line">
+                {portalReceipts.map((r) => {
+                  const draft = receiptDrafts[r.id]
+                  return (
+                    <li key={r.id} className="py-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span>
+                          <strong className="font-medium">{brl(r.amount)}</strong> · enviado em {new Date(r.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <button onClick={() => viewReceipt(r.storagePath)} className="text-xs text-purple font-medium">Ver comprovante</button>
+                          {r.status === 'lancado' && <Badge tone="teal">Lançado{r.decidedBy ? ` por ${r.decidedBy}` : ''}</Badge>}
+                          {r.status === 'recusado' && <Badge tone="danger">Recusado</Badge>}
+                          {r.status === 'em_analise' && <Badge tone="amber">Em análise</Badge>}
+                        </span>
+                      </div>
+                      {r.status === 'recusado' && r.rejectReason && <p className="text-xs text-danger">Motivo: {r.rejectReason}{r.decidedBy ? ` · ${r.decidedBy}` : ''}</p>}
+                      {r.status === 'em_analise' && draft && (
+                        <Can permission="action:festa.pagamentos">
+                          <div className="flex flex-wrap items-end gap-2">
+                            <div>
+                              <label className="block text-[11px] text-muted mb-0.5">Valor</label>
+                              <input value={draft.amount} onChange={(e) => setReceiptDrafts((prev) => ({ ...prev, [r.id]: { ...draft, amount: e.target.value } }))} inputMode="decimal" className="w-28 border border-line rounded-lg px-2 py-1.5 text-sm" />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-muted mb-0.5">Data</label>
+                              <input type="date" value={draft.date} onChange={(e) => setReceiptDrafts((prev) => ({ ...prev, [r.id]: { ...draft, date: e.target.value } }))} className="border border-line rounded-lg px-2 py-1.5 text-sm" />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-muted mb-0.5">Forma</label>
+                              <select value={draft.method} onChange={(e) => setReceiptDrafts((prev) => ({ ...prev, [r.id]: { ...draft, method: e.target.value as PaymentMethod } }))} className="border border-line rounded-lg px-2 py-1.5 text-sm">
+                                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
+                              </select>
+                            </div>
+                            <Button className="text-xs px-3 py-2" onClick={() => launchReceipt(r.id)}>Registrar pagamento</Button>
+                            <button onClick={() => setRejectingReceipt({ id: r.id, reason: '' })} className="text-xs text-danger font-medium py-2">Recusar</button>
+                          </div>
+                          {rejectingReceipt?.id === r.id && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input autoFocus value={rejectingReceipt.reason} onChange={(e) => setRejectingReceipt({ id: r.id, reason: e.target.value })} placeholder="Justificativa (obrigatória — o cliente vê no portal)" className="flex-1 min-w-[220px] border border-line rounded-lg px-2 py-1.5 text-sm" />
+                              <Button variant="secondary" className="text-xs px-3 py-1.5" disabled={!rejectingReceipt.reason.trim()} onClick={rejectReceipt}>Confirmar recusa</Button>
+                              <button onClick={() => setRejectingReceipt(null)} className="text-xs text-muted">Cancelar</button>
+                            </div>
+                          )}
+                        </Can>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          )}
           <Card title="Pagamentos recebidos">
             <p className="text-xs text-muted mb-3">
               Sem parcelas fixas: registre aqui cada valor conforme o cliente for pagando, na forma e data que for. O

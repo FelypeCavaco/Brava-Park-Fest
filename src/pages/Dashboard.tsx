@@ -7,6 +7,7 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { DashboardMascot } from '../components/mascot/DashboardMascot'
 import { QuickActionsBar } from '../components/layout/QuickActionsBar'
+import { PortalNotices } from '../components/PortalNotices'
 import logo from '../assets/logo-brava-park-fest.png'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
@@ -451,6 +452,7 @@ export function Dashboard() {
         <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
       ) : (
         <>
+          <PortalNotices />
           {acertosPendentes.length > 0 && (
             <Card className="border-orange/50 bg-orange-light">
               <div className="flex flex-wrap items-center justify-between gap-3">

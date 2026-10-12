@@ -45,6 +45,8 @@ const ENTITY_LABEL: Record<string, string> = {
   unit_goals: 'a meta da unidade',
   marketing_spend: 'o gasto com tráfego',
   unit_settlements: 'um acerto entre unidades',
+  portal_receipts: 'um comprovante do portal',
+  portal_menu_options: 'uma opção do cardápio do portal',
   other_incomes: 'uma entrada de acerto entre unidades',
   reservation: 'a festa',
 }
@@ -108,6 +110,12 @@ const FIELD_LABEL: Record<string, string> = {
   received_date: 'data do recebimento',
   cancel_reason: 'motivo do cancelamento',
   item_name: 'item',
+  cake_dough: 'massa do bolo',
+  music_choice: 'música da festa',
+  menu_confirmed_at: 'cardápio confirmado em',
+  hot_dish_count: 'pratos quentes inclusos',
+  adds_hot_dishes: 'pratos quentes adicionais',
+  reject_reason: 'motivo da recusa',
 }
 
 // Mesmo nome de campo com sentido diferente conforme a tabela.
@@ -137,7 +145,7 @@ const HIDDEN_FIELDS = new Set([
   'fixed_cost_id', 'inventory_item_id', 'expense_id', 'recurring_expense_id', 'replaces_assignment_id', 'token',
   'attended_at', 'arrived_at', 'created_by_name', 'generated_at', 'storage_path', 'extra_item_id', 'created_at', 'updated_at',
   'has_cost', 'last_unit_cost', 'stock_value', 'settlement_batch_id', 'batch_id', 'from_unit_id', 'to_unit_id', 'from_item_id', 'to_item_id',
-  'is_stock_purchase', 'confirmed_at', 'confirmed_by_name', 'cancelled_by_name', 'cancelled_at', 'numero',
+  'is_stock_purchase', 'payment_id', 'decided_at', 'decided_by_name', 'storage_path', 'confirmed_at', 'confirmed_by_name', 'cancelled_by_name', 'cancelled_at', 'numero',
 ])
 
 function formatValue(field: string, value: unknown): string {

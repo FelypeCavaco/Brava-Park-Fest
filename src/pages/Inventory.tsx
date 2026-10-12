@@ -10,7 +10,7 @@ import { StockPurchaseModal, type StockPurchasePrefill } from '../components/Sto
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
-import { brl, qtd, parseDecimal, friendlyDbError } from '../lib/format'
+import { brl, qtd, parseDecimal, friendlyDbError, todayIso } from '../lib/format'
 import { INVENTORY_CATEGORIES, type InventoryItem, type InventoryCategory } from '../types'
 
 interface NextFesta { date: string; guests: number }
@@ -93,6 +93,7 @@ export function Inventory() {
   const [transferError, setTransferError] = useState<string | null>(null)
   const [transferZeroConfirm, setTransferZeroConfirm] = useState(false)
   const [transferring, setTransferring] = useState(false)
+  const [transferDueDate, setTransferDueDate] = useState(todayIso())
 
   // Ajuste para baixo: pede o motivo antes de gravar.
   const [pendingAdjust, setPendingAdjust] = useState<{ item: InventoryItem; newQuantity: number } | null>(null)
@@ -334,6 +335,7 @@ export function Inventory() {
     setTransferQuantity(String(item.quantity).replace('.', ','))
     setTransferError(null)
     setTransferZeroConfirm(false)
+    setTransferDueDate(todayIso())
   }
 
   async function handleConfirmTransfer(e: FormEvent, allowZero = false) {
@@ -351,6 +353,7 @@ export function Inventory() {
       p_dest_unit: destDbIds.unitId,
       p_quantity: amount,
       p_allow_zero: allowZero,
+      p_due_date: transferDueDate,
     })
     setTransferring(false)
     if (rpcError) {
@@ -366,7 +369,7 @@ export function Inventory() {
     setTransferringItem(null)
     setNotice(
       r.status === 'pendente'
-        ? `Transferência registrada. ${qtd(r.quantity)} ${r.unit_of_measure} de ${r.item} foram transferidas de ${r.from_unit} para ${r.to_unit}. Acerto pendente: ${brl(r.amount)}. ${r.to_unit} precisa enviar ${brl(r.amount)} para ${r.from_unit}. Depois de enviar, confirme o acerto em Financeiro → Acertos entre unidades.`
+        ? `Transferência registrada. ${qtd(r.quantity)} ${r.unit_of_measure} de ${r.item} foram de ${r.from_unit} para ${r.to_unit}. Já está no Financeiro de ${r.to_unit} como conta a pagar de ${brl(r.amount)} (vence ${transferDueDate.split('-').reverse().join('/')}). Quando ela for marcada como paga, o recebimento entra sozinho em ${r.from_unit}.`
         : `Transferência registrada. ${qtd(r.quantity)} ${r.unit_of_measure} de ${r.item} foram de ${r.from_unit} para ${r.to_unit}, sem valor (o item estava sem custo).`,
     )
     await loadItems()
@@ -935,8 +938,12 @@ export function Inventory() {
                   <p className="text-xs text-muted mt-1">Valor do acerto: {brl(Math.round((parseDecimal(transferQuantity) ?? 0) * (unitCost(transferringItem) ?? 0) * 100) / 100)} (pelo custo médio, sem margem)</p>
                 )}
               </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Vencimento da conta a pagar</label>
+                <input type="date" value={transferDueDate} onChange={(e) => setTransferDueDate(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
               <p className="text-xs text-muted">
-                A unidade que recebe "compra" da outra pelo custo. Fica um acerto pendente, que é confirmado em Financeiro → Acertos entre unidades quando o dinheiro for enviado.
+                A unidade que recebe "compra" da outra pelo custo: o valor entra na hora como conta a pagar no Financeiro dela. Ao marcar como paga, o recebimento entra sozinho na unidade que mandou.
               </p>
               {transferZeroConfirm ? (
                 <div className="bg-amber-light rounded-lg p-3 text-sm space-y-2">

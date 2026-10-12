@@ -338,6 +338,8 @@ export interface Expense {
   // Estoque), acerto entre unidades e estorno de cancelamento (festa).
   is_stock_purchase: boolean
   settlement_batch_id: string | null
+  // Conta a pagar criada na transferência de estoque (unidade que recebeu).
+  settlement_id: string | null
   reservation_id: string | null
   other_items_value: number
 }

@@ -175,6 +175,7 @@ export function Finance() {
         covers_festa_costs: !!e.covers_festa_costs,
         is_stock_purchase: !!e.is_stock_purchase,
         settlement_batch_id: e.settlement_batch_id ?? null,
+        settlement_id: e.settlement_id ?? null,
         reservation_id: e.reservation_id ?? null,
         other_items_value: Number(e.other_items_value ?? 0),
       })),
@@ -473,7 +474,7 @@ export function Finance() {
 
     setExpenses((prev) => [
       ...prev,
-      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs, is_stock_purchase: false, settlement_batch_id: null, reservation_id: null, other_items_value: 0 },
+      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs, is_stock_purchase: false, settlement_batch_id: null, settlement_id: null, reservation_id: null, other_items_value: 0 },
     ])
     setDescription('')
     setCoversFestaCosts(false)
@@ -1122,7 +1123,7 @@ export function Finance() {
                       Compra de estoque <ChevronDown className={`w-3 h-3 transition-transform ${expandedPurchase === e.id ? 'rotate-180' : ''}`} />
                     </button>
                   )}
-                  {e.settlement_batch_id && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
+                  {(e.settlement_batch_id || e.settlement_id) && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
                   {isEstorno(e) && <span className="mb-1 inline-flex text-[11px] font-semibold text-danger bg-danger-light rounded px-1.5 py-0.5">Estorno</span>}
                   <p className={e.is_stock_purchase && expandedPurchase !== e.id ? 'line-clamp-1' : ''}>{e.description}</p>
                   {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (!e.is_stock_purchase || expandedPurchase === e.id) && (
@@ -1148,14 +1149,14 @@ export function Finance() {
                 </td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-3">
-                    {e.status !== 'pago' && (
+                    {e.status !== 'pago' && !(e.settlement_id && e.status === 'cancelado') && (
                       <Can permission="action:financeiro.marcar_pago">
                         <button onClick={() => openEditExpense(e, 'pago')} className="text-purple text-xs font-medium">
                           Marcar pago
                         </button>
                       </Can>
                     )}
-                    {e.settlement_batch_id ? (
+                    {e.settlement_batch_id || e.settlement_id ? (
                       <Link to="/acertos-entre-unidades" className="text-muted hover:text-purple" title="Só muda pela tela Acertos entre unidades" aria-label="Lançamento travado — abrir Acertos entre unidades">
                         <Lock className="w-3.5 h-3.5" />
                       </Link>

@@ -34,6 +34,7 @@ interface Settlement {
   createdByName: string | null
   batchId: string | null
   paidDate: string | null
+  dueDate: string | null
   paymentMethod: string | null
   confirmedByName: string | null
   cancelReason: string | null
@@ -87,6 +88,7 @@ export function Settlements() {
         createdByName: r.created_by_name,
         batchId: r.batch_id,
         paidDate: r.paid_date,
+        dueDate: r.due_date ?? null,
         paymentMethod: r.payment_method,
         confirmedByName: r.confirmed_by_name,
         cancelReason: r.cancel_reason,
@@ -158,7 +160,11 @@ export function Settlements() {
   }
 
   async function handleUndo(batchId: string) {
-    const { error: rpcError } = await supabase.rpc('undo_settlement_batch', { p_batch_id: batchId })
+    // Acertos antigos (confirmados em lote) usam a função de lote; os novos, a conta do próprio acerto.
+    const row = rows.find((x) => x.id === batchId || x.batchId === batchId)
+    const { error: rpcError } = row?.batchId
+      ? await supabase.rpc('undo_settlement_batch', { p_batch_id: row.batchId })
+      : await supabase.rpc('undo_settlement', { p_id: batchId })
     if (rpcError) setError(friendlyDbError(rpcError.message))
     else setNotice('Confirmação desfeita: os dois lançamentos foram removidos e o acerto voltou a Pendente.')
     setUndoing(null)
@@ -169,7 +175,7 @@ export function Settlements() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Acertos entre unidades</h1>
-        <p className="text-sm text-muted mt-1">Estoque transferido entre Vila Operária e São Vicente: quem recebeu os produtos paga a outra pelo custo, sem margem.</p>
+        <p className="text-sm text-muted mt-1">Estoque transferido entre Vila Operária e São Vicente: quem recebeu os produtos paga a outra pelo custo, sem margem. Cada transferência já vira conta a pagar no Financeiro de quem recebeu; marcar a conta como paga (lá ou aqui) confirma o acerto e lança o recebimento na outra unidade.</p>
       </div>
 
       {error && (
@@ -267,6 +273,7 @@ export function Settlements() {
                       {r.status === 'pago' && (
                         <p className="text-[11px] text-muted mt-0.5">{fmtDate(r.paidDate)} · {r.paymentMethod ? PAYMENT_METHOD_LABEL[r.paymentMethod as PaymentMethod] ?? r.paymentMethod : ''}{r.confirmedByName ? ` · ${r.confirmedByName}` : ''}</p>
                       )}
+                      {r.status === 'pendente' && r.dueDate && <p className="text-[11px] text-muted mt-0.5">Conta a pagar no Financeiro · vence {fmtDate(r.dueDate)}</p>}
                       {r.status === 'cancelado' && <p className="text-[11px] text-muted mt-0.5">Motivo: {r.cancelReason}{r.cancelledByName ? ` · ${r.cancelledByName}` : ''}</p>}
                     </td>
                     <td className="py-3 text-right whitespace-nowrap">
@@ -275,9 +282,9 @@ export function Settlements() {
                           <button onClick={() => { setCancelling(r); setCancelReason('') }} className="text-xs text-muted hover:text-danger">Cancelar</button>
                         </Can>
                       )}
-                      {r.status === 'pago' && r.batchId && (
+                      {r.status === 'pago' && (
                         <Can permission="action:acertos.desfazer">
-                          <button onClick={() => setUndoing(r.batchId)} className="text-xs text-muted hover:text-danger">Desfazer confirmação</button>
+                          <button onClick={() => setUndoing(r.batchId ?? r.id)} className="text-xs text-muted hover:text-danger">Desfazer confirmação</button>
                         </Can>
                       )}
                     </td>
@@ -316,7 +323,7 @@ export function Settlements() {
                 </div>
               </div>
               <p className="text-xs text-muted">
-                Vai gerar, juntos: uma saída paga de {brl(selectedTotal)} em {unitName(selectedRows[0].toSlug)} (categoria Transferência entre unidades) e uma entrada de {brl(selectedTotal)} em {unitName(selectedRows[0].fromSlug)} (acerto, não é faturamento).
+                As contas a pagar desses acertos em {unitName(selectedRows[0].toSlug)} serão marcadas como pagas, e entra {brl(selectedTotal)} em {unitName(selectedRows[0].fromSlug)} (recuperação de custo, não é faturamento).
               </p>
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" className="flex-1 justify-center" disabled={processing} onClick={() => setConfirming(false)}>Voltar</Button>
@@ -332,7 +339,7 @@ export function Settlements() {
           <div className="absolute inset-0 bg-ink/40" onClick={() => setCancelling(null)} />
           <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
             <h2 className="text-lg font-display font-semibold mb-1">Cancelar acerto nº {cancelling.numero}</h2>
-            <p className="text-sm text-muted mb-3">A transferência de estoque continua valendo — só a cobrança de {brl(cancelling.amount)} é anulada.</p>
+            <p className="text-sm text-muted mb-3">A transferência de estoque continua valendo — só a cobrança de {brl(cancelling.amount)} é anulada, e a conta a pagar dela fica cancelada.</p>
             <form onSubmit={handleCancel} className="space-y-3">
               <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2} placeholder="Motivo (obrigatório)" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
               <div className="flex gap-2">
@@ -349,7 +356,7 @@ export function Settlements() {
           <div className="absolute inset-0 bg-ink/40" onClick={() => setUndoing(null)} />
           <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
             <h2 className="text-lg font-display font-semibold mb-1">Desfazer confirmação</h2>
-            <p className="text-sm text-muted mb-4">A saída e a entrada geradas por esta confirmação serão removidas juntas, e o(s) acerto(s) voltam a Pendente.</p>
+            <p className="text-sm text-muted mb-4">A conta a pagar volta a ficar em aberto, o recebimento da outra unidade é removido e o acerto volta a Pendente.</p>
             <div className="flex gap-2">
               <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setUndoing(null)}>Voltar</Button>
               <Button type="button" className="flex-1 justify-center" onClick={() => handleUndo(undoing)}>Desfazer</Button>

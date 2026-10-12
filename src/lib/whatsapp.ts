@@ -42,6 +42,9 @@ export const MESSAGE_TEMPLATE_LABEL: Record<MessageTemplateKey, string> = {
   confirmar_fornecedores: 'Confirmar com fornecedores',
 }
 
+// WhatsApp da equipe (o mesmo número atende as duas unidades).
+export const TEAM_WHATSAPP = '47992261550'
+
 export function buildMessage(template: string, vars: Record<string, string>) {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '')
 }

@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabaseClient'
 import { brl, parseDecimal, friendlyDbError } from '../lib/format'
 import { downloadPdf } from '../lib/pdfExport'
+import { openWhatsApp, TEAM_WHATSAPP } from '../lib/whatsapp'
 import logo from '../assets/logo-brava-park-fest.png'
 import theo from '../assets/theo-vermelho.png'
 
@@ -245,11 +246,16 @@ export function ClientPortal() {
     { titulo: 'Programação sugerida', detalhe: 'Parabéns, pratos quentes e bolo', tab: 'programacao' },
     { titulo: 'Regras da casa', detalhe: 'Conforme o contrato', tab: 'regras' },
     { titulo: 'Como chegar', detalhe: 'Endereço e rota', tab: 'chegar' },
-    { titulo: 'Falar com a equipe', detalhe: 'Mensagem direto para a casa', tab: 'equipe' },
+    { titulo: 'Falar com a equipe', detalhe: 'Mensagem pelo portal ou WhatsApp', tab: 'equipe' },
     { titulo: 'Avaliar a festa', detalhe: d.avaliou ? 'Avaliação enviada' : d.festa_terminou ? 'Disponível agora' : 'Libera ao fim da festa', tab: 'avaliacao' },
   ]
 
   // ---------- ações ----------
+  function chamarNoWhatsApp(assunto?: string) {
+    const festa = d.crianca ? `a festa ${/a$/i.test(d.crianca.trim()) ? 'da' : 'do'} ${d.crianca}` : 'minha festa'
+    openWhatsApp(TEAM_WHATSAPP, `Olá! Aqui é ${d.cliente_nome}, sobre ${festa} do dia ${dataBr(d.data)} (${d.unidade}).${assunto ? ` ${assunto}` : ''}`)
+  }
+
   function avisarPrazoCardapio() {
     setAviso(`O prazo para escolher o cardápio terminou em ${diaMes(d.prazo_cardapio)} (1 semana antes da festa). Para alterar, fale com a equipe.`)
   }
@@ -432,7 +438,12 @@ export function ClientPortal() {
           {aviso && (
             <div role="alert" className="rounded-xl px-3 py-2.5 flex gap-2.5 items-start text-sm" style={{ background: '#FCF1DF', border: '1px solid #F1DDB8', color: '#6B4306' }}>
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <p className="flex-1">{aviso}</p>
+              <p className="flex-1">
+                {aviso}
+                {/fale com a equipe/i.test(aviso) && (
+                  <button onClick={() => chamarNoWhatsApp()} className="block mt-1 font-semibold underline">Chamar a equipe no WhatsApp</button>
+                )}
+              </p>
               <button onClick={() => setAviso(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button>
             </div>
           )}
@@ -558,7 +569,8 @@ export function ClientPortal() {
                 </div>
                 {sabor === OUTRO_SABOR && (
                   <p className="text-xs mt-2 rounded-lg px-3 py-2" style={{ background: '#FFF6DB', color: '#5C4300' }}>
-                    Ao confirmar, a equipe recebe o aviso e combina o sabor com você. Se preferir, conte o sabor em "Falar com a equipe".
+                    Ao confirmar, a equipe recebe o aviso e combina o sabor com você.
+                    <button onClick={() => chamarNoWhatsApp('Quero combinar um sabor de bolo fora da lista.')} className="block mt-1.5 font-semibold underline">Combinar pelo WhatsApp agora</button>
                   </p>
                 )}
               </section>
@@ -869,6 +881,12 @@ export function ClientPortal() {
                   className="flex-1 min-w-0 h-11 rounded-xl px-3 text-sm bg-white" style={{ border: '1px solid #D3DCEE' }} />
                 <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl text-white font-semibold" style={{ background: C.azul }}>Enviar</button>
               </form>
+              <div className="pt-2">
+                <button onClick={() => chamarNoWhatsApp()} className="w-full h-12 rounded-xl text-white font-semibold" style={{ background: '#1F7A5C' }}>
+                  Prefere falar agora? Chamar no WhatsApp
+                </button>
+                <p className="text-[11px] text-center mt-1" style={{ color: '#717A96' }}>(47) 99226-1550 · atende as duas unidades</p>
+              </div>
             </>
           )}
 

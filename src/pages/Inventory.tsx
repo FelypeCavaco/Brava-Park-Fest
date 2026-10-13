@@ -103,6 +103,7 @@ export function Inventory() {
   const [costItem, setCostItem] = useState<InventoryItem | null>(null)
   const [costValue, setCostValue] = useState('')
   const [costError, setCostError] = useState<string | null>(null)
+  const [costReason, setCostReason] = useState('')
 
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null)
   const [movements, setMovements] = useState<Movement[]>([])
@@ -378,7 +379,9 @@ export function Inventory() {
   // ---------- Custo inicial ----------
   function openCost(item: InventoryItem) {
     setCostItem(item)
-    setCostValue('')
+    const atual = unitCost(item)
+    setCostValue(item.has_cost && atual != null ? String(Math.round(atual * 100) / 100).replace('.', ',') : '')
+    setCostReason('')
     setCostError(null)
   }
 
@@ -387,7 +390,7 @@ export function Inventory() {
     if (!costItem) return
     const v = parseDecimal(costValue)
     if (v === null || v < 0) return setCostError('Informe um custo unitário válido.')
-    const { error: rpcError } = await supabase.rpc('set_initial_stock_cost', { p_item: costItem.id, p_unit_cost: v })
+    const { error: rpcError } = await supabase.rpc('set_initial_stock_cost', { p_item: costItem.id, p_unit_cost: v, p_reason: costReason.trim() || null })
     if (rpcError) return setCostError(friendlyDbError(rpcError.message))
     setCostItem(null)
     await loadItems()
@@ -701,7 +704,14 @@ export function Inventory() {
                         {i.has_cost ? (
                           <>
                             <p>{brl(i.total_value)}</p>
-                            <p className="text-[11px] text-muted">{custo != null ? `${brl(custo)} / ${i.unit_of_measure}` : ''}</p>
+                            <p className="text-[11px] text-muted flex items-center gap-1.5">
+                              {custo != null ? `${brl(custo)} / ${i.unit_of_measure}` : ''}
+                              <Can permission="action:estoque.custo_inicial">
+                                <button onClick={() => openCost(i)} className="text-muted hover:text-purple" aria-label={`Editar custo de ${i.name}`} title="Editar custo por unidade">
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              </Can>
+                            </p>
                           </>
                         ) : (
                           <div className="flex flex-col items-start gap-1">
@@ -800,9 +810,9 @@ export function Inventory() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setCostItem(null)} />
           <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
-            <h2 className="text-lg font-display font-semibold mb-1">Definir custo inicial</h2>
+            <h2 className="text-lg font-display font-semibold mb-1">{costItem.has_cost ? 'Editar custo' : 'Definir custo inicial'}</h2>
             <p className="text-sm text-muted mb-4">
-              {costItem.name} — {qtd(costItem.quantity)} {costItem.unit_of_measure} em estoque. O valor passa a valer para o estoque atual, sem mudar a quantidade e sem criar lançamento no Financeiro.
+              {costItem.name} — {qtd(costItem.quantity)} {costItem.unit_of_measure} em estoque. O novo custo vale para o estoque atual (valor em estoque = quantidade × custo), sem mudar a quantidade e sem criar lançamento no Financeiro. Consumos já lançados nas festas mantêm o custo da época.
             </p>
             <form onSubmit={handleSaveCost} className="space-y-3">
               <div>
@@ -812,6 +822,12 @@ export function Inventory() {
                   <p className="text-xs text-muted mt-1">Valor em estoque: {brl((parseDecimal(costValue) ?? 0) * costItem.quantity)}</p>
                 )}
               </div>
+              {costItem.has_cost && (
+                <div>
+                  <label className="block text-xs text-muted mb-1">Motivo (opcional)</label>
+                  <input value={costReason} onChange={(e) => setCostReason(e.target.value)} placeholder="Ex: preço errado na compra" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+              )}
               {costError && <div className="bg-danger-light text-danger text-sm rounded-lg px-3 py-2">{costError}</div>}
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setCostItem(null)}>Cancelar</Button>

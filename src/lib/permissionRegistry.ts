@@ -131,7 +131,7 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     group: 'Estoque',
     items: [
       { key: 'page:estoque', label: 'Ver Estoque', group: 'Estoque', route: '/estoque' },
-      { key: 'action:estoque.custo_inicial', label: 'Definir custo inicial do estoque', group: 'Estoque' },
+      { key: 'action:estoque.custo_inicial', label: 'Definir ou editar o custo dos itens do estoque', group: 'Estoque' },
     ],
   },
   {

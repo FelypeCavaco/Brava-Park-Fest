@@ -1119,7 +1119,12 @@ export function FestaDetalhe() {
   const totalContrato = (festa?.finalValue ?? 0) + totalConsumo + totalExtrasFesta
   const saldoDevedor = totalContrato - totalPago
 
-  const totalCustos = costs.reduce((s, c) => s + c.amount, 0)
+  // Insumos do estoque gastos na festa (Consumo pós-festa), pelo custo congelado
+  // de cada lançamento. Só gerencial: no caixa a compra já foi contada.
+  const totalInsumos = stockConsumption.reduce((s, c) => s + (c.hasInventoryLink && !c.noCost && c.totalCost != null ? c.totalCost : 0), 0)
+  const insumosSemCusto = stockConsumption.filter((c) => c.hasInventoryLink && (c.noCost || c.totalCost == null)).length
+  const totalCustosLancados = costs.reduce((s, c) => s + c.amount, 0)
+  const totalCustos = totalCustosLancados + totalInsumos
   const lucroEstimado = totalContrato - totalCustos
 
   const checklistConcluidos = checklist.filter((c) => c.done).length
@@ -3088,6 +3093,20 @@ export function FestaDetalhe() {
                   </tr>
                 ))}
                 {costs.length === 0 && <tr><td colSpan={3} className="py-3 text-center text-muted">Nenhum custo lançado.</td></tr>}
+                <tr className="bg-paper/60">
+                  <td className="py-2">
+                    Insumos do estoque (consumo pós-festa)
+                    <span className="block text-[11px] text-muted">
+                      {stockConsumption.some((c) => c.hasInventoryLink)
+                        ? `${stockConsumption.filter((c) => c.hasInventoryLink).length} item(ns) lançado(s)${insumosSemCusto > 0 ? ` · ${insumosSemCusto} sem custo (defina o custo em Estoque)` : ''}`
+                        : 'Nada lançado ainda'}
+                    </span>
+                  </td>
+                  <td className="py-2 text-danger">{currency(totalInsumos)}</td>
+                  <td className="py-2 text-right">
+                    <button onClick={() => setTab('estoque')} className="text-xs text-purple font-medium whitespace-nowrap">Ver consumo</button>
+                  </td>
+                </tr>
               </tbody>
             </table>
             {costSuggestions.filter((s) => !costs.some((c) => c.description === s.category || c.description.startsWith(`${s.category} — `))).length > 0 && (
@@ -3143,7 +3162,10 @@ export function FestaDetalhe() {
               </Button>
             </form>
             <div className="flex items-center justify-between pt-3 border-t border-line">
-              <span className="text-sm text-muted">Custos totais: {currency(totalCustos)}</span>
+              <span className="text-sm text-muted">
+                Custos totais: {currency(totalCustos)}
+                {totalInsumos > 0 && <span className="block text-[11px]">{currency(totalCustosLancados)} lançados + {currency(totalInsumos)} de insumos</span>}
+              </span>
               <span className={`font-display font-semibold ${lucroEstimado >= 0 ? 'text-teal' : 'text-danger'}`}>
                 Lucro estimado: {currency(lucroEstimado)}
               </span>

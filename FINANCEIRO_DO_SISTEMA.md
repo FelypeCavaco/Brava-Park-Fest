@@ -1,6 +1,6 @@
 # Brava Park Fest — Como funciona a parte financeira do sistema
 
-*Versão de 10/10/2026. Descreve o sistema depois das correções desta data (veja a seção 11).*
+*Versão de 13/10/2026. Inclui as três visões do Financeiro (Caixa, Resultado das festas, Ponte e compromissos — seção 9-A) e as correções de 10/10/2026 (seção 11).*
 
 ---
 
@@ -15,6 +15,7 @@
 7. Despesa fixa das festas
 8. Estoque: compras, consumo e transferência entre unidades
 9. Onde cada número aparece e como é calculado
+9-A. As três visões do Financeiro (Caixa, Resultado das festas, Ponte e compromissos)
 10. Regras para não contar o mesmo gasto duas vezes
 11. Correções feitas em 10/10/2026
 12. Limitações que ainda existem
@@ -73,7 +74,7 @@ O **status muda sozinho** conforme os pagamentos:
 - No histórico da festa essa mudança aparece como "Sistema (status automático)".
 
 ### Cancelamento
-Ao cancelar, registra-se o **motivo**, o **% de multa retida** e o **valor devolvido** ao cliente. Os custos fixos automáticos saem da festa. Veja a limitação sobre o valor devolvido na seção 12.
+Ao cancelar, registra-se o **motivo**, o **% de multa retida** e o **valor devolvido** ao cliente. Os custos fixos automáticos saem da festa. Se houver valor devolvido, o sistema cria a saída **"Estorno"** no Financeiro (paga na hora ou como conta a vencer, se ainda não foi devolvido). No Financeiro → Resultado das festas, a festa cancelada conta só pela multa retida (seção 9-A).
 
 ---
 
@@ -173,41 +174,35 @@ Para custos que **toda festa tem** (ex: docinhos, salgadinhos, limpeza pós-fest
 
 ## 8. Estoque: compras, consumo e transferência entre unidades
 
-O estoque guarda **quantidades**, não valores em dinheiro. O dinheiro da compra fica na conta a pagar.
+O estoque guarda a **quantidade** e o **valor** de cada item. O custo de cada item é o **custo médio**: valor em estoque ÷ quantidade. Toda mudança fica registrada no histórico do item (compra, consumo, ajuste, transferência, correção de custo).
 
 ### 8.1 Compra (estoque entra)
-- No formulário de **conta a pagar**, adicione os itens que vieram na compra: escolha o item e a quantidade.
-- Para itens com tamanhos de compra (ex: suco em garrafa de 1,5 L, 3 L ou 5 L), escolha o tamanho e quantas garrafas. O sistema converte em litros sozinho.
-- Ao salvar a conta, as quantidades **somam no estoque** da unidade da conta.
-- Excluir a conta **desconta de volta** do estoque.
+- **Onde:** Estoque → **Entrada de compra**. Escolha os itens, as quantidades e o valor pago de cada um.
+- Ao salvar, as quantidades e os valores **somam no estoque** e o sistema cria sozinho a **conta a pagar** da compra (aparece no Financeiro como "Compra de estoque", com os itens).
+- Editar ou excluir a compra corrige o estoque pela diferença, na mesma conta. Essa conta não pode ser alterada por fora.
 
-### 8.2 Ajuste manual
-Na tela **Estoque**, os botões **+ / −** andam de número inteiro em número inteiro (6,5 → 7 ou 6), e o campo de quantidade aceita qualquer valor digitado (salva meio segundo depois).
+### 8.2 Ajuste manual e custo do item
+- Na tela **Estoque**, os botões **+ / −** e o campo de quantidade ajustam a quantidade pelo custo médio atual. Não criam conta nem dinheiro.
+- O **custo por unidade** de qualquer item (R$ por litro, por pacote, por unidade) pode ser definido ou corrigido; o valor em estoque passa a ser quantidade × novo custo. Fica registrado no histórico, com o motivo. Consumos já lançados nas festas não mudam (o custo deles ficou congelado).
 
 ### 8.3 Consumo pós-festa (estoque sai)
 - **Onde:** Central da festa → aba **Consumo pós-festa**.
-- Lança o que foi gasto na festa. A quantidade **sai do estoque** da unidade na hora.
-- Dá para **editar** (o estoque é corrigido só pela diferença) ou **desfazer** (devolve ao estoque).
-- Isto não gera dinheiro nem custo. É só controle de quantidade.
-- Não confundir com **consumo cobrado à parte** (ex: chopp por litro), que é uma cobrança ao cliente e entra no valor devido da festa.
+- Lança o que foi gasto na festa. A quantidade **sai do estoque** na hora, pelo custo médio daquele momento, e esse custo fica **congelado** no lançamento.
+- Dá para **editar** ou **desfazer**. Ao terminar, marque o consumo como **finalizado**.
+- Esse custo entra no **Lucro por festa**, na **Central da festa** ("Custos da festa e lucro estimado") e no **Financeiro → Resultado das festas**. No **Caixa** e no **Resultado do mês** quem conta é a compra, quando foi paga — por isso o consumo não entra lá (senão contaria duas vezes).
+- Não confundir com **consumo cobrado à parte** (ex: chopp por litro), que é uma cobrança ao cliente e entra no valor da festa.
 
-### 8.4 Lista de compras
+### 8.4 Lista de compras e consumo por convidado
 - O item entra na **Lista de compras** quando a quantidade fica abaixo do **mínimo**.
-- Se o item tem **consumo por convidado** (ex: 0,2 L de suco por pessoa), o mínimo passa a ser o necessário para a **próxima festa** da unidade, se for maior que o mínimo fixo.
-- As velas numéricas (0–9, azul e rosa) seguem a mesma regra.
+- **Consumo por convidado:** médias reais calculadas com as últimas 10 festas finalizadas de cada unidade. São usadas para estimar os insumos das festas futuras (Lucro por festa e reserva necessária no Financeiro).
 
 ### 8.5 Transferência entre unidades
 **Onde:** Estoque → ícone de transferir ao lado do item.
 
-1. Escolha a **quantidade** e a **unidade de destino**. Não é possível transferir mais do que há.
-2. A quantidade **sai** da unidade de origem.
-3. Na unidade de destino, o sistema procura um item com o **mesmo nome exato**:
-   - **existe** → soma a quantidade nele;
-   - **não existe** → cria o item lá, com as mesmas configurações (categoria, unidade de medida, mínimo, consumo por convidado, fornecedor).
-4. **Nenhum valor em dinheiro é movimentado.** A compra continua sendo despesa da unidade que comprou. Se for preciso "cobrar" a outra unidade, isso hoje tem que ser feito por fora (ex: uma conta a pagar na unidade de destino, de forma manual).
-5. A transferência fica registrada no histórico de alterações (quem fez, quantidade antes e depois).
-
----
+1. Escolha a **quantidade** e a **unidade de destino**. A quantidade sai de uma unidade e entra na outra pelo custo médio.
+2. A unidade que **recebeu** os produtos ganha na hora uma **conta a pagar** ("Transferência entre unidades": a vencer → atrasado → pago).
+3. Quando essa conta é marcada como paga, o sistema lança sozinho a **entrada** na unidade que mandou os produtos (é recuperação de custo, não faturamento) e o acerto fica pago. Voltar a conta para não paga desfaz a entrada.
+4. A tela **Acertos entre unidades** mostra todos os acertos. Desfazer uma confirmação é só para o Administrador.
 
 ## 9. Onde cada número aparece e como é calculado
 
@@ -219,7 +214,9 @@ Na tela **Estoque**, os botões **+ / −** andam de número inteiro em número 
 | **Custos das festas do mês** | Custos lançados nas festas deste mês **que já aconteceram** (até hoje). Embaixo, o valor das festas que ainda vão acontecer no mês. |
 | **A pagar (a vencer)** | Contas não pagas com vencimento hoje ou depois |
 | **Atrasado** | Contas não pagas com vencimento já passado |
-| **Saldo do mês** | Entradas do mês − contas **pagas** neste mês − custos das festas já realizadas no mês |
+| **Saldo do mês (caixa)** | Entradas do mês + acertos recebidos de outra unidade − contas **pagas** neste mês − custos das festas já realizadas no mês |
+
+Esta é a aba **Caixa** do Financeiro. Os números são os mesmos de sempre; a aba ganhou um quadro "O que esta tela mostra", uma frase de resumo com os números do mês e uma legenda em cada cartão.
 
 ### 9.2 Financeiro — fluxo de caixa futuro (projeção)
 **Saldo projetado** = saldo do mês + recebimentos previstos − contas a pagar (a vencer + atrasadas) − custos das próximas festas do mês.
@@ -231,6 +228,7 @@ Na tela **Estoque**, os botões **+ / −** andam de número inteiro em número 
 - **Entradas** = pagamentos recebidos no mês.
 - **Saídas** = contas pagas no mês + custos das festas do mês.
 - Clicar numa barra mostra a lista de cada entrada ou saída daquele mês.
+- A barra de saídas do **mês atual** inclui custos de festas que ainda vão acontecer neste mês (o cartão "Custos das festas do mês" conta só as que já aconteceram).
 
 ### 9.4 Financeiro — despesas por categoria
 Soma das contas a pagar lançadas, por categoria (sem as marcadas como "paga custos das festas").
@@ -243,9 +241,10 @@ Todas as festas com valor firmado, pago e saldo; total recebido, recebido no mê
 
 - **Margem** = lucro ÷ receita. Abaixo de 10% aparece o alerta "Margem baixa"; de 10% a 25% fica amarela; 25% ou mais, verde.
 - Mostra por unidade e os últimos 6 meses.
+- Esta tela conta **pela data do pagamento**. Um aviso fixo no topo leva ao Financeiro → Resultado das festas, que conta pela data da festa (seção 9-A).
 
 ### 9.7 Lucro por festa
-**Lucro da festa** = valor firmado da festa − custos lançados nela. Mostra o lucro total do período e a margem média.
+**Lucro da festa** = valor da festa (valor firmado + extras vendidos + consumo cobrado) − custos lançados nela − insumos do estoque consumidos (pelo custo de quando foram comprados). É o mesmo lucro da Central da festa e do Financeiro → Resultado das festas. Mostra o lucro total do período e a margem média.
 
 ### 9.8 Painel
 - **Faturamento recebido** no mês e gráfico de 6 meses por unidade.
@@ -257,9 +256,77 @@ Todas as festas com valor firmado, pago e saldo; total recebido, recebido no mê
 - Meta de faturamento por unidade e comparativo entre unidades.
 - **Projeção de recebimento** dos próximos meses: o que falta receber das festas já agendadas.
 - Exportação CSV.
+- Como no Resultado do mês, um aviso fixo explica que a tela conta pela data do pagamento e leva ao Resultado das festas.
 
 ### 9.10 Tráfego e CAC
 **CAC** = gasto em tráfego pago no mês ÷ clientes novos vindos de Instagram, Facebook ou Google. É comparado ao ticket médio.
+
+---
+
+## 9-A. As três visões do Financeiro
+
+No topo do Financeiro há três abas. Cada uma responde a uma pergunta diferente, e as três usam o mesmo filtro de unidade (Vila Operária, São Vicente ou Ambas). Nenhuma delas cria, altera ou apaga lançamentos: tudo é cálculo feito em cima do que já está lançado.
+
+| Aba | Pergunta que responde |
+|---|---|
+| **Caixa** | Como está o saldo do mês, do jeito que o sistema sempre calculou? (seção 9.1) |
+| **Resultado das festas** | As festas que aconteceram neste mês deram lucro? |
+| **Ponte e compromissos** | Por que o Caixa e o Resultado mostram números diferentes, e quanto do dinheiro já recebido é de festas futuras? |
+
+Cada aba abre com o quadro **"O que esta tela mostra"** (pode ser recolhido; o sistema lembra a escolha de cada pessoa naquele navegador), o botão **"Entenda com um exemplo"**, a linha **"Não é:"** e uma frase de resumo com os números reais do mês.
+
+### 9-A.1 Resultado das festas
+Aqui **cada festa conta no mês em que acontece**, não importa quando o cliente pagou. Tem seletor de mês.
+
+- **Festa realizada:** festa não cancelada que já aconteceu até hoje. Em meses que já passaram, até o último dia daquele mês.
+- **Receita das festas** = valor firmado + extras vendidos + consumo cobrado, já recebido ou não. Não é dinheiro novo: não se soma às entradas do caixa.
+- **Custos das festas** = custos lançados (equipe, despesas fixas das festas, custos manuais) + insumos do estoque consumidos (pelo custo de quando foram comprados).
+- **Taxa da maquininha (estimada)**, em cartão próprio: taxa configurada para cada forma de pagamento, sobre o que os clientes dessas festas já pagaram.
+- **Resultado direto das festas** = receita − custos − taxa. A margem usa as mesmas faixas do sistema (abaixo de 10% alerta, 10–25% amarelo, 25% ou mais verde). Se a receita for zero, a margem aparece como "—".
+- **Despesas gerais** = contas pagas no mês (pela data do pagamento), **sem**: compras de estoque (o insumo entra pelo consumo), acertos entre unidades, estornos de cancelamento e contas marcadas "paga custos das festas".
+- **Festas canceladas:** contam no mês do cancelamento, só pela **multa retida** (pago − devolvido), menos custos que já tinham sido lançados nelas. O valor devolvido não é descontado de novo.
+- **Resultado do mês** = resultado direto − despesas gerais + efeito das festas canceladas. A soma do lucro das festas da tabela − taxa − despesas gerais + cancelamentos fecha com esse número.
+- **Status de cada festa:** **completo** (consumo finalizado, todos os itens com custo e algum custo lançado) ou **parcial** (falta finalizar o consumo, definir o custo de um item ou lançar os custos; o lucro pode estar acima do real).
+- **Estimado — festas que ainda vão acontecer neste mês:** bloco separado, fora dos totais, com receita prevista, custos lançados, insumos estimados pela média de consumo e o resultado estimado do mês completo.
+- Linha informativa **"Estoque: compras pagas no mês × consumo das festas do mês"**.
+- Gráfico dos últimos 6 meses (receita × custos e a linha do resultado). Clicar num mês abre aquele mês.
+
+Não é o lucro contábil: não inclui impostos sobre o lucro, depreciação nem encargos que não estejam lançados como conta.
+
+### 9-A.2 Ponte do caixa ao resultado
+Parte do **Saldo do mês (caixa)** e chega ao **Resultado do mês**, linha por linha. A coluna **"Somar / tirar"** mostra o que somar ou tirar do saldo do caixa para chegar ao resultado. Os sinais **não** são entradas e saídas de dinheiro: uma compra de estoque, por exemplo, já saiu da conta e o caixa já a descontou; na ponte ela aparece com "+" porque o resultado não conta a compra (conta o consumo).
+
+| Linha | Somar / tirar |
+|---|---|
+| Recebido neste mês de festas de meses anteriores | − |
+| Adiantado de festas futuras | − |
+| Recebido neste mês de festas canceladas | − |
+| Recebido antes do mês (festas realizadas neste mês) | + |
+| Recebido depois do mês (só em meses que já passaram) | + |
+| Ainda a receber das festas realizadas | + |
+| Multa retida de festas canceladas | + |
+| Custos de festas canceladas | − |
+| Estornos (devoluções) pagos | + |
+| Compras de estoque | + |
+| Insumos consumidos nas festas | − |
+| Acertos entre unidades recebidos | − |
+| Acertos entre unidades pagos | + |
+| Taxa da maquininha (estimada) | − |
+| **Diferença não classificada** | sempre visível; deve ser zero |
+
+Cada linha tem a coluna **"O que significa"** com os valores reais e, clicando, mostra os lançamentos que a compõem. As linhas de ajuste só aparecem quando têm valor.
+
+### 9-A.3 Dinheiro já comprometido com festas futuras
+Festas futuras = festas não canceladas a partir de amanhã.
+
+- **Já recebido de festas futuras:** o que os clientes já pagaram por elas.
+- **Custos previstos:** custos já lançados nelas + insumos estimados pela **média real de consumo** (a mesma do Estoque e do Lucro por festa: últimas 10 festas finalizadas de cada unidade, só itens com histórico). Unidade sem média: só os custos lançados, e a tela avisa.
+- **Reserva necessária** = custos previstos das festas futuras que já receberam algum pagamento. A tela mostra quanto vem de custos lançados e quanto de insumos estimados. É estimativa, não saldo bancário.
+- Aviso quando a reserva é maior que o saldo projetado do mês (aba Caixa).
+- Lista das festas futuras por mês, com valor, recebido, a receber e custos previstos.
+
+### 9-A.4 Meses que já passaram
+São recalculados com os dados de hoje. Se uma festa daquele mês for alterada ou cancelada depois, ou se um pagamento ou conta for lançado com data retroativa, o número daquele mês muda. O sistema guarda só o valor atual de cada festa (não guarda versões antigas).
 
 ---
 
@@ -282,7 +349,9 @@ Todas as festas com valor firmado, pago e saldo; total recebido, recebido no mê
 - Mas **não entra em nenhum total**: saldo, resultado, fluxo de caixa, a pagar, atrasado e despesas por categoria. O valor já está contado pelos custos das festas.
 - Na lista ela aparece com a indicação **"Já nos custos das festas"**.
 
-**Aviso automático:** ao lançar um custo manual numa festa, o sistema avisa se já existe uma conta a pagar parecida no mesmo mês (não considera as contas já marcadas).
+**Aviso automático, nos dois sentidos:**
+- Ao lançar um custo manual numa festa, o sistema avisa se já existe uma conta a pagar parecida no mesmo mês (não considera as contas já marcadas).
+- Ao lançar uma conta a pagar no Financeiro, o sistema avisa se já existe um custo de festa parecido (mesmo valor ou descrição parecida) numa festa da mesma unidade no mesmo mês. Dá para **Voltar**, **Marcar como "paga custos das festas" e salvar** ou **Salvar mesmo assim**.
 
 ---
 
@@ -299,12 +368,11 @@ Todas as festas com valor firmado, pago e saldo; total recebido, recebido no mê
 
 ## 12. Limitações que ainda existem
 
-- **Valor devolvido no cancelamento não sai do caixa.** O valor fica registrado na festa, mas não aparece como saída no Financeiro nem no Resultado. Hoje é preciso lançar uma conta a pagar para isso.
-- **Lucro por festa e recebimentos previstos usam só o valor firmado.** Extras vendidos e consumo cobrado entram no saldo do cliente, mas não no lucro por festa nem na projeção de recebimentos.
+- **Recebimentos previstos (projeção da aba Caixa) usam só o valor firmado.** Extras vendidos e consumo cobrado entram no saldo do cliente, no Lucro por festa e no Resultado das festas, mas não nessa projeção.
 - **Não existe plano de parcelas.** O sistema não sabe que "a 2ª parcela vence dia 15", só o que já foi pago.
 - **Taxa da maquininha é estimada.** Não vem da operadora.
-- **Estoque não tem preço.** A transferência entre unidades não movimenta dinheiro, e o consumo pós-festa não vira custo automaticamente.
-- **Mistura de regras de data.** Recebimentos e contas contam pela data em que o dinheiro entrou ou saiu. Custos das festas contam pela data da festa. Num mês com muitas festas pagas antecipadamente, a receita aparece num mês e o custo em outro.
+- **Mistura de regras de data na aba Caixa.** Recebimentos e contas contam pela data em que o dinheiro entrou ou saiu; custos das festas, pela data da festa. Num mês com muitas festas pagas antes, o saldo do caixa pode ficar baixo sem prejuízo. A aba Resultado das festas e a Ponte (seção 9-A) mostram e explicam a diferença.
+- **Sem histórico de versões do valor da festa.** Meses passados são recalculados com o valor atual (seção 9-A.4).
 - **Despesas fixas mensais** só são criadas quando alguém abre o Painel ou o Financeiro naquele mês.
 - **Sem conciliação bancária.** O sistema não confere com o extrato do banco.
 
@@ -318,8 +386,9 @@ Festa do Pedro, Vila Operária, plano Classic 50 pessoas, sábado, valor R$ 4.50
 2. **Sinal de R$ 1.350 por Pix** em agosto → status vira **Confirmada**. Conta como entrada de **agosto**.
 3. **Venda de cabine de fotos (R$ 650)** em setembro → valor devido passa a R$ 5.150.
 4. **Pagamento de R$ 3.800 no cartão de crédito** em outubro → pagou R$ 5.150 → status vira **Quitada**. Entrada de **outubro**; a taxa da maquininha (ex: 3,5% = R$ 133) é descontada no Resultado de outubro.
-5. **Dia da festa (outubro):** 4 pessoas da equipe marcadas como "Compareceu" → 4 custos de R$ 150 = R$ 600. Consumo pós-festa lançado → sai do estoque (sem valor em dinheiro).
+5. **Dia da festa (outubro):** 4 pessoas da equipe marcadas como "Compareceu" → 4 custos de R$ 150 = R$ 600. Consumo pós-festa lançado → sai do estoque, com o custo congelado (entra no Lucro por festa e no Resultado das festas).
 6. **Custos da festa:** R$ 600 + R$ 180 + R$ 600 = **R$ 1.380**. Contam em **outubro** (mês da festa).
 7. **Fim do mês:** chega a nota do fornecedor de docinhos (R$ 2.400, várias festas). É lançada como conta a pagar **marcada** como "paga custos já lançados nas festas" → fica na lista para pagar, mas não soma em nada (os R$ 600 desta festa já estão nos custos).
-8. **Lucro por festa:** R$ 4.500 (valor firmado) − R$ 1.380 = **R$ 3.120**.
-9. **Resultado de outubro:** inclui os R$ 3.800 recebidos, menos a taxa de R$ 133, menos os R$ 1.380 de custos da festa, menos as contas gerais pagas em outubro.
+8. **Lucro por festa:** R$ 5.150 (valor firmado R$ 4.500 + cabine R$ 650) − R$ 1.380 = **R$ 3.770** (mais os insumos consumidos, se houver).
+9. **Resultado do mês de outubro (tela Resultado do mês, pela data do pagamento):** inclui os R$ 3.800 recebidos, menos a taxa de R$ 133, menos os R$ 1.380 de custos da festa, menos as contas gerais pagas em outubro.
+10. **Financeiro → Resultado das festas de outubro (pela data da festa):** receita R$ 5.150 − custos R$ 1.380 − taxa estimada R$ 133 = **R$ 3.637** de resultado direto dessa festa, mesmo que R$ 1.350 tenham entrado em agosto. A Ponte de outubro mostra os R$ 1.350 em "Recebido antes do mês".

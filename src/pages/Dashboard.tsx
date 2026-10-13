@@ -8,6 +8,8 @@ import { Badge } from '../components/ui/Badge'
 import { DashboardMascot } from '../components/mascot/DashboardMascot'
 import { QuickActionsBar } from '../components/layout/QuickActionsBar'
 import { PortalNotices } from '../components/PortalNotices'
+import { FestasPorMesChart } from '../components/FestasPorMesChart'
+import { useAuth } from '../lib/AuthContext'
 import logo from '../assets/logo-brava-park-fest.png'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
@@ -102,6 +104,7 @@ function nextBirthdayOccurrence(birthdayIso: string, today: Date) {
 
 export function Dashboard() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
+  const { profile } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const acessoNegado = searchParams.get('acesso_negado') === '1'
@@ -419,6 +422,29 @@ export function Dashboard() {
   const cacAnimado = useCountUp(stats.cacMedio)
   const ticketAnimado = useCountUp(stats.ticketMedio)
 
+  // Administrador e Financeiro veem os avisos de dinheiro primeiro.
+  const avisosFinanceiroNoTopo = !!profile?.role?.isAdmin || /financeir/i.test(profile?.role?.name ?? '')
+
+  const saldoEmAbertoCard = (
+    <Card title="Saldo em aberto (próximos 7 dias)">
+      <ul className="divide-y divide-line">
+        {saldosPendentes.map((p) => (
+          <li key={p.id} className="py-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">{p.cliente}</p>
+              <p className="text-xs text-muted">Festa em {p.data}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium">{currency(p.saldo)}</p>
+              <Badge tone="amber">saldo devedor</Badge>
+            </div>
+          </li>
+        ))}
+        {saldosPendentes.length === 0 && <p className="text-sm text-muted py-2">Nada em aberto essa semana.</p>}
+      </ul>
+    </Card>
+  )
+
   return (
     <div className="space-y-6">
       <DashboardMascot />
@@ -443,16 +469,10 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div>
-        <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Ações rápidas</p>
-        <QuickActionsBar size="large" />
-      </div>
-
-      {loading ? (
-        <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
-      ) : (
-        <>
-          <PortalNotices />
+      {avisosFinanceiroNoTopo && !loading && (
+        <section className="space-y-4" aria-label="Avisos do financeiro">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide -mb-1">Financeiro</p>
+          <PortalNotices mode="financeiro" />
           {acertosPendentes.length > 0 && (
             <Card className="border-orange/50 bg-orange-light">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -470,6 +490,65 @@ export function Dashboard() {
                 <Link to="/acertos-entre-unidades" className="text-sm font-medium text-purple">Ver acertos →</Link>
               </div>
             </Card>
+          )}
+          {contasAPagar.length > 0 && (
+            <Card className={contasAPagar.some((c) => c.vencida) ? 'border-danger/50 bg-danger-light' : 'border-amber/40 bg-amber-light'}>
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className={`w-4 h-4 ${contasAPagar.some((c) => c.vencida) ? 'text-danger' : 'text-amber'}`} />
+                <p className="text-sm font-medium text-ink/80">
+                  {contasAPagar.length} conta{contasAPagar.length > 1 ? 's' : ''} a pagar nos próximos 14 dias
+                </p>
+              </div>
+              <ul className="divide-y divide-line/60">
+                {contasAPagar.map((c) => (
+                  <li key={c.id} className="py-2.5 flex items-center justify-between gap-3">
+                    <button onClick={() => navigate('/financeiro')} className="text-left min-w-0">
+                      <p className="text-sm font-medium truncate">{c.descricao}{c.fornecedor ? ` — ${c.fornecedor}` : ''}</p>
+                      <p className="text-xs text-muted">{currency(c.valor)} · vence {c.vencimento}</p>
+                    </button>
+                    <Badge tone={c.vencida ? 'danger' : 'amber'}>
+                      {c.vencida ? 'Venceu' : c.diasParaVencer === 0 ? 'Vence hoje' : c.diasParaVencer === 1 ? 'Vence amanhã' : `${c.diasParaVencer} dias`}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          {saldosPendentes.length > 0 && saldoEmAbertoCard}
+        </section>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Ações rápidas</p>
+        <QuickActionsBar size="large" />
+      </div>
+
+      {loading ? (
+        <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
+      ) : (
+        <>
+          <PortalNotices mode={avisosFinanceiroNoTopo ? 'operacao' : 'all'} />
+          {!avisosFinanceiroNoTopo && (
+            <>
+          {acertosPendentes.length > 0 && (
+            <Card className="border-orange/50 bg-orange-light">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-start gap-2 text-sm">
+                  <ArrowLeftRight className="w-4 h-4 text-orange mt-0.5" />
+                  <div>
+                    <p className="font-medium">Acertos entre unidades pendentes</p>
+                    {acertosPendentes.map((a) => (
+                      <p key={a.de + a.para} className="text-xs text-ink/80">
+                        {a.de} precisa enviar {a.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para {a.para} ({a.count} transferência{a.count > 1 ? 's' : ''})
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <Link to="/acertos-entre-unidades" className="text-sm font-medium text-purple">Ver acertos →</Link>
+              </div>
+            </Card>
+          )}
+            </>
           )}
           {lembretes.length > 0 && (
             <Card className="border-purple/40 bg-purple-light">
@@ -527,6 +606,9 @@ export function Dashboard() {
             </Card>
           )}
 
+
+          {!avisosFinanceiroNoTopo && (
+            <>
           {contasAPagar.length > 0 && (
             <Card className={contasAPagar.some((c) => c.vencida) ? 'border-danger/50 bg-danger-light' : 'border-amber/40 bg-amber-light'}>
               <div className="flex items-center gap-2 mb-3">
@@ -549,6 +631,8 @@ export function Dashboard() {
                 ))}
               </ul>
             </Card>
+          )}
+            </>
           )}
 
           {reativacoesProximas.length > 0 && (
@@ -626,7 +710,7 @@ export function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card title="Faturamento recebido por unidade — últimos 6 meses" className="lg:col-span-2">
+            <Card title="Faturamento recebido por unidade — últimos 6 meses" className={avisosFinanceiroNoTopo ? 'lg:col-span-3' : 'lg:col-span-2'}>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={faturamentoMensal}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
@@ -643,24 +727,10 @@ export function Dashboard() {
               </ResponsiveContainer>
             </Card>
 
-            <Card title="Saldo em aberto (próximos 7 dias)">
-              <ul className="divide-y divide-line">
-                {saldosPendentes.map((p) => (
-                  <li key={p.id} className="py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{p.cliente}</p>
-                      <p className="text-xs text-muted">Festa em {p.data}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{currency(p.saldo)}</p>
-                      <Badge tone="amber">saldo devedor</Badge>
-                    </div>
-                  </li>
-                ))}
-                {saldosPendentes.length === 0 && <p className="text-sm text-muted py-2">Nada em aberto essa semana.</p>}
-              </ul>
-            </Card>
+            {!avisosFinanceiroNoTopo && saldoEmAbertoCard}
           </div>
+
+          <FestasPorMesChart />
 
           <Card title="Atividade recente">
             <ul className="divide-y divide-line text-sm">

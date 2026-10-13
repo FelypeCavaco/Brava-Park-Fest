@@ -425,6 +425,9 @@ export function FestaDetalhe() {
   const [editDescontoTipo, setEditDescontoTipo] = useState<DiscountType | ''>('')
   const [editDescontoValor, setEditDescontoValor] = useState('')
   const [editCortesia, setEditCortesia] = useState('')
+  const [editChildName, setEditChildName] = useState('')
+  const [editChildAge, setEditChildAge] = useState('')
+  const [editKids, setEditKids] = useState<{ id: string; name: string; age: string }[]>([])
   const [savingEditDados, setSavingEditDados] = useState(false)
   const [birthdayKids, setBirthdayKids] = useState<{ id: string; name: string; age: number | null }[]>([])
   const [novoKidNome, setNovoKidNome] = useState('')
@@ -1794,6 +1797,9 @@ export function FestaDetalhe() {
     setEditDescontoTipo(festa.discountType ?? '')
     setEditDescontoValor(festa.discountValue != null ? String(festa.discountValue) : '')
     setEditCortesia(festa.courtesyGuests != null ? String(festa.courtesyGuests) : '')
+    setEditChildName(festa.childName ?? '')
+    setEditChildAge(festa.childAge != null ? String(festa.childAge) : '')
+    setEditKids(birthdayKids.map((k) => ({ id: k.id, name: k.name, age: k.age != null ? String(k.age) : '' })))
     setShowEditDados(true)
   }
 
@@ -1837,14 +1843,27 @@ export function FestaDetalhe() {
         discount_value: editDescontoTipo ? descontoValor : null,
         final_value: Math.round(finalValue * 100) / 100,
         courtesy_guests: editCortesia ? Number(editCortesia) : null,
+        child_name: editChildName.trim() || null,
+        child_age: editChildAge.trim() === '' ? null : Math.max(0, Math.round(Number(editChildAge))),
       })
       .eq('id', festa.id)
+
+    // Aniversariantes adicionais (irmãos na mesma festa): só grava os que mudaram.
+    let kidsError = false
+    for (const k of editKids) {
+      const original = birthdayKids.find((b) => b.id === k.id)
+      const age = k.age.trim() === '' ? null : Math.max(0, Math.round(Number(k.age)))
+      if (!original || !k.name.trim() || (original.name === k.name.trim() && original.age === age)) continue
+      const { error: kidErr } = await supabase.from('reservation_birthday_kids').update({ name: k.name.trim(), age }).eq('id', k.id)
+      if (kidErr) kidsError = true
+    }
     setSavingEditDados(false)
 
-    if (error) {
+    if (error || kidsError) {
       setError('Não foi possível salvar as alterações.')
       return
     }
+    await loadBirthdayKids()
 
     setShowEditDados(false)
     await loadFesta()
@@ -2442,7 +2461,14 @@ export function FestaDetalhe() {
           <p className="text-xl font-display font-semibold mt-1 text-danger">{currency(saldoDevedor)}</p>
         </Card>
         <Card>
-          <p className="text-xs text-muted">Aniversariante{birthdayKids.length > 0 ? 's' : ''}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted">Aniversariante{birthdayKids.length > 0 ? 's' : ''}</p>
+            <Can permission="action:festa.editar_dados">
+              <button onClick={openEditDados} className="text-muted hover:text-purple" aria-label="Editar aniversariante" title="Editar nome e idade">
+                <Pencil className="w-3 h-3" />
+              </button>
+            </Can>
+          </div>
           <p className="text-lg font-display font-semibold mt-1">{festa.childName ? `${festa.childName}${festa.childAge != null ? ` (${festa.childAge})` : ''}` : '—'}</p>
           {birthdayKids.map((k) => (
             <div key={k.id} className="flex items-center justify-between gap-2 mt-0.5">
@@ -3895,6 +3921,28 @@ export function FestaDetalhe() {
                   <input type="number" min={0} value={editCortesia} onChange={(e) => setEditCortesia(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs text-muted mb-1" htmlFor="edit-child-name">Aniversariante</label>
+                  <input id="edit-child-name" value={editChildName} onChange={(e) => setEditChildName(e.target.value)} placeholder="Nome" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1" htmlFor="edit-child-age">Idade que vai fazer</label>
+                  <input id="edit-child-age" type="number" min={0} value={editChildAge} onChange={(e) => setEditChildAge(e.target.value)} placeholder="Anos" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              {editKids.map((k, i) => (
+                <div key={k.id} className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs text-muted mb-1">Outro aniversariante</label>
+                    <input value={k.name} onChange={(e) => setEditKids((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Idade</label>
+                    <input type="number" min={0} value={k.age} onChange={(e) => setEditKids((prev) => prev.map((x, j) => (j === i ? { ...x, age: e.target.value } : x)))} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              ))}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-muted mb-1">Desconto</label>

@@ -240,7 +240,11 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
           </div>
 
           <div>
-            <p className="text-xs font-medium text-muted mb-2">Itens comprados</p>
+            <p className="text-xs font-medium text-muted mb-1">Itens comprados</p>
+            <p className="text-[11px] text-muted mb-2">
+              Em cada item: a <strong>quantidade na unidade em que ele está cadastrado no estoque</strong> (ex: litros, unidades, pacotes) e o{' '}
+              <strong>valor total pago por aquele item</strong> na nota — não o preço por litro ou por unidade. O sistema calcula o custo unitário sozinho.
+            </p>
             {loading ? (
               <p className="text-sm text-muted">Carregando itens...</p>
             ) : (
@@ -250,12 +254,12 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
                   const vs = variants[l.itemId] ?? []
                   return (
                     <div key={l.key} className="grid grid-cols-12 gap-2 items-start bg-paper/60 rounded-lg p-2">
-                      <select value={l.itemId} onChange={(e) => updateLine(l.key, { itemId: e.target.value, variantId: '' })} aria-label="Item" className="col-span-12 sm:col-span-4 border border-line rounded-lg px-2 py-2 text-sm bg-surface">
+                      <select value={l.itemId} onChange={(e) => updateLine(l.key, { itemId: e.target.value, variantId: '' })} aria-label="Item" className="col-span-12 sm:col-span-4 sm:mt-[18px] border border-line rounded-lg px-2 py-2 text-sm bg-surface">
                         <option value="">Escolha o item…</option>
                         {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                       </select>
                       {vs.length > 0 ? (
-                        <select value={l.variantId} onChange={(e) => updateLine(l.key, { variantId: e.target.value })} aria-label="Tamanho de compra" className="col-span-6 sm:col-span-2 border border-line rounded-lg px-2 py-2 text-sm bg-surface">
+                        <select value={l.variantId} onChange={(e) => updateLine(l.key, { variantId: e.target.value })} aria-label="Tamanho de compra" className="col-span-6 sm:col-span-2 sm:mt-[18px] border border-line rounded-lg px-2 py-2 text-sm bg-surface">
                           <option value="">Em {info.item?.unitOfMeasure ?? 'un'}</option>
                           {vs.map((v) => <option key={v.id} value={v.id}>Garrafa {v.label}</option>)}
                         </select>
@@ -263,16 +267,20 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
                         <div className="hidden sm:block sm:col-span-2" />
                       )}
                       <div className="col-span-6 sm:col-span-2">
-                        <input value={l.amount} onChange={(e) => updateLine(l.key, { amount: e.target.value })} inputMode="decimal" placeholder={info.variant ? 'Garrafas' : 'Qtd'} aria-label="Quantidade" className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
-                        {info.variant && info.quantity > 0 && <p className="text-[11px] text-muted mt-0.5">= {qtd(info.quantity)} {info.item?.unitOfMeasure}</p>}
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          {info.variant ? 'Nº de garrafas' : `Quantidade (${info.item?.unitOfMeasure ?? 'unidade do item'})`}
+                        </label>
+                        <input value={l.amount} onChange={(e) => updateLine(l.key, { amount: e.target.value })} inputMode="decimal" placeholder={info.variant ? 'Garrafas' : info.item ? `Em ${info.item.unitOfMeasure}` : 'Qtd'} aria-label={info.variant ? 'Número de garrafas' : `Quantidade em ${info.item?.unitOfMeasure ?? 'unidades'}`} className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
+                        {info.variant && info.quantity > 0 && <p className="text-[11px] text-muted mt-0.5">= {qtd(info.quantity)} {info.item?.unitOfMeasure} no estoque</p>}
                       </div>
                       <div className="col-span-10 sm:col-span-3">
-                        <input value={l.value} onChange={(e) => updateLine(l.key, { value: e.target.value })} inputMode="decimal" placeholder="Valor desta linha (R$)" aria-label="Valor desta linha" className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
+                        <label className="block text-[10px] text-muted mb-0.5">Valor TOTAL pago por este item (R$)</label>
+                        <input value={l.value} onChange={(e) => updateLine(l.key, { value: e.target.value })} inputMode="decimal" placeholder="Ex: 96,00 (total, não por litro)" aria-label="Valor total pago por este item" className="w-full border border-line rounded-lg px-2 py-2 text-sm" />
                         <p className="text-[11px] text-muted mt-0.5">
-                          {info.unitCost != null ? `${brl(info.unitCost)} por ${info.item?.unitOfMeasure ?? 'un'}` : l.value.trim() === '' && l.itemId ? 'Sem valor: entra sem custo' : ''}
+                          {info.unitCost != null ? `= ${brl(info.unitCost)} por ${info.item?.unitOfMeasure ?? 'un'}` : l.value.trim() === '' && l.itemId ? 'Sem valor: entra sem custo' : ''}
                         </p>
                       </div>
-                      <button type="button" onClick={() => setLines((prev) => (prev.length > 1 ? prev.filter((x) => x.key !== l.key) : prev))} aria-label="Remover linha" className="col-span-2 sm:col-span-1 h-9 flex items-center justify-center text-muted hover:text-danger">
+                      <button type="button" onClick={() => setLines((prev) => (prev.length > 1 ? prev.filter((x) => x.key !== l.key) : prev))} aria-label="Remover linha" className="col-span-2 sm:col-span-1 h-9 mt-[18px] flex items-center justify-center text-muted hover:text-danger">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

@@ -46,7 +46,9 @@ function addDays(iso: string, n: number) {
   return d.toISOString().slice(0, 10)
 }
 
-export function PortalNotices() {
+// mode: 'financeiro' mostra só comprovantes e prazos de saldo (vai no topo
+// do Painel para Administrador/Financeiro); 'operacao' mostra o resto.
+export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 'operacao' }) {
   const { can } = useAuth()
   const navigate = useNavigate()
   const currentUserName = useCurrentUserName()
@@ -99,7 +101,7 @@ export function PortalNotices() {
         cliente: e.reservation?.client?.name ?? '—',
       }))
       .filter((a) => !unitFilter || a.unitId === unitFilter)
-    setAvisos(lista)
+    setAvisos(lista.filter((a) => (mode === 'financeiro' ? a.kind === 'comprovante' : mode === 'operacao' ? a.kind !== 'comprovante' : true)))
 
     const refIds = lista.filter((a) => a.kind === 'comprovante' && a.refId).map((a) => a.refId as string)
     if (refIds.length > 0) {
@@ -157,7 +159,7 @@ export function PortalNotices() {
         })
       }
     }
-    setPrazos(out)
+    setPrazos(out.filter((p) => (mode === 'financeiro' ? p.tipo === 'saldo' : mode === 'operacao' ? p.tipo !== 'saldo' : true)))
   }
 
   async function marcarVisto(ids: string[]) {
@@ -192,8 +194,9 @@ export function PortalNotices() {
     <>
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 
+      {(mode !== 'financeiro' || avisos.length > 0) && (
       <Card
-        title={`Portal do cliente${avisos.length ? ` · ${avisos.length} novo${avisos.length > 1 ? 's' : ''}` : ''}`}
+        title={`${mode === 'financeiro' ? 'Comprovantes do portal do cliente' : 'Portal do cliente'}${avisos.length ? ` · ${avisos.length} novo${avisos.length > 1 ? 's' : ''}` : ''}`}
         action={avisos.length > 1 ? <button onClick={() => marcarVisto(avisos.map((a) => a.id))} className="text-xs text-muted hover:text-purple">Marcar todos como vistos</button> : undefined}
       >
         {avisos.length === 0 ? (
@@ -239,9 +242,10 @@ export function PortalNotices() {
           </ul>
         )}
       </Card>
+      )}
 
       {prazos.length > 0 && (
-        <Card title={`Prazos do portal · ${prazos.length} pendente${prazos.length > 1 ? 's' : ''}`} className="border-danger/40">
+        <Card title={`${mode === 'financeiro' ? 'Saldos a receber — prazo do portal' : 'Prazos do portal'} · ${prazos.length} pendente${prazos.length > 1 ? 's' : ''}`} className="border-danger/40">
           <ul className="divide-y divide-line">
             {prazos.map((p) => (
               <li key={p.key} className="py-3 flex flex-wrap gap-3 items-center">

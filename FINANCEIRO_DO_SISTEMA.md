@@ -84,7 +84,7 @@ Ao cancelar, registra-se o **motivo**, o **% de multa retida** e o **valor devol
 
 ### 4.1 Lançar uma conta
 1. Escolha a **unidade**, a **categoria** (Aluguel, Folha de pagamento, Fornecedores, Manutenção, Marketing, Impostos ou Outros — em "Outros" dá para escrever a categoria), a **descrição**, o **fornecedor** (opcional), o **valor** e o **vencimento**.
-2. (Opcional) **Itens de estoque comprados nessa conta.** Veja a seção 8.1.
+2. Compras para o estoque **não** se lançam aqui: use Estoque → **Entrada de compra**, que soma no estoque e cria esta conta sozinha (seção 8.1).
 3. (Opcional) Marque **"Esta conta paga custos que já estão lançados nas festas"** quando for o caso. Veja a seção 10.
 4. Clique em **Adicionar conta**.
 
@@ -337,7 +337,7 @@ São recalculados com os dados de hoje. Se uma festa daquele mês for alterada o
 | Tipo de gasto | Onde lançar |
 |---|---|
 | Gasto geral do negócio (aluguel, salário fixo, imposto, conta de luz, manutenção) | **Conta a pagar** |
-| Compra para o estoque | **Conta a pagar** com os itens de estoque |
+| Compra para o estoque | **Estoque → Entrada de compra** (cria a conta a pagar sozinha) |
 | Gasto de uma festa específica (DJ exclusivo, decoração especial) | **Custo da festa** |
 | Pagamento da equipe por festa | **Aba Equipe** ("Compareceu"), que lança o custo sozinho |
 | Custo que toda festa tem (docinhos, salgadinhos) | **Despesa fixa das festas**, que lança sozinho |

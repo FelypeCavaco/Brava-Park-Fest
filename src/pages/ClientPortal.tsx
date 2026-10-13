@@ -126,8 +126,7 @@ export function ClientPortal() {
   const [valorComprovante, setValorComprovante] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const [arquivo, setArquivo] = useState<File | null>(null)
-  // mensagens e avaliação
-  const [mensagem, setMensagem] = useState('')
+  // avaliação
   const [notas, setNotas] = useState<Record<string, number>>({})
   const [comentario, setComentario] = useState('')
 
@@ -250,7 +249,7 @@ export function ClientPortal() {
     { titulo: 'Programação sugerida', detalhe: 'Parabéns, pratos quentes e bolo', tab: 'programacao' },
     { titulo: 'Regras da casa', detalhe: 'Conforme o contrato', tab: 'regras' },
     { titulo: 'Como chegar', detalhe: 'Endereço e rota', tab: 'chegar' },
-    { titulo: 'Falar com a equipe', detalhe: 'Mensagem pelo portal ou WhatsApp', tab: 'equipe' },
+    { titulo: 'Falar com a equipe', detalhe: 'Conversar pelo WhatsApp', tab: 'equipe' },
     { titulo: 'Avaliar a festa', detalhe: d.avaliou ? 'Avaliação enviada' : d.festa_terminou ? 'Disponível agora' : 'Libera ao fim da festa', tab: 'avaliacao' },
   ]
 
@@ -343,11 +342,7 @@ export function ClientPortal() {
     }
   }
 
-  async function enviarMensagem(e: FormEvent) {
-    e.preventDefault()
-    if (!mensagem.trim()) return
-    if (await run(() => supabase.rpc('portal_send_message', { p_token: token, p_body: mensagem }), 'Mensagem enviada. A equipe responde por aqui.')) setMensagem('')
-  }
+
 
   const categoriasAval = [
     { id: 'pratos', label: 'Pratos quentes' }, { id: 'bolo', label: 'Bolo' }, { id: 'doces', label: 'Docinhos' },
@@ -873,33 +868,16 @@ export function ClientPortal() {
             </>
           )}
 
-          {/* ===== FALAR COM A EQUIPE ===== */}
+          {/* ===== FALAR COM A EQUIPE (só WhatsApp) ===== */}
           {tab === 'equipe' && (
-            <>
-              <div className="space-y-2.5">
-                {d.mensagens.length === 0 && <p className="text-sm" style={{ color: C.muted }}>Mande sua dúvida — a equipe responde por aqui.</p>}
-                {d.mensagens.map((m, i) => (
-                  <div key={i} className={`flex flex-col gap-0.5 ${m.de_cliente ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[11px]" style={{ color: '#717A96' }}>{m.de_cliente ? 'Você' : `${m.autor ?? 'Equipe'} · Brava Park`} · {dataHora(m.em)}</span>
-                    <div className="max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap"
-                      style={m.de_cliente ? { background: C.azul, color: 'white' } : { background: 'white', border: `1px solid ${C.borda}` }}>
-                      {m.texto}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <form onSubmit={enviarMensagem} className="flex gap-2 pt-1">
-                <input value={mensagem} onChange={(e) => setMensagem(e.target.value)} placeholder="Escreva sua mensagem" aria-label="Mensagem para a equipe"
-                  className="flex-1 min-w-0 h-11 rounded-xl px-3 text-sm bg-white" style={{ border: '1px solid #D3DCEE' }} />
-                <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl text-white font-semibold" style={{ background: C.azul }}>Enviar</button>
-              </form>
-              <div className="pt-2">
-                <button onClick={() => chamarNoWhatsApp()} className="w-full h-12 rounded-xl text-white font-semibold" style={{ background: '#1F7A5C' }}>
-                  Prefere falar agora? Chamar no WhatsApp
-                </button>
-                <p className="text-[11px] text-center mt-1" style={{ color: '#717A96' }}>(47) 99226-1550 · atende as duas unidades</p>
-              </div>
-            </>
+            <section className={`${card} p-5 text-center space-y-3`} style={{ borderColor: C.borda }}>
+              <p className="font-display font-semibold text-lg">Fale com a equipe pelo WhatsApp</p>
+              <p className="text-sm" style={{ color: C.muted }}>Dúvidas, pedidos ou ajustes da festa: é só chamar. A conversa já abre com os dados da sua festa.</p>
+              <button onClick={() => chamarNoWhatsApp()} className="w-full h-12 rounded-xl text-white font-semibold" style={{ background: '#1F7A5C' }}>
+                Chamar no WhatsApp
+              </button>
+              <p className="text-xs" style={{ color: '#717A96' }}>(47) 99226-1550 · atende as duas unidades</p>
+            </section>
           )}
 
           {/* ===== AVALIAÇÃO ===== */}

@@ -2713,12 +2713,10 @@ export function FestaDetalhe() {
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-sm font-semibold mb-2">Mensagens</p>
-                  {portalMessages.length === 0 ? (
-                    <p className="text-xs text-muted">Nenhuma mensagem pelo portal ainda.</p>
-                  ) : (
-                    <ul className="space-y-2 max-h-64 overflow-y-auto">
+                {portalMessages.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold mb-2">Mensagens antigas do portal</p>
+                    <ul className="space-y-2 max-h-48 overflow-y-auto">
                       {portalMessages.map((m) => (
                         <li key={m.id} className={`text-sm rounded-lg px-3 py-2 ${m.fromClient ? 'bg-purple-light' : 'bg-paper'}`}>
                           <p className="text-[11px] text-muted">{m.fromClient ? `Cliente (${m.author ?? festa.cliente})` : m.author ?? 'Equipe'} · {new Date(m.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
@@ -2726,12 +2724,9 @@ export function FestaDetalhe() {
                         </li>
                       ))}
                     </ul>
-                  )}
-                  <form onSubmit={sendPortalReply} className="flex gap-2 mt-2">
-                    <input value={portalReply} onChange={(e) => setPortalReply(e.target.value)} placeholder="Responder ao cliente pelo portal" aria-label="Resposta ao cliente" className="flex-1 border border-line rounded-lg px-3 py-2 text-sm" />
-                    <Button type="submit" variant="secondary" className="text-xs px-3">Responder</Button>
-                  </form>
-                </div>
+                    <p className="text-[11px] text-muted mt-1">A conversa com o cliente agora é só pelo WhatsApp.</p>
+                  </div>
+                )}
 
                 {portalEvents.length > 0 && (
                   <div>

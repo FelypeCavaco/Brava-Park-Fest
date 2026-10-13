@@ -23,6 +23,7 @@ import { currentMonthValue, lastNMonths, monthBounds, addMonthsToValue } from '.
 import { loadMonthByUnit, loadExpectedRemainingByUnit } from '../lib/financeAggregates'
 import { useUndo } from '../lib/UndoContext'
 import { friendlyDbError } from '../lib/format'
+import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFestasView } from './FinanceViews'
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -74,6 +75,12 @@ function effectiveStatus(status: PayableStatus, dueDate: string): PayableStatus 
 
 export function Finance() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
+  // Três visões do Financeiro: Caixa (a tela de sempre), Resultado das festas e Ponte.
+  const [visao, setVisao] = useState<'caixa' | 'resultado' | 'ponte'>(() => {
+    const v = new URLSearchParams(window.location.search).get('visao')
+    return v === 'resultado' || v === 'ponte' ? v : 'caixa'
+  })
+  const [mesVisao, setMesVisao] = useState(currentMonthValue)
   const { scheduleDelete } = useUndo()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
@@ -94,10 +101,14 @@ export function Finance() {
   const [amount, setAmount] = useState('')
   const [dueDate, setDueDate] = useState(todayIso)
   const [coversFestaCosts, setCoversFestaCosts] = useState(false)
+  // Aviso anti-dupla contagem: custo de festa parecido já lançado no mesmo mês.
+  const [contaAviso, setContaAviso] = useState<{ id: string; reservationId: string; cliente: string; data: string; descricao: string; valor: number }[] | null>(null)
   const [editCoversFestaCosts, setEditCoversFestaCosts] = useState(false)
   // Custos lançados nas festas do mês atual, por unidade: das festas que já
   // aconteceram (saem do saldo do mês) e das que ainda vão acontecer (saem
   // do saldo projetado).
+  // Só para a conferência da prévia: a tela terminou de carregar os totais?
+  const [agregadosProntos, setAgregadosProntos] = useState(false)
   const [festaCostsByUnit, setFestaCostsByUnit] = useState<Record<string, { realizados: number; restantes: number }>>({})
 
   const [fluxoDetalhe, setFluxoDetalhe] = useState<{
@@ -212,6 +223,7 @@ export function Finance() {
   // despesa — senão o gráfico fica com número desatualizado até recarregar a
   // página inteira.
   async function loadAggregates() {
+    setAgregadosProntos(false)
     const unitIdBySlug: Record<string, string> = {}
     for (const u of UNITS) if (unitDbIds[u.id]) unitIdBySlug[u.id] = unitDbIds[u.id].unitId
 
@@ -268,6 +280,7 @@ export function Finance() {
       }
     }
     setFluxoCaixaByUnit(fluxoPorUnidade)
+    setAgregadosProntos(true)
   }
 
   // Detalhe de um mês específico do gráfico de fluxo de caixa — aberto ao
@@ -439,8 +452,40 @@ export function Finance() {
 
   const totalDespesasGeral = useMemo(() => filteredExpenses.reduce((s, e) => s + (e.covers_festa_costs ? 0 : e.amount), 0), [filteredExpenses])
 
+  // Antes de salvar uma conta, confere se já não existe um custo de festa
+  // parecido (mesmo valor, ou descrição parecida) lançado numa festa da mesma
+  // unidade no mesmo mês — o mesmo aviso que a Central da festa já faz no
+  // sentido contrário. Só avisa: dá para salvar mesmo assim.
+  async function checkContaParecidaComCusto(unitId: string, valor: number, texto: string) {
+    const { startIso, endIso } = monthBounds(dueDate.slice(0, 7))
+    const { data } = await supabase
+      .from('reservations')
+      .select('id, event_date, client:clients(name), reservation_costs(id, description, amount)')
+      .eq('unit_id', unitId)
+      .neq('status', 'cancelada')
+      .gte('event_date', startIso)
+      .lt('event_date', endIso)
+    const t = texto.trim().toLowerCase()
+    const achados: NonNullable<typeof contaAviso> = []
+    for (const r of (data ?? []) as any[]) {
+      for (const c of r.reservation_costs ?? []) {
+        const desc = String(c.description ?? '').toLowerCase()
+        const mesmoValor = Math.abs(Number(c.amount) - valor) < 0.01
+        const textoParecido = t.length > 2 && desc.length > 2 && (desc.includes(t) || t.includes(desc))
+        if (mesmoValor || textoParecido) {
+          achados.push({ id: c.id, reservationId: r.id, cliente: r.client?.name ?? 'Festa', data: r.event_date, descricao: c.description, valor: Number(c.amount) })
+        }
+      }
+    }
+    return achados.length > 0 ? achados : null
+  }
+
   async function handleAddExpense(e: FormEvent) {
     e.preventDefault()
+    await salvarConta({})
+  }
+
+  async function salvarConta(opts: { pularAviso?: boolean; cobreCustos?: boolean }) {
     const value = Number(amount)
     if (!value || !description.trim()) return
 
@@ -449,6 +494,15 @@ export function Finance() {
       setError('Não encontrei essa unidade no banco de dados ainda.')
       return
     }
+    const cobre = opts.cobreCustos ?? coversFestaCosts
+    if (!cobre && !opts.pularAviso) {
+      const achados = await checkContaParecidaComCusto(dbIds.unitId, value, `${description} ${supplier}`.trim())
+      if (achados) {
+        setContaAviso(achados)
+        return
+      }
+    }
+    setContaAviso(null)
 
     const finalCategory = category === 'Outros' ? (categoryOutro.trim() || 'Outros') : category
 
@@ -462,7 +516,7 @@ export function Finance() {
         amount: value,
         due_date: dueDate,
         status: effectiveStatus('a_vencer', dueDate),
-        covers_festa_costs: coversFestaCosts,
+        covers_festa_costs: cobre,
       })
       .select()
       .single()
@@ -728,6 +782,68 @@ export function Finance() {
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 
+      {import.meta.env.DEV && <ConferenciaPrevia summaryByUnit={summaryByUnit} unitDbIds={unitDbIds} pronto={agregadosProntos} />}
+
+      <div className="inline-flex flex-wrap rounded-xl border border-line bg-surface p-1 gap-1" role="tablist">
+        {([
+          ['caixa', 'Caixa'],
+          ['resultado', 'Resultado das festas'],
+          ['ponte', 'Ponte e compromissos'],
+        ] as const).map(([k, label]) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={visao === k}
+            onClick={() => setVisao(k)}
+            className={`px-3 h-9 rounded-lg text-sm font-medium transition-colors ${visao === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {visao === 'resultado' && (
+        <ResultadoFestasView
+          month={mesVisao}
+          onMonthChange={setMesVisao}
+          unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
+          unitDbIds={unitDbIds}
+          mostrarUnidade={selectedUnit === 'todas'}
+        />
+      )}
+      {visao === 'ponte' && (
+        <PonteView
+          month={mesVisao}
+          onMonthChange={setMesVisao}
+          unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
+          unitDbIds={unitDbIds}
+          mostrarUnidade={selectedUnit === 'todas'}
+          saldoProjetado={fluxoResumo ? fluxoResumo.saldoProjetado : null}
+        />
+      )}
+
+      {visao === 'caixa' && (
+        <>
+      <ExplainBox
+        id="caixa"
+        titulo="Caixa — o dinheiro que passou pela conta."
+        naoE="o lucro do mês."
+        exemplo={EXEMPLO_FESTA}
+      >
+        <p>Mostra o que entrou, o que saiu e o que sobrou neste mês, do jeito que o sistema sempre calculou. Os pagamentos dos clientes contam no mês em que o cliente pagou. As contas contam no mês em que foram pagas. Os custos das festas contam no mês em que a festa acontece. <strong>Por isso, num mês com muitas festas que já foram pagas antes, o saldo pode ficar baixo ou negativo sem que isso seja prejuízo.</strong></p>
+        <p>
+          Para saber se as festas deram lucro, veja{' '}
+          <button onClick={() => setVisao('resultado')} className="text-purple font-medium underline">Resultado das festas</button>. Para entender a diferença entre os dois, veja{' '}
+          <button onClick={() => setVisao('ponte')} className="text-purple font-medium underline">Ponte e compromissos</button>.
+        </p>
+      </ExplainBox>
+
+      {fluxoResumo && (
+        <p className="text-sm bg-surface border border-line rounded-card px-4 py-3">
+          Neste mês, entraram {currency(fluxoResumo.entradas + fluxoResumo.acertosRecebidos)} e saíram {currency(fluxoResumo.totalDespesas + fluxoResumo.custosFestas)}. O saldo ficou em {currency(fluxoResumo.saldo)}. Isso mostra o movimento do caixa e não diz, sozinho, se as festas deram lucro.
+        </p>
+      )}
+
       {visibleUnitSlugs.map((slug) => {
         const s = summaryByUnit[slug]
         const unitName = UNITS.find((u) => u.id === slug)?.name ?? slug
@@ -740,26 +856,29 @@ export function Finance() {
                 <p className="text-xs text-muted">Entradas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
                 {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de acertos entre unidades</p>}
+                <p className="text-[11px] text-muted mt-0.5 leading-snug">Pagamentos de clientes que você recebeu neste mês, de qualquer festa (inclusive festas de meses futuros).</p>
               </Card>
               <Card>
                 <p className="text-xs text-muted">Custos das festas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1">{currency(s.custosFestas)}</p>
                 <p className="text-[11px] text-muted mt-0.5">
-                  festas já realizadas{s.custosFestasRestantes > 0 ? ` · + ${currency(s.custosFestasRestantes)} das próximas` : ''}
+                  Custos das festas deste mês que já aconteceram.{s.custosFestasRestantes > 0 ? ` Previstos das que ainda vão acontecer: ${currency(s.custosFestasRestantes)}.` : ''}
                 </p>
               </Card>
               <Card>
                 <p className="text-xs text-muted">A pagar (a vencer)</p>
                 <p className="text-xl font-display font-semibold mt-1 text-amber">{currency(s.aPagar)}</p>
+                <p className="text-[11px] text-muted mt-0.5">Contas que ainda não venceram.</p>
               </Card>
               <Card className={s.atrasado > 0 ? 'border-danger' : ''}>
                 <p className="text-xs text-muted">Atrasado</p>
                 <p className={`text-xl font-display font-semibold mt-1 ${s.atrasado > 0 ? 'text-danger' : ''}`}>{currency(s.atrasado)}</p>
+                <p className="text-[11px] text-muted mt-0.5">Contas vencidas e ainda não pagas.</p>
               </Card>
               <Card className={s.saldo >= 0 ? 'border-teal' : 'border-danger'}>
-                <p className="text-xs text-muted">Saldo do mês</p>
+                <p className="text-xs text-muted">Saldo do mês (caixa)</p>
                 <p className={`text-xl font-display font-semibold mt-1 ${s.saldo >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(s.saldo)}</p>
-                <p className="text-[11px] text-muted mt-0.5">entradas + acertos − contas pagas − custos das festas</p>
+                <p className="text-[11px] text-muted mt-0.5 leading-snug">Entradas + acertos − contas pagas − custos das festas já realizadas.</p>
               </Card>
             </div>
           </div>
@@ -790,6 +909,7 @@ export function Finance() {
 
           <Card title={selectedUnit === 'todas' ? 'Fluxo de caixa — últimos 6 meses (Vila Operária + São Vicente)' : 'Fluxo de caixa — últimos 6 meses'}>
             <p className="text-xs text-muted mb-2">Clique numa barra de Entradas ou Saídas pra ver o detalhe daquele mês.</p>
+            <p className="text-xs text-muted mb-2">A barra de saídas do mês atual inclui custos de festas que ainda vão acontecer neste mês.</p>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={fluxoChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
@@ -822,6 +942,8 @@ export function Finance() {
               </BarChart>
             </ResponsiveContainer>
           </Card>
+        </>
+      )}
         </>
       )}
 
@@ -1062,6 +1184,25 @@ export function Finance() {
                 </span>
               </span>
             </label>
+
+            {contaAviso && (
+              <div className="sm:col-span-2 bg-amber-light text-amber text-sm rounded-lg px-3 py-2.5 space-y-2">
+                <p className="font-medium">Já existe um custo de festa parecido neste mês</p>
+                <ul className="text-xs space-y-0.5">
+                  {contaAviso.map((c) => (
+                    <li key={c.id}>
+                      • <Link to={`/reservas/${c.reservationId}`} className="underline">{c.cliente}</Link> ({format(parseISO(c.data), 'dd/MM')}): {c.descricao} — {currency(c.valor)}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs">Se esta conta paga esse mesmo custo, marque como "paga custos das festas" para não contar duas vezes.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setContaAviso(null)}>Voltar</Button>
+                  <Button type="button" variant="secondary" onClick={() => salvarConta({ cobreCustos: true, pularAviso: true })}>Marcar como "paga custos das festas" e salvar</Button>
+                  <Button type="button" onClick={() => salvarConta({ pularAviso: true })}>Salvar mesmo assim</Button>
+                </div>
+              </div>
+            )}
 
             <div className="sm:col-span-2 flex items-end">
               <Button type="submit" className="w-full justify-center">

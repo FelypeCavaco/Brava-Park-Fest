@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
@@ -95,6 +96,11 @@ export function MonthlyResult() {
         <h1 className="text-2xl font-semibold">Resultado do mês</h1>
         <p className="text-sm text-muted mt-1">{unitLabel} · quanto sobrou de verdade, depois de tudo</p>
       </div>
+
+      <p className="text-sm bg-purple-light/40 border border-purple/20 rounded-lg px-4 py-2.5">
+        Esta tela conta pelo critério de data do pagamento. Para o resultado por festa realizada, veja{' '}
+        <Link to="/financeiro?visao=resultado" className="text-purple font-medium underline">Financeiro → Resultado das festas</Link>.
+      </p>
 
       {loading ? (
         <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>

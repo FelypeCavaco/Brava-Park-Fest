@@ -17,7 +17,12 @@ interface Festa {
   data: string
   eventDateIso: string
   convidados: number
+  // Valor devido = valor firmado + extras vendidos + consumo cobrado (o mesmo
+  // da Central da festa e do Resultado das festas no Financeiro).
   valorContrato: number
+  valorFirmado: number
+  extras: number
+  consumo: number
 }
 
 interface InsumoInfo {
@@ -60,7 +65,7 @@ export function Profitability() {
     const [{ data: reservationsData, error: resErr }, { data: costsData }, { data: consData }, { data: avgData }] = await Promise.all([
       supabase
         .from('reservations')
-        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, client:clients(name)')
+        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, client:clients(name), reservation_extra_items(quantity, price_snapshot), reservation_consumption(quantity, unit_price)')
         .neq('status', 'cancelada')
         .order('event_date', { ascending: false }),
       supabase.from('reservation_costs').select('*'),
@@ -82,7 +87,13 @@ export function Profitability() {
         data: format(parseISO(r.event_date), 'dd/MM/yyyy'),
         eventDateIso: r.event_date,
         convidados: (r.guest_count ?? 0) + (r.courtesy_guests ?? 0),
-        valorContrato: Number(r.final_value) || 0,
+        valorFirmado: Number(r.final_value) || 0,
+        extras: (r.reservation_extra_items ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.price_snapshot), 0),
+        consumo: (r.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0),
+        valorContrato:
+          (Number(r.final_value) || 0) +
+          (r.reservation_extra_items ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.price_snapshot), 0) +
+          (r.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0),
       })),
     )
 
@@ -209,7 +220,7 @@ export function Profitability() {
 
       <p className="text-xs text-muted flex items-start gap-1.5 -mt-2">
         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-        Lucro da festa = valor firmado − custos lançados na festa − insumos do estoque consumidos. O custo dos insumos aparece só aqui, para medir a rentabilidade da festa. No caixa e no Resultado do mês, a compra já foi contada quando foi paga.
+        Lucro da festa = valor da festa (valor firmado + extras vendidos + consumo cobrado) − custos lançados na festa − insumos do estoque consumidos. É o mesmo lucro da Central da festa e do Financeiro → Resultado das festas. O custo dos insumos aparece só aqui, para medir a rentabilidade da festa. No caixa e no Resultado do mês, a compra já foi contada quando foi paga.
       </p>
       {itensSemCusto > 0 && (
         <p className="text-xs text-amber flex items-center gap-1.5">
@@ -252,7 +263,7 @@ export function Profitability() {
             <tr className="text-left text-xs text-muted border-b border-line">
               <th className="pb-3 font-medium">Cliente</th>
               <th className="pb-3 font-medium">Data</th>
-              <th className="pb-3 font-medium">Valor do contrato</th>
+              <th className="pb-3 font-medium">Valor da festa</th>
               <th className="pb-3 font-medium">Custos</th>
               <th className="pb-3 font-medium">Insumos (estoque)</th>
               <th className="pb-3 font-medium">Lucro</th>
@@ -265,7 +276,14 @@ export function Profitability() {
               <tr key={r.id}>
                 <td className="py-3 font-medium">{r.cliente}</td>
                 <td className="py-3 text-muted">{r.data}</td>
-                <td className="py-3">{currency(r.valorContrato)}</td>
+                <td className="py-3">
+                  {currency(r.valorContrato)}
+                  {r.extras + r.consumo > 0 && (
+                    <span className="block text-[11px] text-muted">
+                      {currency(r.valorFirmado)} firmado{r.extras > 0 ? ` + ${currency(r.extras)} extras` : ''}{r.consumo > 0 ? ` + ${currency(r.consumo)} consumo` : ''}
+                    </span>
+                  )}
+                </td>
                 <td className="py-3 text-danger">{currency(r.totalCustos)}</td>
                 <td className="py-3 text-danger">
                   {r.insumos > 0 ? currency(r.insumos) : '—'}
@@ -313,7 +331,8 @@ export function Profitability() {
               </button>
             </div>
             <p className="text-sm text-muted mb-4">
-              {selected.data} · Contrato: {currency(selected.valorContrato)}
+              {selected.data} · Valor da festa: {currency(selected.valorContrato)}
+              {selected.extras + selected.consumo > 0 && ` (${currency(selected.valorFirmado)} firmado + ${currency(selected.extras + selected.consumo)} de extras e consumo)`}
             </p>
 
             <div className="grid grid-cols-2 gap-3 mb-6">

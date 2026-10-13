@@ -1,5 +1,6 @@
 import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Download, Target } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
@@ -202,6 +203,11 @@ export function Reports() {
           <Download className="w-4 h-4" /> Exportar CSV (Excel)
         </Button>
       </div>
+
+      <p className="text-sm bg-purple-light/40 border border-purple/20 rounded-lg px-4 py-2.5">
+        Esta tela conta pelo critério de data do pagamento. Para o resultado por festa realizada, veja{' '}
+        <Link to="/financeiro?visao=resultado" className="text-purple font-medium underline">Financeiro → Resultado das festas</Link>.
+      </p>
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 

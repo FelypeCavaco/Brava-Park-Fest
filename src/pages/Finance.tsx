@@ -187,6 +187,7 @@ export function Finance() {
         is_stock_purchase: !!e.is_stock_purchase,
         settlement_batch_id: e.settlement_batch_id ?? null,
         settlement_id: e.settlement_id ?? null,
+        commission_payout_id: e.commission_payout_id ?? null,
         reservation_id: e.reservation_id ?? null,
         other_items_value: Number(e.other_items_value ?? 0),
       })),
@@ -1266,6 +1267,7 @@ export function Finance() {
                   )}
                   {(e.settlement_batch_id || e.settlement_id) && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
                   {isEstorno(e) && <span className="mb-1 inline-flex text-[11px] font-semibold text-danger bg-danger-light rounded px-1.5 py-0.5">Estorno</span>}
+                  {e.commission_payout_id && <span className="mb-1 inline-flex text-[11px] font-semibold text-amber bg-amber-light rounded px-1.5 py-0.5">Comissão</span>}
                   <p className={e.is_stock_purchase && expandedPurchase !== e.id ? 'line-clamp-1' : ''}>{e.description}</p>
                   {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (!e.is_stock_purchase || expandedPurchase === e.id) && (
                     <ul className="text-xs text-muted font-normal mt-1 space-y-0.5">
@@ -1299,6 +1301,10 @@ export function Finance() {
                     )}
                     {e.settlement_batch_id || e.settlement_id ? (
                       <Link to="/acertos-entre-unidades" className="text-muted hover:text-purple" title="Só muda pela tela Acertos entre unidades" aria-label="Lançamento travado — abrir Acertos entre unidades">
+                        <Lock className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : e.commission_payout_id ? (
+                      <Link to="/comissoes" className="text-muted hover:text-purple" title="Só muda pela tela Comissões" aria-label="Conta de comissão — abrir Comissões">
                         <Lock className="w-3.5 h-3.5" />
                       </Link>
                     ) : isEstorno(e) ? (

@@ -342,6 +342,8 @@ export interface Expense {
   settlement_id: string | null
   reservation_id: string | null
   other_items_value: number
+  // Conta criada pelo repasse de comissões (só muda pela tela Comissões).
+  commission_payout_id?: string | null
 }
 
 export interface RecurringExpense {

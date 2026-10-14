@@ -29,6 +29,7 @@ import { Feedback } from './pages/Feedback'
 import { Marketing } from './pages/Marketing'
 import { Funnel } from './pages/Funnel'
 import { Settlements } from './pages/Settlements'
+import { Commissions } from './pages/Commissions'
 import { ConsumptionAverages } from './pages/ConsumptionAverages'
 
 function RedirectToPortal() {
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/estoque" element={<Inventory />} />
           <Route path="/consumo-por-convidado" element={<ConsumptionAverages />} />
           <Route path="/acertos-entre-unidades" element={<Settlements />} />
+          <Route path="/comissoes" element={<Commissions />} />
           <Route path="/escalas" element={<Schedules />} />
           <Route path="/relatorio-aniversariantes" element={<BirthdayReport />} />
           <Route path="/fornecedores" element={<Suppliers />} />

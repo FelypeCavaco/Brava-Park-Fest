@@ -48,6 +48,9 @@ const ENTITY_LABEL: Record<string, string> = {
   portal_receipts: 'um comprovante do portal',
   portal_menu_options: 'uma opção do cardápio do portal',
   other_incomes: 'uma entrada de acerto entre unidades',
+  commission_rates: 'o valor da comissão',
+  commission_settings: 'a configuração das comissões',
+  commission_payouts: 'um repasse de comissões',
   reservation: 'a festa',
 }
 

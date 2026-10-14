@@ -116,6 +116,15 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     ],
   },
   {
+    group: 'Comissões',
+    items: [
+      { key: 'page:comissoes', label: 'Ver comissões', group: 'Comissões', route: '/comissoes' },
+      { key: 'action:comissoes.pagar', label: 'Pagar repasse de comissões', group: 'Comissões' },
+      { key: 'action:comissoes.configurar', label: 'Mudar valor e configuração das comissões', group: 'Comissões' },
+      { key: 'action:comissoes.desfazer', label: 'Desfazer repasse de comissões (restrita)', group: 'Comissões' },
+    ],
+  },
+  {
     group: 'Resultado do mês',
     items: [{ key: 'page:resultado_do_mes', label: 'Ver Resultado do mês', group: 'Resultado do mês', route: '/resultado-do-mes' }],
   },
@@ -174,6 +183,7 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/estoque', key: 'page:estoque' },
   { test: (p) => p === '/consumo-por-convidado', key: 'page:estoque' },
   { test: (p) => p === '/acertos-entre-unidades', key: 'page:acertos' },
+  { test: (p) => p === '/comissoes', key: 'page:comissoes' },
   { test: (p) => p === '/fornecedores', key: 'page:fornecedores' },
   { test: (p) => p === '/escalas', key: 'page:escalas' },
   { test: (p) => p === '/relatorio-aniversariantes', key: 'page:relatorio_aniversariantes' },

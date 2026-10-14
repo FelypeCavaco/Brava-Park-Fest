@@ -1,29 +1,37 @@
 import { useEffect, useMemo, useState } from 'react'
+import { format } from 'date-fns'
 import { Bar, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
 import { useUnit, UNITS } from '../lib/UnitContext'
 
-// Quantidade de festas (não canceladas) em cada mês do ano escolhido, por
-// unidade, com a linha do ano anterior para comparar.
+// Festas por mês, por unidade, com a linha do ano anterior para comparar.
+// Dois modos:
+//   • "Realizadas": pelo mês da festa (não conta canceladas).
+//   • "Fechadas": pelo mês em que a festa foi cadastrada (vendas do mês),
+//     contando todas as cadastradas — inclusive as que ainda estão em
+//     orçamento e as que depois foram canceladas (aparecem no resumo).
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 const CORES: Record<string, string> = { 'vila-operaria': '#6D28D9', 'sao-vicente': '#7CB92E' }
 
+type Modo = 'realizadas' | 'fechadas'
+interface Linha { event_date: string; created_at: string; unit_id: string; status: string }
+
 export function FestasPorMesChart() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
-  const [rows, setRows] = useState<{ event_date: string; unit_id: string }[]>([])
+  const [rows, setRows] = useState<Linha[]>([])
   const anoAtual = new Date().getFullYear()
   const [ano, setAno] = useState(anoAtual)
+  const [modo, setModo] = useState<Modo>('realizadas')
 
   useEffect(() => {
     if (unitDbIdsLoading) return
     supabase
       .from('reservations')
-      .select('event_date, unit_id')
-      .neq('status', 'cancelada')
+      .select('event_date, created_at, unit_id, status')
       .order('event_date')
-      .then(({ data }) => setRows((data ?? []) as { event_date: string; unit_id: string }[]))
+      .then(({ data }) => setRows((data ?? []) as Linha[]))
   }, [unitDbIdsLoading])
 
   const slugById = useMemo(() => {
@@ -32,34 +40,48 @@ export function FestasPorMesChart() {
     return m
   }, [unitDbIds])
 
+  // Data que define o mês de cada festa no modo escolhido (cadastro no fuso
+  // de quem está usando, que é o de Brasília).
+  const datas = useMemo(
+    () =>
+      rows
+        .filter((r) => modo === 'fechadas' || r.status !== 'cancelada')
+        .map((r) => ({ ...r, ref: modo === 'realizadas' ? r.event_date : format(new Date(r.created_at), 'yyyy-MM-dd') })),
+    [rows, modo],
+  )
+
   const anos = useMemo(() => {
     const set = new Set<number>([anoAtual])
-    for (const r of rows) set.add(Number(r.event_date.slice(0, 4)))
+    for (const r of datas) set.add(Number(r.ref.slice(0, 4)))
     return Array.from(set).sort((a, b) => b - a)
-  }, [rows, anoAtual])
+  }, [datas, anoAtual])
 
   const unidades = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
 
-  const data = useMemo(() => {
+  const { data, canceladas, orcamento } = useMemo(() => {
     const base = MESES.map((mes) => {
       const row: Record<string, number | string> = { mes, anterior: 0, total: 0 }
       for (const u of unidades) row[u] = 0
       return row
     })
-    for (const r of rows) {
+    let canc = 0
+    let orc = 0
+    for (const r of datas) {
       const slug = slugById[r.unit_id]
       if (!slug || !unidades.includes(slug)) continue
-      const y = Number(r.event_date.slice(0, 4))
-      const m = Number(r.event_date.slice(5, 7)) - 1
+      const y = Number(r.ref.slice(0, 4))
+      const m = Number(r.ref.slice(5, 7)) - 1
       if (y === ano) {
         base[m][slug] = (base[m][slug] as number) + 1
         base[m].total = (base[m].total as number) + 1
+        if (r.status === 'cancelada') canc++
+        if (r.status === 'orcamento') orc++
       } else if (y === ano - 1) {
         base[m].anterior = (base[m].anterior as number) + 1
       }
     }
-    return base
-  }, [rows, slugById, unidades.join(','), ano])
+    return { data: base, canceladas: canc, orcamento: orc }
+  }, [datas, slugById, unidades.join(','), ano])
 
   const totalAno = data.reduce((s, r) => s + (r.total as number), 0)
   const totalAnterior = data.reduce((s, r) => s + (r.anterior as number), 0)
@@ -67,18 +89,38 @@ export function FestasPorMesChart() {
 
   return (
     <Card
-      title="Festas por mês"
+      title={modo === 'realizadas' ? 'Festas por mês — realizadas' : 'Festas por mês — fechadas (vendas)'}
       action={
-        <select value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano" className="border border-line rounded-lg px-2 py-1 text-xs">
-          {anos.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border border-line p-0.5" role="tablist">
+            {([
+              ['realizadas', 'Realizadas no mês'],
+              ['fechadas', 'Fechadas no mês'],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={modo === k}
+                onClick={() => setModo(k)}
+                className={`px-2.5 h-7 rounded-md text-xs font-medium ${modo === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <select value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano" className="border border-line rounded-lg px-2 py-1 text-xs">
+            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
       }
     >
       <p className="text-xs text-muted mb-3">
-        {totalAno} festa{totalAno === 1 ? '' : 's'} em {ano}
+        {totalAno} festa{totalAno === 1 ? '' : 's'} {modo === 'realizadas' ? 'realizadas' : 'fechadas'} em {ano}
         {totalAnterior > 0 ? ` · ${totalAnterior} em ${ano - 1}` : ''}
-        {totalAno > 0 ? ` · mês mais cheio: ${melhorMes.mes} (${melhorMes.total})` : ''}
-        {' '}· não conta festas canceladas
+        {totalAno > 0 ? ` · mês ${modo === 'realizadas' ? 'mais cheio' : 'que mais vendeu'}: ${melhorMes.mes} (${melhorMes.total})` : ''}
+        {modo === 'realizadas'
+          ? ' · conta pelo mês da festa, sem as canceladas'
+          : ` · conta pelo mês em que a festa foi cadastrada, de qualquer data${canceladas > 0 ? ` · ${canceladas} depois cancelada${canceladas === 1 ? '' : 's'}` : ''}${orcamento > 0 ? ` · ${orcamento} ainda em orçamento` : ''}`}
       </p>
       <ResponsiveContainer width="100%" height={260}>
         <ComposedChart data={data}>
@@ -96,4 +138,3 @@ export function FestasPorMesChart() {
     </Card>
   )
 }
-

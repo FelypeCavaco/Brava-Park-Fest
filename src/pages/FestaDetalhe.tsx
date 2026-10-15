@@ -686,14 +686,13 @@ export function FestaDetalhe() {
     if (data.unit_id) {
       const { data: pkgs } = await supabase
         .from('packages')
-        .select('id, name, base_price, weekday_price, weekend_price, guest_limit, valid_from, valid_until')
-        .eq('active', true)
+        .select('id, name, base_price, weekday_price, weekend_price, guest_limit, valid_from, valid_until, active')
         .or(`unit_id.is.null,unit_id.eq.${data.unit_id}`)
         .order('name')
-      // Só os planos que valem na data desta festa (o plano atual dela
-      // continua aparecendo mesmo que esteja fora do período).
+      // Só os planos ativos que valem na data desta festa. O plano atual dela
+      // continua aparecendo mesmo fora do período ou já fora de uso.
       setUnitPackages(
-        (pkgs ?? []).filter((p) => p.id === data.package_id || packageValidOn(p, data.event_date)).map((p) => ({
+        (pkgs ?? []).filter((p) => p.id === data.package_id || (p.active && packageValidOn(p, data.event_date))).map((p) => ({
           id: p.id,
           name: p.name,
           base_price: Number(p.base_price),

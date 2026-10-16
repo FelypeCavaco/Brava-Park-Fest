@@ -1,8 +1,8 @@
 # Brava Park Fest — Documentação completa do sistema de gestão
 
-*Versão de 06/10/2026 — descreve o sistema exatamente como está em uso hoje.*
+*Versão de 16/10/2026 — descreve o sistema exatamente como está em uso hoje (até a migration 065).*
 
-> **Para a IA revisora.** Este documento foi escrito para você fazer uma análise crítica do sistema e sugerir o que mudar e o que implementar. Ele descreve o negócio, a arquitetura, o modelo de dados, cada tela e cada regra de negócio, além das limitações conhecidas, sem maquiagem. Junto com ele você recebe um **link e um login** para navegar pelo sistema (veja a seção 14). **Não preciso de elogio, preciso de lacunas.** No final (seção 15) estão as perguntas que quero que você responda.
+> **Para a IA revisora.** Este documento foi escrito para você fazer uma análise crítica do sistema e sugerir o que mudar e o que implementar. Ele descreve o negócio, a arquitetura, o modelo de dados, cada tela e cada regra de negócio, além das limitações conhecidas, sem maquiagem. **Desta vez você recebe só este documento** — sem acesso ao sistema nem ao código. Quando algo não estiver claro o suficiente para uma conclusão, diga isso em vez de supor. **Não preciso de elogio, preciso de lacunas.** No final (seção 15) estão as perguntas que quero que você responda.
 
 ---
 
@@ -16,25 +16,31 @@
 6. Automações que rodam no banco de dados
 7. Telas do sistema, uma por uma
 8. A Central da festa (tela mais importante)
-9. Páginas públicas (sem login)
+9. Páginas públicas (sem login) — o Portal do cliente
 10. Recursos transversais (busca, desfazer, histórico, PDF, WhatsApp)
 11. Regras de negócio consolidadas
 12. Limitações e dívidas técnicas conhecidas
 13. Histórico recente de evolução
-14. Como acessar o sistema
+14. Sobre o acesso
 15. O que eu quero de você
 
 ---
 
 ## 1. O negócio
 
-**Brava Park Fest** é uma casa de festas infantis com **duas unidades físicas independentes**: **Vila Operária** e **São Vicente** (Brasil). Cada unidade funciona quase como uma empresa separada:
+**Brava Park Fest** é uma casa de festas infantis em Itajaí (SC) com **duas unidades físicas independentes**: **Vila Operária** (até 100 pessoas, ~320 m²) e **São Vicente** (até 60 pessoas em 2026; até 80 em 2027). Cada unidade funciona quase como uma empresa separada:
 
 - tem a sua própria conta bancária e dados jurídicos (CNPJ, razão social) usados no contrato;
 - tem os seus próprios pacotes e preços, estoque, equipe e grupo de WhatsApp de fornecedores;
 - tem um único espaço (não existem salões separados dentro de uma unidade) — **uma festa por dia por unidade**.
 
-O produto vendido é a **festa completa**: espaço + buffet (pratos quentes, bolo, docinhos, salgadinhos, bebidas) + equipe + duração definida, em pacotes por número de convidados (ex: 40, 50 ou 60 pessoas) e por nível (ex: Classic, Gourmet). O preço muda entre dia de semana (seg–qui) e fim de semana (sex–dom). Itens extras (ex: cabine de fotos, hora extra) são vendidos à parte.
+O produto vendido é a **festa completa**: espaço + brinquedos + buffet + bolo + docinhos + bebidas não alcoólicas + decoração + equipe + duração definida. Os pacotes variam por número de convidados (40 a 100) e por nível:
+
+- **Classic** — coquetéis (salgados, docinhos, bolo, bebidas), sem pratos quentes;
+- **Gourmet** — coquetéis + pratos quentes (de 3 opções para 40 pessoas até 9 para 100);
+- **Prime** (só Vila Operária) — coquetéis, pratos quentes e jantar completo.
+
+O preço muda entre seg–qui e sex–dom/feriados, e há tabelas diferentes para 2026 e 2027. Itens extras (ex: cabine de fotos, hora extra, prato quente adicional) são vendidos à parte. Uma **gerente** recebe **R$ 150 de comissão por festa fechada**, paga toda segunda-feira.
 
 O ciclo de vida típico de um cliente:
 
@@ -42,22 +48,22 @@ O ciclo de vida típico de um cliente:
 2. Agenda uma **visita** ao espaço.
 3. Recebe uma **proposta comercial** em PDF.
 4. Fecha: vira uma **reserva** (orçamento → confirmada), assina o **contrato**, paga sinal e parcelas.
-5. Antes da festa: envia a **lista de convidados** por um link, escolhe os pratos e o bolo, a casa escala a **equipe**, confere o **estoque** e avisa os **fornecedores**.
+5. Antes da festa: recebe o link do **Portal do cliente**, onde escolhe pratos quentes e bolo, envia a lista de convidados e a playlist, vê a programação e manda comprovantes de pagamento. A casa escala a **equipe**, confere o **estoque** e avisa os **fornecedores**.
 6. No dia: check-in dos convidados na portaria, equipe marca presença.
-7. Depois: lança o **consumo pós-festa**, paga a equipe, pede **avaliação** (Google + formulário próprio).
+7. Depois: lança o **consumo pós-festa** (com custo), paga a equipe, pede **avaliação** (Google + formulário próprio no portal).
 8. Meses depois: o sistema lembra de **reativar** o cliente perto do próximo aniversário da criança.
 
-O sistema substituiu um software de mercado (RecreaSoft) e foi construído sob medida, de forma incremental, a partir de pedidos do dono.
+O sistema substituiu um software de mercado (RecreaSoft) e foi construído sob medida, de forma incremental, a partir de pedidos do dono. O dono considera, no futuro, **vender o sistema para outras casas de festa** (ainda não iniciado).
 
 ---
 
 ## 2. Quem usa e como
 
-- **O dono** — acesso total (perfil Administrador). Usa principalmente o celular e o computador.
-- **Gerente e equipe** — perfis criados pelo próprio dono (ex: Financeiro, Comercial, Operacional, Recepção), cada um com o seu conjunto de permissões.
-- **Clientes (contratantes)** — não têm login. Interagem só por dois links públicos: a lista de convidados e o formulário de avaliação.
+- **O dono** — acesso total (perfil Administrador). Usa principalmente o celular e o computador. Não é técnico nem contador.
+- **Gerente e equipe** — perfis criados pelo próprio dono (ex: Financeiro, Comercial, Gerente, Operacional, Recepção), cada um com o seu conjunto de permissões.
+- **Clientes (contratantes)** — não têm login. Interagem por um link público único por festa: o **Portal do cliente**. A conversa com a equipe é só pelo WhatsApp.
 
-Uso diário real: criar e acompanhar reservas, registrar pagamentos, controlar estoque, escalar equipe, mandar mensagens de WhatsApp prontas.
+Uso diário real: criar e acompanhar reservas, registrar pagamentos, conferir comprovantes enviados pelo portal, controlar estoque, escalar equipe, mandar mensagens de WhatsApp prontas, acompanhar o financeiro.
 
 ---
 
@@ -66,16 +72,16 @@ Uso diário real: criar e acompanhar reservas, registrar pagamentos, controlar e
 | Camada | Tecnologia |
 |---|---|
 | Frontend | React 18 + TypeScript + Vite 5 + Tailwind CSS 3, React Router 6, Recharts (gráficos), lucide-react (ícones), date-fns |
-| PDFs | jsPDF e html2pdf.js, carregados sob demanda (geram download de verdade, não dependem da impressão do navegador) |
-| Backend | Supabase: Postgres + Auth (email/senha) + Storage (arquivos) + uma Edge Function |
-| Servidor próprio | **Não existe.** O navegador fala direto com o Supabase. Toda a proteção é feita no banco (Row Level Security + funções). |
+| PDFs | jsPDF e html2pdf.js, carregados sob demanda (geram download de verdade) |
+| Backend | Supabase: Postgres + Auth (email/senha) + Storage (arquivos) + uma Edge Function. **Plano gratuito (Free)** |
+| Servidor próprio | **Não existe.** O navegador fala direto com o Supabase. Toda a proteção é feita no banco (Row Level Security + funções `security definer` com checagem de permissão). |
 | Hospedagem | Cloudflare Workers (site estático). Cada envio para a branch `main` do GitHub publica sozinho em ~1–2 minutos. |
-| Banco: mudanças | Arquivos SQL numerados (`supabase/002…055_*.sql`), rodados **manualmente** pelo dono no SQL Editor do Supabase. Todos espelhados em `supabase/schema.sql` (instalador do zero). |
-| Testes | **Nenhum teste automatizado.** Verificação é feita por compilação (TypeScript), build e testes manuais. |
+| Banco: mudanças | Arquivos SQL numerados (`supabase/002…065_*.sql`), rodados **manualmente** pelo dono no SQL Editor do Supabase. Todos espelhados em `supabase/schema.sql` (instalador do zero). As mais recentes rodam dentro de uma transação e algumas têm script de reversão (`*_REVERTER_*.sql`). |
+| Testes | **Não há testes automatizados no repositório.** As migrations recentes (055 em diante) foram testadas pelo desenvolvedor num Postgres local em memória (PGlite) com cenários escritos à mão, mas esses testes **não estão versionados nem rodam sozinhos**. O resto é verificado por compilação (TypeScript), build e testes manuais. |
 
-Tamanho aproximado: ~15 mil linhas nas telas (`src/pages`), sendo ~3.800 só na Central da festa; ~55 migrations; ~45 tabelas.
+Tamanho aproximado: 31 telas e ~18 mil linhas em `src/pages`, sendo ~4.400 só na Central da festa e ~950 no Portal do cliente; 64 migrations; ~60 tabelas.
 
-**Ordem de publicação:** quando uma mudança precisa de coluna/tabela nova, primeiro o dono roda o SQL no Supabase, depois o código é publicado. Quando a mudança remove um acesso que o código antigo usa, é feita em duas etapas (ex: migrations 052 e 053).
+**Ordem de publicação:** quando uma mudança precisa de coluna/tabela nova, primeiro o dono roda o SQL no Supabase, depois o código é publicado. Quando a mudança remove um acesso que o código antigo usa, é feita em duas etapas. Já houve um incidente em que o dono rodou o script de **reversão** no lugar da migration (sem perda de dados, porque a funcionalidade ainda não tinha uso).
 
 ---
 
@@ -88,18 +94,19 @@ Tamanho aproximado: ~15 mil linhas nas telas (`src/pages`), sendo ~3.800 só na 
 
 ### 4.2 Perfis e permissões (RBAC)
 - **Perfis dinâmicos** (`roles`): o dono cria, edita e exclui perfis pela tela. O perfil com `is_admin = true` ("Administrador") tem acesso total e não passa por checagem.
-- **Permissões por perfil** (`role_permission_items`): cerca de 65 chaves — uma por página (`page:financeiro`, `page:estoque`…) e uma por ação sensível (`action:festa.pagamentos`, `action:festa.trocar_pacote`, `action:festa.equipe`, `action:clientes.excluir`, `action:financeiro.marcar_pago`, `action:festa.excluir`…).
+- **Permissões por perfil** (`role_permission_items`): cerca de 75 chaves — uma por página (`page:financeiro`, `page:estoque`, `page:comissoes`, `page:portal_avisos`…) e uma por ação sensível (`action:festa.pagamentos`, `action:festa.estorno`, `action:acertos.confirmar`, `action:comissoes.pagar`, `action:estoque.custo_inicial`…). Algumas ações são **só do Administrador** por não terem linha criada para nenhum perfil (ex: desfazer acerto entre unidades, desfazer repasse de comissões).
 - **Ajuste individual** (`user_permission_overrides`): libera ou bloqueia uma chave para uma pessoa específica, vencendo o que o perfil dela diz.
 - **Regra fail-closed** (desde a migration 046): se não existe linha dizendo "liberado", está **negado**.
 - **Onde é aplicado:**
   - na tela, o menu esconde páginas sem permissão, o guard de rota bloqueia URL digitada e o componente `<Can>` esconde botões;
-  - **no banco** (o que realmente protege), as políticas RLS de cada tabela chamam `has_permission(auth.uid(), 'chave')` e `is_active_user(...)`. Quem tentar chamar a API do Supabase direto do console do navegador também é barrado.
+  - **no banco** (o que realmente protege), as políticas RLS de cada tabela chamam `has_permission(auth.uid(), 'chave')` e `is_active_user(...)`, e as funções sensíveis checam a permissão antes de agir. Quem tentar chamar a API do Supabase direto do navegador também é barrado.
 - Cobertura de botões: nem toda ação tem chave própria. Várias páginas têm só a permissão de página inteira.
 
 ### 4.3 Correções de segurança já feitas
-- **045/046:** antes, qualquer funcionário logado podia se promover a administrador escrevendo no próprio perfil, e todas as tabelas aceitavam qualquer usuário autenticado. Corrigido com RBAC no banco.
-- **052/053:** os links públicos (lista de convidados e avaliação) usavam políticas abertas que permitiam a quem não estava logado ler dados de **outras** festas. Agora o visitante sem login não acessa nenhuma tabela diretamente — só funções específicas que exigem o token do link e devolvem apenas os dados daquela festa, com limites (máx. 300 nomes por envio e 1.000 por lista; máx. 3 avaliações por link).
-- **RLS sem recursão:** checagens de "é admin?" ficam em funções `security definer` (`is_admin_user`) para evitar o erro de recursão infinita do Postgres.
+- **045/046:** antes, qualquer funcionário logado podia se promover a administrador e todas as tabelas aceitavam qualquer usuário autenticado. Corrigido com RBAC no banco.
+- **052/053:** os links públicos permitiam a quem não estava logado ler dados de **outras** festas. Agora o visitante sem login não acessa nenhuma tabela diretamente — só funções que exigem o token do link e devolvem apenas os dados daquela festa, com limites.
+- **RLS sem recursão:** checagens de "é admin?" ficam em funções `security definer` (`is_admin_user`).
+- **Lançamentos travados (057/058/064):** compras de estoque, acertos entre unidades, estornos de cancelamento e contas de comissão só podem ser alterados pela tela de origem — um gatilho no banco bloqueia edição ou exclusão por fora.
 
 ---
 
@@ -112,55 +119,50 @@ Principais tabelas (nomes reais no Postgres):
 - `spaces` — o espaço físico de cada unidade (1 por unidade).
 
 **Clientes e comercial**
-- `clients` — contratante: nome, telefone, email, CPF, endereço estruturado (com busca de CEP), origem do contato (`source`: instagram, google, facebook, indicação, outro), indicação (`referred_by`), nome e **data de nascimento da criança**, pontos de fidelidade, status de reativação, último contato e data da última festa.
-- `visits` — visitas agendadas ao espaço, com responsável e resultado (virou orçamento / não avançou + motivo).
-- `proposals` — propostas comerciais (pacote, extras, total, status enviada/aceita/recusada + motivo da recusa).
-- `leads`, `waitlist` (lista de espera por data/unidade), `contact_history` (registro das mensagens de WhatsApp enviadas pelo sistema, com o nome de quem enviou), `marketing_spend` (gasto em tráfego pago por mês/unidade), `unit_goals` (meta de faturamento mensal).
+- `clients` — contratante: nome, telefone, email, CPF, endereço estruturado, origem (`source`), indicação, nome e **data de nascimento da criança**, pontos de fidelidade, status de reativação, último contato e data da última festa.
+- `visits`, `proposals`, `leads`, `waitlist`, `contact_history` (mensagens de WhatsApp enviadas, com quem enviou), `marketing_spend`, `unit_goals`.
 
 **Produto**
-- `packages` — pacotes por unidade:
-  - preço padrão ou preço seg–qui / sex–dom;
-  - limite de convidados, duração e itens inclusos (vão para o contrato);
-  - **período de validade** (`valid_from` / `valid_until`). Ex: a tabela 2026 de São Vicente vale até 31/12/2026 e a tabela 2027 a partir de 01/01/2027. O formulário de reserva só oferece pacotes válidos na data da festa.
-- `extra_items` — itens extras avulsos.
-- `package_costs` — "ficha técnica" de custo de cada pacote por categoria (sugestão ao lançar custos da festa).
+- `packages` — pacotes por unidade: preço seg–qui / sex–dom (e preço padrão), limite de convidados, duração, itens inclusos (vão para o contrato), **quantidade de pratos quentes inclusos** (`hot_dish_count`, usada no portal), **período de validade** (`valid_from` / `valid_until`, pela data da festa) e `active`. Hoje convivem as tabelas 2026 e 2027 das duas unidades; planos antigos ficam inativos, mas as festas que os usam continuam com eles.
+- `extra_items` — itens extras avulsos; um extra pode **acrescentar pratos quentes** à escolha do cliente (`adds_hot_dishes`).
+- `package_costs` — "ficha técnica" de custo de cada pacote por categoria.
 
 **A festa**
 - `reservations` — a festa:
   - unidade, cliente, pacote, data, início e fim, tipo de evento, convidados e cortesias;
-  - nome e idade do aniversariante, tema, sabores do prato quente e do bolo;
-  - `total_value` (valor cheio) e `final_value` (valor firmado com desconto), tipo e valor do desconto;
+  - nome e idade do aniversariante (editáveis), tema, sabores e massa do bolo, escolha de música;
+  - `total_value` (valor cheio) e `final_value` (valor firmado com desconto);
   - status (`orcamento`, `confirmada`, `quitada`, `cancelada`; o valor legado `sinal_pago` não é mais usado);
-  - dados de cancelamento (motivo, % de multa retida, valor devolvido).
+  - cancelamento: motivo, % de multa, valor devolvido, data do cancelamento (`cancelled_at`);
+  - consumo pós-festa **finalizado** (`consumption_finalized`) e "excluir das médias" (`exclude_from_averages`);
+  - cardápio confirmado em / enviado após o prazo (`menu_confirmed_at`, `menu_sent_late`).
   - Índice único: só uma festa não cancelada por unidade por dia.
-- `reservation_birthday_kids` — aniversariantes adicionais (irmãos na mesma festa).
-- `payments` — cada valor recebido é uma linha (data, valor, forma de pagamento). Não há cronograma de parcelas.
+- `reservation_birthday_kids` — aniversariantes adicionais.
+- `payments` — cada valor recebido é uma linha (data, valor, forma de pagamento, criado em). Não há cronograma de parcelas.
 - `payment_method_fees` — taxa da maquininha por forma de pagamento (editável).
-- `reservation_extra_items` — extras vendidos na festa, com o preço congelado no momento da venda.
-- `reservation_costs` — custos daquela festa (fornecedor, equipe, despesa fixa da festa). Separado de `expenses` de propósito, para não contar o mesmo gasto duas vezes.
-- `reservation_consumption` — consumo cobrado à parte no fim da festa (ex: chopp por litro).
-- `reservation_stock_consumption` — baixa de estoque feita pela festa.
-- `checklist_items` — checklist operacional da festa.
-- `staff_members` — cadastro fixo de funcionários da operação (nome, telefone, função mais comum).
-- `staff_assignments` — escala da festa:
-  - funcionário e função;
-  - presença (`attended`, `attended_at`) e o pagamento lançado (`payment_cost_id`, ligação com o custo);
-  - status escalado/substituído, com nome do substituto, motivo e ligação com a escala substituída.
-- `reservation_notes` — observações da festa, com lembrete opcional numa data (aparece no Painel).
-- `reservation_documents` — arquivos anexados (Supabase Storage, bucket privado).
-- `contracts` / `contract_templates` — contrato gerado por festa a partir do modelo da unidade.
-- `guest_list_pages` / `guest_list_entries` — link público da lista de convidados (token), nomes, chegada (check-in), sinalização (`flagged`) e link de playlist do Spotify.
-- `review_links` / `party_reviews` — link público de avaliação e as respostas (nota de 1 a 5 por categoria + comentário).
-- `nps_responses` — NPS clássico (0–10) registrado manualmente.
+- `reservation_extra_items` — extras vendidos, com o preço congelado.
+- `reservation_costs` — custos daquela festa (equipe, despesa fixa da festa, custos manuais).
+- `reservation_consumption` — consumo cobrado à parte (ex: chopp por litro).
+- `reservation_stock_consumption` — baixa de estoque feita pela festa, com **custo congelado** no momento (`unit_cost`, `total_cost`, `no_cost` quando o item não tinha custo).
+- `checklist_items`, `staff_members`, `staff_assignments` (escala, presença e pagamento ligado a custo), `reservation_notes` (com lembrete), `reservation_documents` (Storage privado), `contracts` / `contract_templates`.
+- **Portal do cliente:** `guest_list_pages` (o token do portal), `guest_list_entries` (convidados e check-in), escolhas de cardápio e bolo, comprovantes enviados (arquivo no Storage + status lançado/recusado com justificativa), avaliações (`party_reviews`) e um log de tudo o que o cliente fez no portal (que alimenta os avisos do Painel).
+- `nps_responses` — NPS (0–10) registrado manualmente.
 
 **Financeiro e operação**
-- `expenses` — contas a pagar: categoria, fornecedor, valor, vencimento, status (a vencer/pago/atrasado/cancelado), forma e data do pagamento, ligação com a despesa fixa que a gerou.
-- `recurring_expenses` — despesas fixas mensais (aluguel, folha…), com dia de vencimento e mês inicial.
-- `festa_fixed_costs` / `festa_fixed_cost_package_amounts` — **despesas fixas das festas**: custo que toda festa tem (ex: docinhos R$ 600), com valor padrão, unidade e valor diferente por pacote.
-- `expense_items` — itens de estoque comprados junto com uma conta a pagar.
-- `inventory_items` / `inventory_purchase_variants` — estoque por unidade: quantidade, mínimo, consumo por convidado, fornecedor e tamanhos de compra (ex: suco em garrafa de 1,5 L, 3 L ou 5 L convertido em litros).
-- `suppliers` / `supplier_bookings` — fornecedores terceirizados, contratações e avaliações.
-- `message_templates` — mensagens de WhatsApp editáveis pela equipe.
+- `expenses` — contas a pagar: categoria, fornecedor, valor, vencimento, status (a vencer / atrasado / pago / cancelado), forma e data do pagamento, e marcações:
+  - `covers_festa_costs` — "esta conta paga custos já lançados nas festas" (fica na lista, mas não entra em nenhum total);
+  - `is_stock_purchase` + `expense_items` — compra de estoque, criada pela tela Estoque;
+  - `settlement_id` / `settlement_batch_id` — conta de acerto entre unidades;
+  - `reservation_id` + categoria "Estorno" — devolução de cancelamento;
+  - `commission_payout_id` — conta de repasse de comissão.
+- `other_incomes` — entradas que não são de festa (hoje só acertos recebidos de outra unidade).
+- `unit_settlements` — acertos entre unidades (pendente / pago / cancelado), gerados por transferência de estoque.
+- `recurring_expenses` — despesas fixas mensais.
+- `festa_fixed_costs` / `festa_fixed_cost_package_amounts` — despesas fixas das festas, com valor por plano.
+- `inventory_items` — estoque por unidade: quantidade **e valor total** (custo médio ponderado = valor ÷ quantidade), mínimo, tipo de consumo (por convidado / por festa), fornecedor, tamanhos de compra.
+- `inventory_movements` — razão do estoque: toda entrada, saída, ajuste, transferência e correção de custo, com quantidade e valor antes/depois.
+- `commission_rates` (valor da comissão com histórico de vigência), `commission_settings` (data de início, quem recebe), `commission_payouts` / `commission_payout_items` (repasses semanais e o que cada um pagou ou abateu).
+- `suppliers` / `supplier_bookings`, `message_templates`.
 
 **Controle**
 - `roles`, `role_permission_items`, `user_permission_overrides`, `user_profiles` — permissões (seção 4).
@@ -170,36 +172,48 @@ Principais tabelas (nomes reais no Postgres):
 
 ## 6. Automações que rodam no banco de dados
 
-São regras de banco (gatilhos e funções), por isso valem para qualquer tela e qualquer pessoa.
+São regras de banco (gatilhos e funções), por isso valem para qualquer tela e qualquer pessoa. "Hoje" é calculado no fuso de Brasília (`today_brazil()`).
 
-### 6.1 Status da festa automático (migration 055)
-- Valor devido = `final_value` + extras vendidos + consumo pós-festa.
-- Orçamento sem nenhum pagamento → continua **Orçamento**.
-- Pagou menos que o devido → **Confirmada**.
-- Pagou tudo → **Quitada**.
-- **Cancelada** nunca muda sozinha.
+### 6.1 Status da festa automático
+- Valor devido = `final_value` + extras vendidos + consumo cobrado.
+- Sem pagamento → **Orçamento**; pagou menos que o devido → **Confirmada**; pagou tudo → **Quitada**. **Cancelada** nunca muda sozinha.
 - Recalcula quando entra, muda ou sai pagamento, extra ou consumo, e quando o valor da festa muda.
 
-### 6.2 Despesa fixa das festas (migration 050)
-- Ao criar uma festa, o sistema lança sozinho, nos custos dela, cada despesa fixa da unidade, com o valor do pacote da festa (ou o valor padrão).
-- Ao trocar o pacote da festa, os valores são recalculados.
-- Ao editar o valor de uma despesa fixa, as festas **futuras** são atualizadas.
-- Ao cancelar a festa, os custos fixos saem. Ao descancelar ou mudar de unidade, entram de novo.
-- Não é retroativo: festas que já existiam antes do cadastro da despesa não recebem o lançamento (decisão do dono).
+### 6.2 Despesa fixa das festas
+- Ao criar uma festa, lança sozinho nos custos dela cada despesa fixa da unidade, com o valor do plano da festa (ou o padrão).
+- Trocar o pacote recalcula; editar a despesa atualiza as festas futuras; cancelar a festa tira os custos fixos; descancelar recoloca. Não é retroativo.
 
-### 6.3 Histórico completo (migration 055)
-- Um gatilho em 27 tabelas grava em `audit_log` toda criação, alteração e exclusão:
-  - quem fez (usuário logado e o nome dele);
-  - qual tabela e registro, e a festa relacionada;
-  - para alterações, o valor **de → para** de cada campo mudado.
-- Textos longos são encurtados para 300 caracteres. Ações feitas pelos links públicos aparecem como "Link público ou sistema".
-- O histórico vale só daqui para a frente. Ações anteriores não têm autor registrado.
+### 6.3 Histórico completo
+- Um gatilho em ~30 tabelas grava em `audit_log` toda criação, alteração e exclusão: quem fez, qual registro, a festa relacionada e, nas alterações, o valor **de → para** de cada campo.
+- Ações automáticas aparecem como "Sistema (…)"; ações do cliente pelo portal, como "Cliente (portal)".
 
-### 6.4 Outras funções
-- **Despesas fixas mensais.** `ensure_recurring_expenses_current_month` cria o lançamento do mês em contas a pagar. Roda de forma "preguiçosa", toda vez que o Painel ou o Financeiro abrem (não há agendador).
-- **Estoque.** `record_stock_purchase` / `undo_stock_purchase` e `record_stock_consumption` / `undo_stock_consumption` / `update_stock_consumption` somam e subtraem do estoque de forma atômica.
-- **Despesas fixas das festas.** `save_festa_fixed_cost` / `delete_festa_fixed_cost` gravam a despesa fixa e propagam para as festas.
-- **Links públicos.** `public_*` são as funções dos links públicos (seção 9).
+### 6.4 Estoque com custo (057, 062)
+- Toda mudança de quantidade/valor passa por funções do banco (`stock_apply_in/out/delta`); mudar direto na tabela é bloqueado.
+- **Entrada de compra** (tela Estoque) soma quantidade e valor e cria a conta a pagar vinculada; editar/excluir refaz pela diferença.
+- **Consumo pós-festa** tira do estoque pelo custo médio do momento e congela esse custo no lançamento. Saída maior que o estoque zera o item (nunca negativo).
+- O custo por unidade de qualquer item pode ser definido ou corrigido (com motivo, registrado no histórico).
+- **Médias de consumo** (`consumption_averages`): calculadas na hora com as últimas 10 festas finalizadas de cada unidade (por convidado ou por festa).
+
+### 6.5 Acertos entre unidades (057, 058)
+- Transferir estoque de uma unidade para outra cria um **acerto** e, na unidade que recebeu, uma **conta a pagar** ("Transferência entre unidades").
+- Quando essa conta é paga, o sistema lança sozinho a **entrada** na unidade que mandou e marca o acerto como pago; voltar a conta para não paga desfaz.
+
+### 6.6 Estorno de cancelamento (057)
+- Cancelar uma festa com valor devolvido cria (uma única) saída **"Estorno"** no Financeiro — já paga ou como conta a vencer. Alterar o valor devolvido atualiza o mesmo lançamento; descancelar a festa cancela o estorno.
+- Antes de cancelar, o sistema avisa se já existe uma conta parecida no mesmo mês (para não duplicar).
+
+### 6.7 Comissão da gerente (064)
+- Cada festa **cadastrada** a partir da data de início (19/10/2026) gera a comissão no valor vigente no dia do cadastro (hoje R$ 150; o valor pode mudar com data de vigência e fica o histórico).
+- O repasse de segunda paga as festas cadastradas até o domingo anterior. Festa cancelada **depois** de paga é **abatida** no próximo repasse; cancelada **antes** não gera comissão; se voltar, a comissão volta a ser devida. Unidade com saldo da semana não positivo não é paga (o abatimento espera).
+- O repasse cria uma conta **paga** por unidade (categoria "Comissão"), travada. Desfazer repasse: só Administrador.
+
+### 6.8 Três visões do Financeiro (063)
+- Funções só de leitura (`finance_month_views`, `finance_commitments`) calculam Caixa, Resultado das festas, a Ponte entre os dois e os compromissos com festas futuras (seção 7.14). Não criam nem alteram lançamentos.
+
+### 6.9 Outras funções
+- **Despesas fixas mensais:** `ensure_recurring_expenses_current_month` cria o lançamento do mês; roda quando o Painel ou o Financeiro abrem (não há agendador).
+- **Conta vencida vira "Atrasado"** sozinha (ao salvar e ao abrir o Painel/Financeiro).
+- **Portal:** funções `public_*` / `portal_*` que exigem o token (seção 9), com prazos calculados no banco.
 
 ---
 
@@ -208,134 +222,85 @@ São regras de banco (gatilhos e funções), por isso valem para qualquer tela e
 Barra lateral com um **seletor de unidade** (Vila Operária / São Vicente / Ambas), que filtra quase todas as telas, e uma **busca global** no topo.
 
 ### 7.1 Painel (Dashboard)
-- **Indicadores do mês:**
-  - faturamento recebido;
-  - festas confirmadas;
-  - ocupação dos espaços (% de dias com festa);
-  - CAC × ticket médio;
-  - meta de faturamento com barra de progresso.
-- Gráfico de faturamento recebido por unidade nos últimos 6 meses.
-- **Ações rápidas** (atalhos que respeitam as permissões): nova reserva, agendar visita, novo cliente, nova despesa, novo pacote, novo fornecedor, lembretes, adicionar funcionário.
-- **Alertas:**
-  - festas dos próximos 14 dias com dado faltando (tema, sabores, aniversariante);
-  - clientes cuja criança faz aniversário em 1 a 3 meses e que ainda não marcaram festa naquele ano;
-  - contas a pagar vencendo em 14 dias (vermelho se vencida);
-  - saldo em aberto das festas dos próximos 7 dias.
-- **Lembretes** das observações das festas (com botão Concluir).
-- **Atividade recente**: as últimas ações de qualquer pessoa, com nome e o que mudou.
+- Para **Administrador e Financeiro**, os avisos financeiros ficam no topo: comprovantes enviados pelo portal (Lançar / Recusar com justificativa), acertos entre unidades pendentes, contas a pagar e saldo em aberto.
+- **Avisos do portal:** cada ação do cliente no portal (cardápio escolhido, convidados enviados, comprovante, avaliação…) aparece aqui; prazos vencidos sem a ação feita também são avisados.
+- Indicadores do mês: faturamento recebido, festas confirmadas, ocupação, CAC × ticket médio, meta com barra de progresso.
+- Gráfico de faturamento por unidade (6 meses) e gráfico **Festas por mês** com dois modos: **realizadas** (pelo mês da festa) e **fechadas/vendas** (pelo mês do cadastro), com comparação com o ano anterior.
+- Ações rápidas, alertas (festas com dado faltando, reativação, contas vencendo, saldo em aberto das próximas festas), lembretes das observações e atividade recente.
 
 ### 7.2 Lembretes diários
-Lista calculada sozinha, cada item com botão que abre o WhatsApp com a mensagem pronta:
-- pagamento pendente perto da festa;
-- festa é amanhã;
-- pedir avaliação da festa de ontem.
-
-Não repete um lembrete que já foi enviado no mesmo dia.
+Lista calculada sozinha, cada item com botão que abre o WhatsApp com a mensagem pronta: pagamento pendente perto da festa (com o saldo), festa é amanhã, pedir avaliação da festa de ontem. Não repete no mesmo dia.
 
 ### 7.3 Mapa de reservas
-- **Calendário mensal** com o nome de cada festa na cor do status: rosa = Confirmada, verde = Quitada, vermelho e riscado = Cancelada, cinza = Orçamento. Há também uma visão em lista e a "agenda de hoje".
-- **Nova reserva:**
-  - cliente existente ou cadastro rápido sem sair da tela;
-  - unidade, data, horário e tipo de evento;
-  - pacote: só os válidos na data, em ordem alfabética e numérica, com preço calculado por dia da semana;
-  - convidados e cortesias;
-  - aniversariante puxado do cadastro do cliente, com a idade calculada pela data de nascimento e pela data da festa; dá para incluir mais aniversariantes;
-  - tema e sabores (pratos separados por "/", o número de pratos varia com o plano);
-  - desconto (valor ou %);
-  - status inicial: Orçamento ou Confirmada.
-- **Trava de duplicidade:** avisa antes de salvar se já existe festa ativa na mesma unidade e data, e o banco também bloqueia.
-- **Lista de espera:** cliente, data desejada e unidade. Mostra "Vaga disponível!" quando a data fica livre e tem botão para avisar o cliente por WhatsApp.
-- Clicar numa festa abre um resumo com o botão "Abrir Central da festa".
+- Calendário mensal colorido por status, visão em lista e "agenda de hoje".
+- **Nova reserva:** cliente existente ou cadastro rápido; unidade, data, horário, tipo; pacote (só os válidos na data e ativos, preço por dia da semana); convidados e cortesias; aniversariante(s) com idade calculada; tema e sabores; desconto; status inicial.
+- Trava de duplicidade (tela + banco). Lista de espera com aviso de vaga.
 
-### 7.4 Agenda de visitas
-Agendar visita (cliente, unidade, data/hora, responsável) e registrar o resultado: virou orçamento, ou não avançou (com o motivo).
-
-### 7.5 Clientes
-- Cadastro completo (busca de CEP via ViaCEP), edição e exclusão, origem, indicação, criança e data de nascimento.
-- Selo de fidelidade e pontos (veja a limitação na seção 12).
-- Histórico de pagamentos do cliente e ações de WhatsApp (enviar orçamento, pedir avaliação).
-
-### 7.6 Reativação de clientes
-- Clientes com criança cadastrada, ordenados pelo próximo aniversário. Destaca quem está a 1 a 3 meses e exclui quem já tem festa marcada naquele ano.
-- Funil de status: nova oportunidade → contatado → negociação → nova reserva / sem interesse.
-- Botão de mensagem de reativação.
-
-### 7.7 Satisfação (NPS)
-- Registro manual de nota de 0 a 10, com promotores, neutros, detratores e NPS.
-- Avaliações detalhadas vindas do formulário público: médias de pratos quentes, bolo, docinhos, salgadinhos e atendimento, mais os comentários.
+### 7.4 Agenda de visitas · 7.5 Clientes · 7.6 Reativação · 7.7 Satisfação (NPS)
+Sem mudanças relevantes: visitas com resultado; cadastro completo com busca de CEP; reativação por aniversário da criança (1–3 meses, sem festa no ano) com funil; NPS manual + médias das avaliações do portal.
 
 ### 7.8 Pacotes e itens
-- Criar e editar pacotes com:
-  - preço padrão ou seg–qui / sex–dom;
-  - limite de convidados, duração e itens inclusos;
-  - **validade** ("vale para festas a partir de / até").
-- Sempre em ordem alfabética, com números em ordem crescente (40, 50, 60).
-- Ficha técnica de custo por categoria.
-- Itens extras.
+- Criar e editar pacotes (preços seg–qui / sex–dom, limite, duração, itens inclusos, **pratos quentes inclusos**, validade). Ordem alfabética e numérica natural.
+- Pacote já usado em festa não é apagado: é desativado.
+- Ficha técnica de custo e itens extras (com "acrescenta pratos quentes").
 
-### 7.9 Contratos
-- Modelo de contrato **por unidade**, com variáveis preenchidas pelos dados da festa: contratante (nome, CPF, endereço, telefone), contratada (razão social, CNPJ, endereço, responsável), data, horários, duração, local, plano e itens, limite de convidados, tema, aniversariante, valor total, sinal, hora extra e chave Pix.
-- Gera o contrato da festa, que fica **congelado**. Dá para **editar o texto já gerado** (lápis) e baixar o PDF de novo.
+### 7.9 Contratos · 7.10 Propostas comerciais
+Contrato por unidade com variáveis, congelado ao gerar e editável; proposta em PDF no modelo da marca, com status.
 
-### 7.10 Propostas comerciais
-- Monta a proposta (cliente, unidade, data opcional, pacote válido na data, extras) e gera um **PDF desenhado** no modelo visual da marca.
-- Controla o status (enviada/aceita/recusada + motivo) e permite regerar o PDF.
-
-### 7.11 Tráfego e CAC
-- Gasto mensal em tráfego por unidade.
-- O CAC é calculado **só sobre clientes vindos de Instagram, Facebook ou Google** e comparado ao ticket médio, com a evolução de 6 meses.
-
-### 7.12 Funil de conversão
-Conversão do orçamento até a festa fechada e distribuição das festas fechadas por origem do cliente (gráfico de pizza).
+### 7.11 Tráfego e CAC · 7.12 Funil de conversão
+CAC só sobre clientes de origem paga, comparado ao ticket médio; funil do orçamento à festa fechada e origem das festas.
 
 ### 7.13 Pagamentos
-- Todas as festas com valor firmado, pago e saldo; recebido no total e no mês; saldo em aberto.
-- Taxa da maquininha por forma de pagamento (editável) e o valor líquido do mês.
+Todas as festas com valor firmado, pago e saldo; recebido no total e no mês; taxa da maquininha por forma de pagamento (editável) e valor líquido do mês.
 
-### 7.14 Financeiro
-- **Contas a pagar:**
-  - registrar (categoria, descrição, fornecedor, valor, vencimento, unidade), editar, marcar como paga (com forma e data do pagamento) e remover;
-  - uma compra pode incluir **itens de estoque**, que somam no estoque sozinhos, e a exclusão desfaz.
-- **Despesas fixas mensais**, com geração automática do lançamento de cada mês e escolha de começar neste mês ou no próximo.
-- **Resumo por unidade:** entradas, a pagar, atrasado, custos de festas do mês e saldo do mês. O saldo só desconta o que já foi pago.
-- **Fluxo de caixa futuro** e gráfico de 6 meses: somados com "Ambas as unidades", separados quando uma unidade está selecionada. Clicar num mês abre o detalhe por categoria.
-- Despesas por categoria.
+### 7.14 Financeiro — três visões
+No topo, três abas, todas com o filtro de unidade. Cada aba tem um quadro "O que esta tela mostra" (recolhível, lembrado por pessoa no navegador), "Entenda com um exemplo", legenda em cada card, uma linha "Não é:" e uma frase de resumo com os números reais.
+
+- **Caixa** (só o mês atual) — a tela de sempre:
+  - Entradas do mês (pagamentos pela data do pagamento) + acertos recebidos;
+  - Custos das festas do mês **já realizadas** (embaixo, os das próximas);
+  - A pagar e Atrasado;
+  - **Saldo do mês (caixa)** = entradas + acertos − contas pagas no mês − custos das festas já realizadas;
+  - Fluxo de caixa futuro (saldo projetado) e gráfico de 6 meses (a barra de saídas do mês atual inclui custos de festas que ainda vão acontecer).
+- **Resultado das festas** (com seletor de mês) — cada festa conta no mês em que acontece:
+  - receita da festa = valor firmado + extras + consumo cobrado;
+  - custos = custos lançados + insumos consumidos (custo congelado); taxa da maquininha estimada em card próprio;
+  - despesas gerais = contas pagas no mês **sem** compras de estoque, acertos, estornos e contas que pagam custos das festas;
+  - festas canceladas contam no mês do cancelamento só pela multa retida (pago − devolvido) menos custos já lançados;
+  - tabela por festa com status **completo / parcial** (parcial = consumo não finalizado, item sem custo ou nenhum custo lançado);
+  - bloco separado "Estimado — festas que ainda vão acontecer neste mês" (fora dos totais); linha "compras de estoque × consumo"; gráfico de 6 meses.
+- **Ponte e compromissos:**
+  - tabela em cascata do saldo do caixa ao resultado do mês, linha por linha (adiantado de festas futuras, recebido antes do mês, a receber, multa retida, estornos, compras × insumos, acertos, taxa…), com a coluna "O que significa", lançamentos ao clicar e a linha **"Diferença não classificada"** sempre visível (conferida = R$ 0,00 em 6 meses × 2 unidades com os dados reais);
+  - **dinheiro comprometido com festas futuras:** já recebido, custos previstos (lançados + insumos estimados pela média de consumo) e **reserva necessária**, com aviso se for maior que o saldo projetado.
+- Corte de "festa realizada": no mês atual, até hoje; em meses passados, até o último dia daquele mês. Meses passados são recalculados com os dados atuais.
+- **Contas a pagar:** registrar, editar, marcar como paga e remover. Etiquetas e cadeado para lançamentos travados (compra de estoque, acerto, estorno, comissão). Marcação "paga custos das festas". **Aviso antes de salvar** se existe custo de festa parecido no mesmo mês, com opções Voltar / Marcar e salvar / Salvar mesmo assim.
+- Despesas fixas mensais e despesas por categoria.
 
 ### 7.15 Despesa fixa das festas
-Cadastro dos custos que toda festa tem: descrição, unidade, valor padrão e **valor por plano** (opcional). Mostra o total por unidade (mínimo e máximo conforme o plano). Funcionamento automático na seção 6.2.
+Custos que toda festa tem, com valor padrão e valor por plano.
 
-### 7.16 Resultado do mês
-Receita recebida − taxas de cartão − despesas gerais pagas − custos de festa = lucro líquido, com margem, alerta de margem baixa, resultado por unidade e os últimos 6 meses.
+### 7.16 Acertos entre unidades
+Lista dos acertos gerados por transferência de estoque (pendente / pago / cancelado), confirmação de pagamento, cancelamento e desfazer (só Administrador).
 
-### 7.17 Lucro por festa
-Valor de cada festa menos os custos lançados nela, com lucro total do período e margem média.
+### 7.17 Comissões
+Valor por festa, próximo repasse (festas cadastradas até domingo, por unidade, com comissões, abatimentos e ajustes), semana em andamento, repasses feitos (com os itens) e configuração (valor com vigência, data de início, quem recebe).
 
-### 7.18 Relatórios e metas
-- Meta de faturamento por unidade, comparativo entre unidades e projeção de recebimento dos próximos meses.
-- Exportação CSV (Excel), com um log de exportações (LGPD) que **só vale durante a sessão**.
+### 7.18 Resultado do mês
+Receita recebida − estornos − taxas − despesas pagas − custos das festas do mês + recuperação de acertos = lucro, com margem e 6 meses. Conta **pela data do pagamento**; um aviso fixo leva ao Resultado das festas.
 
-### 7.19 Estoque
-- Itens por unidade com:
-  - quantidade, mínimo, fornecedor e unidade de medida;
-  - **consumo por convidado**: o mínimo efetivo passa a ser o necessário para a próxima festa da unidade;
-  - botões +/− que andam de inteiro em inteiro, e o valor pode ser digitado livremente (salva meio segundo depois da digitação).
-- **Lista de compras** automática: itens abaixo do mínimo.
-- **Velas numéricas** (0–9, azul e rosa) numa grade compacta, que também alimenta a lista de compras.
-- Edição, remoção e **transferência entre unidades**.
+### 7.19 Lucro por festa
+Valor da festa (firmado + extras + consumo cobrado) − custos lançados − insumos consumidos; avisa itens sem custo; para festas futuras mostra lucro estimado pela média de consumo.
 
-### 7.20 Fornecedores
-Cadastro (tipo de serviço, contato, preço combinado), contratações por festa e avaliações pós-evento.
+### 7.20 Relatórios e metas
+Meta por unidade, comparativo, projeção de recebimento e exportação CSV (inclui insumos por festa e acertos). Aviso fixo de critério (data do pagamento). Log de exportações só durante a sessão.
 
-### 7.21 Escalas
-Equipe escalada em cada festa num período (sem os substituídos), com exportação em PDF.
+### 7.21 Estoque e Consumo por convidado
+- Itens por unidade com quantidade, **valor e custo médio**, mínimo, tipo de consumo, fornecedor; custo editável; lista de compras automática; velas numéricas; transferência entre unidades.
+- **Entrada de compra** (cria a conta a pagar).
+- Tela de **médias de consumo** por item (por convidado ou por festa), com as festas que entraram na média.
 
-### 7.22 Relatório de aniversariantes
-Para cozinha e fornecedores: festas do período com tema, sabores, aniversariante, idade, convidados e horário de entrega (1 hora antes da festa). Exporta PDF.
-
-### 7.23 Usuários e permissões
-- Adicionar funcionário (nome, email, perfil e senha provisória) e ativar ou desativar.
-- Criar e editar perfis marcando as permissões.
-- Ajustes individuais por pessoa e opção de "voltar a seguir o perfil".
+### 7.22 Fornecedores · 7.23 Escalas · 7.24 Relatório de aniversariantes · 7.25 Usuários e permissões
+Sem mudanças relevantes desde a versão anterior.
 
 ---
 
@@ -344,180 +309,124 @@ Para cozinha e fornecedores: festas do período com tema, sabores, aniversariant
 Rota `/reservas/:id`. É o "hub" de uma festa.
 
 **Cabeçalho**
-- Cliente, data, unidade, status e pacote.
-- Barra de progresso e valor total (contrato + consumo), com o saldo devedor.
-- Botões:
-  - Dados do contratante;
-  - Observações;
-  - WhatsApp: confirmar festa, lembrete, localização, lembrete de pagamento, **Pedidos** (pede ao cliente a escolha de pratos e bolo), lista de convidados, **confirmar com fornecedores** (mensagem editável com horário de entrega calculado) e **pedir avaliação** (escolhe link do Google, formulário próprio ou os dois);
-  - cancelar e excluir.
-
-**Aviso de pendências (clicável)**
-- Mostra quantas pendências a festa tem: saldo em aberto com vencimento passado, tarefas do checklist atrasadas ou não concluídas no prazo.
-- Ao clicar, lista cada uma, com a data, e um botão que leva à aba certa.
+- Cliente, data, unidade, status e pacote; barra de progresso, valor total (contrato + extras + consumo) e saldo devedor.
+- Botões: dados do contratante, observações, WhatsApp (confirmar festa, lembrete da festa, localização, **lembrete de pagamento com o saldo devedor**, Pedidos, enviar portal, confirmar com fornecedores, pedir avaliação), cancelar e excluir.
+- Aviso de pendências clicável (saldo vencido, checklist atrasado).
 
 **Aba Visão geral**
-- Dados da festa, editáveis pelo lápis: data, horários, tipo, convidados, valor, desconto. Reaplica a trava de duplicidade se a data mudar.
-- **Trocar pacote:**
-  - só pacotes válidos na data;
-  - mostra o valor antes e depois;
-  - se a festa já tinha pacote, soma ou subtrai **só a diferença**; se não tinha, o valor vira o preço do novo pacote;
-  - o histórico mostra quem trocou e o efeito no valor.
-- Tema, sabores e aniversariantes.
-- **Histórico da festa — quem fez o quê**: todas as alterações daquela festa, com nome, data/hora e campos de → para.
-- Documentos anexados (upload e download privados).
-- **Lista de convidados:**
-  - gera o link público e envia por WhatsApp;
-  - check-in de chegada e adição manual na portaria;
-  - **sinalizar** convidado (destaque) e enviar os sinalizados ao cliente;
-  - em tela cheia, para a portaria;
-  - mostra a playlist do Spotify enviada pelo cliente (só Vila Operária).
+- Dados da festa editáveis; troca de pacote (só válidos na data; mostra antes/depois; soma só a diferença); a festa com plano antigo inativo continua mostrando esse plano.
+- Tema, sabores e **aniversariantes editáveis** (nome, idade, mais de um aniversariante).
+- Histórico "quem fez o quê", documentos anexados.
+- **Portal do cliente:** gerar/enviar o link; ver cardápio escolhido (com marca "enviado após o prazo"), convidados com check-in e sinalização, playlist, comprovantes e o log do que o cliente fez; mensagens antigas do portal (a conversa agora é só pelo WhatsApp).
 
 **Aba Financeiro**
-- Pagamentos: registrar e remover, com forma de pagamento.
-- Itens extras vendidos.
-- **Custos da festa:**
-  - sugestões da ficha técnica do pacote, editáveis antes de confirmar;
-  - aviso se já existe uma despesa geral parecida no mesmo mês, para não duplicar;
-  - selo "fixo" nas despesas fixas automáticas;
-  - pagamento da equipe ligado à presença.
+- Pagamentos (registrar e remover), itens extras vendidos.
+- **Custos da festa e lucro estimado:** custos lançados (sugestões da ficha técnica; aviso de duplicidade com despesas gerais; selo "fixo"; pagamento da equipe) + **insumos do consumo pós-festa** (custo congelado), com o lucro estimado da festa.
 - Consumo cobrado à parte.
-- Cancelamento com motivo, % de multa e valor devolvido.
+- Cancelamento com motivo, % de multa, valor devolvido (paga agora ou depois) → cria o estorno.
 
-**Aba Checklist**
-Modelo padrão de 7 tarefas (confirmar lista de convidados, horário, decoração e extras; conferir pagamentos, estoque e equipe), com prazo e progresso.
-
-**Aba Equipe**
-- **Montar equipe:** escolhe quem trabalha no cadastro de funcionários, define a função de cada um e clica em "Escalar equipe". Dá para cadastrar um funcionário novo ali mesmo.
-- Editar a função depois de escalado.
-- **Compareceu:** marca uma ou várias pessoas como presentes e pergunta se quer lançar o pagamento (padrão R$ 150, editável). O valor vira um custo da festa e aparece "Compareceu · R$ X lançado" ao lado do nome. É possível **desfazer a presença**, o que apaga o custo lançado.
-- **Substituir:** registra o substituto e o motivo. O original fica marcado como substituído, com histórico.
-
-**Aba Consumo pós-festa**
-Lança o que foi gasto do estoque, com baixa automática, possibilidade de editar corrigindo pela diferença, e campos "outros" livres.
+**Abas Checklist, Equipe e Consumo pós-festa**
+- Checklist de 7 tarefas com prazo.
+- Equipe: montar, editar função, marcar presença (lança o pagamento como custo, padrão R$ 150), desfazer, substituir com motivo.
+- Consumo pós-festa: lança o gasto do estoque (com custo congelado), edita, desfaz, marca como **finalizado** e "excluir das médias".
 
 ---
 
-## 9. Páginas públicas (sem login)
+## 9. Páginas públicas (sem login) — o Portal do cliente
 
-Acessadas por links com um token aleatório, enviados por WhatsApp ao cliente.
+Um link por festa (`/portal/:token`; o link antigo da lista de convidados redireciona para ele), com versão para celular e para computador, nas cores da marca. Nunca mostra telefone, CPF ou dados de outras festas.
 
-- **Lista de convidados** (`/lista-convidados/:token`):
-  - mostra só o nome do cliente, o tema e a data — nunca telefone, CPF ou valores;
-  - o cliente adiciona nomes (em lote) e remove os que ainda não chegaram e não estão sinalizados;
-  - nas festas da Vila Operária há um campo para colar o link de uma **playlist do Spotify** (só aceita links do Spotify).
-- **Avaliação** (`/avaliacao/:token`): nota de 1 a 5 para pratos quentes, bolo, docinhos, salgadinhos e atendimento, mais um comentário livre. Máximo de 3 respostas por link.
+Seções:
+- **Início** com os próximos passos e prazos.
+- **Cardápio:** escolhe os pratos quentes (quantidade = a do plano + os acrescentados por extras), a lista do cardápio da casa, o sabor e a massa do bolo. Prazo: 7 dias antes da festa; depois do prazo ainda dá para enviar, mas fica marcado "enviado após o prazo".
+- **Convidados:** adiciona e remove nomes (contar convidados a partir de 5 anos); prazo: 1 dia antes.
+- **Música:** playlist (opcional) ou escolha da casa.
+- **Programação sugerida** (horários: parabéns, pratos, bolo, hora extra).
+- **Pagamento:** saldo, prazo (1 dia antes) e envio de **comprovante**, que a equipe lança ou recusa com justificativa no Painel.
+- **Regras** (= o contrato), **Como chegar**, **Histórico**, **Avaliação** (aparece no fim da festa; nota por categoria + comentário).
+- **Falar com a equipe:** só um botão de WhatsApp (número único das duas unidades).
 
-Os dois funcionam só por funções do banco que exigem o token (seção 4.3).
+Tudo funciona por funções do banco que exigem o token; cada ação do cliente fica registrada e gera aviso no Painel.
 
 ---
 
 ## 10. Recursos transversais
 
-- **Busca global:** encontra cliente, aniversariante ou festa pelo nome. O clique abre a Central da festa ou o cadastro do cliente.
-- **Desfazer:**
-  - toda exclusão (exceto a festa inteira) acontece na hora e mostra um botão "Desfazer" por 6 segundos, que sobrevive à troca de página;
-  - desfazer recria o registro de verdade no banco;
-  - excluir a festa inteira tem confirmação reforçada e exclusão adiada, porque apaga em cascata pagamentos, custos, documentos etc.
-- **Histórico de quem fez o quê:** seção 6.3, exibido na Central da festa e no Painel.
-- **PDFs:** contrato, proposta, escala e relatório de aniversariantes são gerados no navegador e baixados direto.
-- **WhatsApp:**
-  - nunca há envio automático — o sistema monta a mensagem e abre o WhatsApp (`wa.me`); para grupos, abre o link do grupo e a pessoa cola o texto;
-  - cada envio fica registrado em `contact_history` com o nome de quem enviou;
-  - mensagens com texto fixo no código: orçamento, lembrete de pagamento, confirmar festa, lembrete da festa, localização, pedir avaliação, avaliação pós-festa, reativação, lista de convidados, vaga disponível e pedidos;
-  - "confirmar com fornecedores" é editável pela tela.
-- **Responsivo:** funciona no celular (menu lateral vira gaveta).
+- **Busca global**, **Desfazer** (exclusões com botão "Desfazer" por 6 segundos, recriando o registro de verdade; exclusão da festa inteira com confirmação reforçada), **histórico de quem fez o quê**, **PDFs** gerados no navegador.
+- **WhatsApp:** nunca há envio automático — o sistema monta a mensagem e abre o WhatsApp (`wa.me`); cada envio fica em `contact_history`. Os textos das mensagens são fixos no código (exceto "confirmar com fornecedores", editável).
+- **Responsivo:** funciona no celular (menu vira gaveta).
 
 ---
 
 ## 11. Regras de negócio consolidadas
 
-1. **Uma festa ativa por unidade por dia** (tela + índice único no banco).
-2. **Valor da festa:** `total_value` é o valor cheio e `final_value` o firmado com desconto. Saldo = `final_value` + extras + consumo − pagamentos.
-3. **Status** é automático pelo pagamento (6.1). Na criação só se escolhe Orçamento ou Confirmada.
-4. **Pacote válido pela data da festa** (`valid_from`/`valid_until`), não pela data em que a reserva foi criada.
-5. **Troca de pacote** soma ou subtrai a diferença entre os pacotes; sem pacote anterior, o valor vira o preço do novo.
-6. **Preço por dia da semana:** seg–qui usa o preço de semana; sex–dom o de fim de semana; sem esses preços, usa o padrão.
-7. **Custos da festa** (`reservation_costs`) são separados das despesas gerais (`expenses`) para não contar duas vezes; o sistema avisa quando parecem duplicados.
-8. **Pagamento da equipe** = custo da festa, ligado à presença; desfazer a presença apaga o custo.
-9. **Despesa fixa das festas** entra sozinha em toda festa nova, com o valor do plano (6.2).
-10. **Estoque:** compra soma e consumo subtrai, sempre por funções atômicas; o mínimo efetivo considera a próxima festa (consumo por convidado × convidados).
-11. **Horário de entrega dos fornecedores** = 1 hora antes do início da festa.
-12. **Idade do aniversariante** = calculada pela data de nascimento e pela data da festa.
-13. **Reativação:** criança faz aniversário em 1–3 meses e não há festa marcada naquele ano.
-14. **CAC** considera só clientes de origem paga (Instagram/Facebook/Google).
-15. **Saldo do mês no Financeiro** desconta só despesas pagas, não as a vencer.
-16. **Cancelamento:** guarda motivo, % de multa retida e valor devolvido; os custos fixos saem da festa.
+1. **Uma festa ativa por unidade por dia.**
+2. **Valor devido** = `final_value` + extras + consumo cobrado. Saldo = valor devido − pagamentos.
+3. **Status** automático pelo pagamento.
+4. **Pacote válido pela data da festa**; planos inativos não aparecem para festas novas, mas continuam nas festas que os usam.
+5. **Troca de pacote** soma ou subtrai a diferença.
+6. **Preço por dia da semana** (seg–qui / sex–dom).
+7. **Custos da festa** separados das despesas gerais; aviso de duplicidade nos dois sentidos; conta "paga custos das festas" não entra em total nenhum.
+8. **Pagamento da equipe** = custo da festa, ligado à presença.
+9. **Despesa fixa das festas** entra sozinha em toda festa nova, com o valor do plano.
+10. **Estoque** com custo médio ponderado; consumo com custo congelado; nunca negativo.
+11. **Compra de estoque** conta no caixa quando é paga; o **consumo** conta no lucro da festa e no Resultado das festas — nunca os dois no mesmo número.
+12. **Acerto entre unidades** não é faturamento nem custo de festa: no caixa, saída numa unidade e entrada na outra; em "Ambas", se anulam.
+13. **Cancelamento:** multa retida = pago − devolvido; o estorno é saída de caixa; no Resultado das festas conta só a multa retida.
+14. **Comissão** por festa cadastrada, repasse semanal, abatimento de cancelada já paga.
+15. **Três critérios de data coexistem e são explicados na tela:** data do pagamento (Caixa, Resultado do mês, Relatórios), data da festa (Resultado das festas, Lucro por festa) e data do cadastro (comissões, gráfico de festas fechadas).
+16. **Horário de entrega dos fornecedores** = 1 hora antes da festa. **Idade** calculada pela data de nascimento e da festa. **Reativação:** aniversário em 1–3 meses sem festa no ano. **CAC** só sobre origem paga.
 
 ---
 
 ## 12. Limitações e dívidas técnicas conhecidas
 
 **Processo e engenharia**
-- Sem testes automatizados de nenhum tipo. Sem ambiente de homologação permanente — o sistema real é o único ambiente.
-- Migrations rodadas à mão no SQL Editor; `schema.sql` é mantido à mão como espelho (risco de divergir).
-- A Central da festa é um único componente de ~3.800 linhas. O pacote JavaScript é um bloco único de mais de 500 kB.
-- Algumas listas ainda são fixas no código: as duas unidades (`UNITS`) e os textos das mensagens de WhatsApp (exceto o de fornecedores).
-- Fuso horário: o banco usa a data UTC (o Brasil é UTC−3). Perto da meia-noite, um "hoje" calculado no banco pode divergir do da tela.
+- Sem testes automatizados no repositório; os testes de banco do desenvolvedor não rodam sozinhos. Sem ambiente de homologação — o sistema real é o único ambiente.
+- Migrations rodadas à mão no SQL Editor pelo dono (já houve execução do arquivo errado); `schema.sql` mantido à mão como espelho.
+- **Supabase no plano gratuito:** sem cópia de segurança diária garantida e com risco de pausa por inatividade.
+- A Central da festa é um único componente de ~4.400 linhas. O pacote JavaScript é um bloco único grande.
+- Muita coisa específica do Brava está fixa no código: as duas unidades (`UNITS`), número de WhatsApp, cardápio de pratos quentes, sabores e massas do bolo, cores e mascote do portal, modelos de contrato por unidade, textos das mensagens.
 
 **Funcionalidades incompletas**
-- **Pontos de fidelidade** existem no cadastro e aparecem na tela, mas **não há regra que acumule ou resgate pontos**.
-- O log de exportações (LGPD) em Relatórios **só vale durante a sessão** — não fica gravado no banco.
-- O histórico completo de alterações só existe a partir da migration 055. A tabela `audit_log` não tem política de retenção e cresce para sempre.
-- Valor legado `sinal_pago` continua existindo no tipo do banco (não é mais usado).
-- Não há cronograma de parcelas: só pagamentos realizados. Sem previsão de "parcela X vence dia Y" por festa.
+- **Pontos de fidelidade** sem regra de acúmulo ou resgate.
+- Log de exportações (LGPD) só durante a sessão. `audit_log` sem política de retenção.
+- Sem cronograma de parcelas (só pagamentos realizados).
+- Sem histórico de versões do valor da festa: meses passados do Resultado das festas são recalculados com o valor atual.
 - Despesa fixa das festas não é retroativa.
-- O link de avaliação do Google tem um valor reserva fixo no código caso a unidade não tenha um cadastrado.
+- Taxa da maquininha é estimativa configurada à mão; a projeção de recebimentos do Caixa usa só o valor firmado (sem extras/consumo).
+- O "lembrar o quadro recolhido" do Financeiro fica só no navegador de cada pessoa.
 
 **Integrações que não existem**
-- WhatsApp sem API: tudo depende de alguém clicar em enviar. O registro de envio é feito no clique, não confirma a entrega.
+- WhatsApp sem API (tudo depende de clicar em enviar; o registro é feito no clique).
 - Sem gateway de pagamento, Pix automático, conciliação bancária, nota fiscal ou integração contábil.
-- A taxa da maquininha é uma estimativa configurada à mão.
-- Sem notificações push, e-mail automático ou agendador. Tudo que é "automático por data" é calculado quando alguém abre a tela.
+- Sem notificações push, e-mail automático ou agendador: tudo que é "automático por data" é calculado quando alguém abre a tela.
 - Não é PWA nem funciona offline.
 
 **Permissões**
-- Muitas páginas têm só a permissão "ver página", sem controle por botão.
-- Não há permissão por unidade (um funcionário vê as duas unidades se tem acesso à página).
+- Muitas páginas têm só a permissão "ver página". Não há permissão por unidade.
 
 ---
 
-## 13. Histórico recente de evolução (set–out/2026)
+## 13. Histórico recente de evolução (06/10 a 16/10/2026)
 
-- RBAC no banco com perfis dinâmicos e regra fail-closed; correção de escalada de privilégio.
-- Fim do PDF por impressão: download real; proposta comercial redesenhada no modelo da marca.
-- Estoque: transferência entre unidades, edição de itens, velas numéricas, +/− inteiro e digitação livre.
-- Central da festa:
-  - edição de contrato gerado;
-  - observações com lembretes no Painel;
-  - botão Dados;
-  - mensagem "Pedidos".
-- Equipe: cadastro, montar equipe, presença com pagamento, desfazer, substituição com motivo.
-- Lista de convidados: sinalização de convidados e playlist do Spotify (Vila Operária).
-- Despesa fixa das festas com valor por plano.
-- Pacotes com validade (tabela 2027 de São Vicente) e ordenação natural.
-- Links públicos fechados (só funções com token).
-- Mapa de reservas com novas cores.
-- Correção da troca de pacote em festa sem pacote.
-- Pendências clicáveis, **status automático pelo pagamento** e **histórico completo de quem fez o quê**.
+- **Financeiro:** conta vencida vira Atrasado sozinha; marcação "paga custos das festas"; saldo do mês passa a descontar os custos das festas realizadas.
+- **Estoque com custo** (custo médio, entrada de compra, consumo com custo congelado, correção de custo, médias de consumo).
+- **Acertos entre unidades** (transferência → conta a pagar → entrada na outra unidade).
+- **Estorno de cancelamento** automático, com aviso de duplicidade.
+- **Portal do cliente** completo (cardápio, bolo, convidados, música, programação, comprovantes, regras, avaliação, avisos no Painel; contato só por WhatsApp).
+- Insumos do consumo pós-festa entram no lucro da Central da festa; Lucro por festa passa a usar o valor completo da festa.
+- **Financeiro com três visões** (Caixa, Resultado das festas, Ponte e compromissos), aviso de critério no Resultado do mês e Relatórios, aviso de duplicidade nos dois sentidos.
+- **Comissões da gerente** com repasse semanal.
+- Gráfico de festas por mês com modo "fechadas (vendas)".
+- **Planos 2026/2027:** São Vicente passa a ter Classic e Gourmet (40–60 em 2026; 40–80 em 2027); Vila Operária ganha tabela 2027.
+- Aniversariante editável na Central; avisos financeiros no topo do Painel para Administrador/Financeiro; lembrete de pagamento com o saldo devedor.
 
 ---
 
-## 14. Como acessar o sistema
+## 14. Sobre o acesso
 
-O acesso é ao **sistema real, em uso**, com um login criado só para esta revisão.
-
-- **Link:** https://brava-park-fest.brava-park-fest.workers.dev/
-- **Login e senha:** enviados junto com este documento.
-- **Importante: os dados são reais (clientes e festas de verdade).** Por favor, **só navegue e observe** — não crie, edite nem exclua nada, não envie mensagens e não copie dados pessoais de clientes para a sua resposta.
-- O seletor de unidade, na barra lateral, alterna entre Vila Operária, São Vicente e as duas.
-- Sugestão de roteiro:
-  1. Painel.
-  2. Mapa de reservas: abra uma festa e explore todas as abas da Central da festa.
-  3. Clientes e Reativação.
-  4. Pacotes, Contratos e Propostas.
-  5. Pagamentos, Financeiro, Despesa fixa das festas, Resultado do mês.
-  6. Estoque, Escalas, Relatório de aniversariantes.
+Nesta rodada você **não** tem acesso ao sistema nem ao código — só a este documento. Se alguma conclusão sua depender de ver a tela ou o código, aponte isso como pergunta em aberto em vez de supor.
 
 ---
 
@@ -526,10 +435,10 @@ O acesso é ao **sistema real, em uso**, com um login criado só para esta revis
 Analise como um consultor externo que entende de sistemas para negócios de eventos e de software:
 
 1. **Funcionalidades que faltam** e que um negócio deste porte (casa de festas, 2 unidades, equipe com vários perfis) provavelmente precisa.
-2. **Regras de negócio** frágeis, incompletas ou arriscadas — financeiro, operacional ou de dados.
-3. **Riscos:** segurança, integridade de dados, LGPD, dependência de processos manuais, experiência do usuário (inclusive no celular).
-4. **Usabilidade:** depois de navegar pelo sistema, o que é confuso, lento, escondido ou poderia ter menos cliques?
-5. **Arquitetura:** o que deveria mudar na forma como o sistema é construído e publicado para continuar crescendo com segurança?
-6. **Prioridades:** se você escolhesse as próximas 5 coisas a construir ou corrigir, quais seriam e por quê? Dê, para cada uma, o problema, a solução proposta e o impacto esperado.
+2. **Regras de negócio** frágeis, incompletas ou arriscadas — financeiro, operacional ou de dados. Olhe com atenção especial o financeiro (três critérios de data, estoque com custo, acertos, estorno, comissão).
+3. **Riscos:** segurança, integridade de dados, LGPD (o sistema guarda dados de crianças), dependência de processos manuais, continuidade (plano gratuito, sem backup garantido).
+4. **Usabilidade:** pelo que está descrito, o que parece confuso, escondido ou com cliques demais — para a equipe e para o cliente no portal?
+5. **Arquitetura:** o que deveria mudar na forma como o sistema é construído, testado e publicado para continuar crescendo com segurança — e para, um dia, ser vendido a outras casas de festa?
+6. **Prioridades:** se você escolhesse as próximas 5 coisas a construir ou corrigir, quais seriam e por quê? Para cada uma: o problema, a solução proposta e o impacto esperado.
 
 Seja direto e crítico — o objetivo é achar buraco, não validar o que já existe.

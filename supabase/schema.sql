@@ -4925,3 +4925,41 @@ where unit_id = (select id from units where name = 'São Vicente')
   and name like 'Festa Completa %'
   and active;
 
+-- ---------- Vila Operária: tabela 2027 ----------
+-- Os planos atuais da Vila Operária passam a valer para festas até
+-- 31/12/2026. Para festas a partir de 01/01/2027 entram cópias "(2027)"
+-- com os valores do portfólio 2027 — mesmo conteúdo incluso e mesma
+-- quantidade de pratos quentes dos planos atuais.
+with vo as (select id from units where name = 'Vila Operária'),
+precos (tipo, pessoas, semana, fds) as (values
+  ('Classic', 40, 6790.00, 7590.00), ('Classic', 50, 7390.00, 8190.00), ('Classic', 60, 8090.00, 8890.00),
+  ('Classic', 70, 8790.00, 9690.00), ('Classic', 80, 9490.00, 10490.00), ('Classic', 90, 10190.00, 11290.00),
+  ('Classic', 100, 10890.00, 12090.00),
+  ('Gourmet', 40, 7790.00, 8590.00), ('Gourmet', 50, 8390.00, 9190.00), ('Gourmet', 60, 9090.00, 9990.00),
+  ('Gourmet', 70, 9790.00, 10790.00), ('Gourmet', 80, 10490.00, 11590.00), ('Gourmet', 90, 11190.00, 12390.00),
+  ('Gourmet', 100, 11990.00, 13190.00),
+  ('Prime', 40, 9290.00, 10190.00), ('Prime', 50, 9990.00, 10990.00), ('Prime', 60, 10790.00, 11890.00),
+  ('Prime', 70, 11590.00, 12790.00), ('Prime', 80, 12390.00, 13690.00), ('Prime', 90, 13190.00, 14590.00),
+  ('Prime', 100, 13990.00, 15490.00)
+),
+atuais as (
+  select p.* , pr.semana, pr.fds
+  from packages p
+  cross join vo
+  join precos pr on p.name = pr.tipo || ' ' || pr.pessoas || ' pessoas'
+  where p.unit_id = vo.id and p.active and p.valid_from is null
+)
+insert into packages (name, description, base_price, weekday_price, weekend_price, unit_id, guest_limit, duration_hours,
+                      included_items, hot_dish_count, valid_from, valid_until, active)
+select a.name || ' (2027)', coalesce(a.description, '') || ' — tabela 2027', a.semana, a.semana, a.fds, a.unit_id, a.guest_limit,
+       a.duration_hours, a.included_items, a.hot_dish_count, date '2027-01-01', null, true
+from atuais a
+where not exists (select 1 from packages x where x.unit_id = a.unit_id and x.name = a.name || ' (2027)');
+
+update packages p
+set valid_until = date '2026-12-31'
+where p.unit_id = (select id from units where name = 'Vila Operária')
+  and p.active and p.valid_from is null and p.valid_until is null
+  and p.name ~ '^(Classic|Gourmet|Prime) [0-9]+ pessoas$'
+  and exists (select 1 from packages x where x.unit_id = p.unit_id and x.name = p.name || ' (2027)');
+

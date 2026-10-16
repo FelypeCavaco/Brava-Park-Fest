@@ -1201,12 +1201,18 @@ export function FestaDetalhe() {
 
   async function handleWhatsAppAction(templateKey: MessageTemplateKey) {
     if (!festa) return
+    // No lembrete de pagamento o valor é o que falta pagar (saldo devedor),
+    // não o total da festa.
+    if (templateKey === 'lembrete_pagamento' && saldoDevedor <= 0.009) {
+      window.alert('Esta festa não tem saldo a pagar: o cliente já pagou o valor total.')
+      return
+    }
     const message = buildMessage(MESSAGE_TEMPLATES[templateKey], {
       cliente: festa.cliente,
       data: festa.data,
       horario: festa.horario,
       unidade: festa.unidadeNome,
-      valor: currency(totalContrato),
+      valor: currency(templateKey === 'lembrete_pagamento' ? saldoDevedor : totalContrato),
       aniversariante: festa.childName || 'aniversariante(a)',
     })
     openWhatsApp(festa.clientPhone, message)

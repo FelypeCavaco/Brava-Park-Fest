@@ -4888,7 +4888,7 @@ planos (nome, tipo, pessoas, semana, fds, de, ate) as (values
   ('Classic 40 pessoas (2027)', 'classic', 40, 5430.00, 6100.00, date '2027-01-01', null),
   ('Classic 50 pessoas (2027)', 'classic', 50, 5900.00, 6550.00, date '2027-01-01', null),
   ('Classic 60 pessoas (2027)', 'classic', 60, 6470.00, 7100.00, date '2027-01-01', null),
-  ('Classic 70 pessoas (2027)', 'classic', 70, 7900.00, 7750.00, date '2027-01-01', null),
+  ('Classic 70 pessoas (2027)', 'classic', 70, 6900.00, 7750.00, date '2027-01-01', null),
   ('Classic 80 pessoas (2027)', 'classic', 80, 7590.00, 8390.00, date '2027-01-01', null),
   ('Gourmet 40 pessoas (2027)', 'gourmet', 40, 6230.00, 6870.00, date '2027-01-01', null),
   ('Gourmet 50 pessoas (2027)', 'gourmet', 50, 6710.00, 7350.00, date '2027-01-01', null),

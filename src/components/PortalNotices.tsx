@@ -67,7 +67,20 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
   }, [selectedUnit, unitDbIds])
 
   useEffect(() => {
-    if (allowed && !unitDbIdsLoading) load()
+    if (!allowed || unitDbIdsLoading) return
+    load()
+    // Os avisos mudam por ações feitas em outros aparelhos (e pelo próprio
+    // cliente no portal): recarrega ao voltar para a aba e a cada minuto,
+    // em vez de só quando a página abre.
+    const aoVoltar = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', aoVoltar)
+    window.addEventListener('focus', aoVoltar)
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') load() }, 60000)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar)
+      window.removeEventListener('focus', aoVoltar)
+      window.clearInterval(timer)
+    }
   }, [allowed, unitDbIdsLoading, unitFilter])
 
   async function load() {
@@ -160,6 +173,21 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
       }
     }
     setPrazos(out.filter((p) => (mode === 'financeiro' ? p.tipo === 'saldo' : mode === 'operacao' ? p.tipo !== 'saldo' : true)))
+
+    // Lembretes de prazo já enviados hoje (em qualquer aparelho), pelo
+    // registro de contatos — antes isso ficava só no aparelho que enviou.
+    if (out.length > 0) {
+      const inicioHoje = new Date(`${hoje}T00:00:00`).toISOString()
+      const { data: enviados } = await supabase
+        .from('contact_history')
+        .select('client_name, type')
+        .like('type', 'Lembrete de prazo do portal%')
+        .gte('created_at', inicioHoje)
+      const ja = new Set((enviados ?? []).map((c: any) => `${c.client_name}|${c.type}`))
+      const marcados: Record<string, boolean> = {}
+      for (const p of out) if (ja.has(`${p.cliente}|Lembrete de prazo do portal (${p.tipo})`)) marcados[p.key] = true
+      setLembrados(marcados)
+    }
   }
 
   async function marcarVisto(ids: string[]) {
@@ -252,7 +280,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
                 <span className="text-[11px] font-bold uppercase tracking-wide rounded px-2 py-1 bg-danger-light text-danger">{p.venceHoje ? 'Vence hoje' : 'Prazo vencido'}</span>
                 <div className="flex-1 min-w-[200px]">
                   <p className="text-sm"><strong className="font-semibold">{p.cliente}</strong> {p.texto}</p>
-                  <p className="text-xs text-muted">{p.festa}{lembrados[p.key] ? ' · lembrete enviado agora' : ''}</p>
+                  <p className="text-xs text-muted">{p.festa}{lembrados[p.key] ? ' · lembrete já enviado hoje' : ''}</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => navigate(`/reservas/${p.reservationId}`)} className="text-xs border border-line rounded-lg px-2.5 py-1.5">Abrir festa</button>

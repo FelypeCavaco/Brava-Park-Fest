@@ -49,6 +49,16 @@ const newLine = (itemId = '', amount = ''): Line => ({ key: `l${++lineSeq}`, ite
 export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClose, onSaved }: Props) {
   const { unitDbIds } = useUnit()
   const editing = !!expenseId
+
+  // No celular, a página de trás rolava junto e a janela "travava" depois de
+  // descer: enquanto ela está aberta, a página de trás fica parada.
+  useEffect(() => {
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = antes
+    }
+  }, [])
   const [unitSlug, setUnitSlug] = useState(defaultUnitSlug)
   const [supplier, setSupplier] = useState('')
   const [purchaseDate, setPurchaseDate] = useState(todayIso())
@@ -210,7 +220,7 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto overscroll-contain">
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div className="relative w-full max-w-3xl bg-surface rounded-card p-6 shadow-xl my-8">
         <div className="flex items-start justify-between mb-1">

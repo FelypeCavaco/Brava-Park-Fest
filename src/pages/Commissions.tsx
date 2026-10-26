@@ -23,6 +23,21 @@ interface Repasse {
   itens: { reservation_id: string; unit_id: string; kind: string; amount: number; cliente: string; cadastro: string }[]
 }
 interface Valor { id: string; amount: number; valid_from: string; created_at: string }
+interface Historico {
+  reservation_id: string; unit_id: string; cliente: string; cadastro: string; event_date: string; status: string
+  cancelada_em: string | null; cadastrada_por: string; conta: boolean; devido: number; pago: number
+  ultimo_repasse: string | null; situacao: string
+}
+const SITUACAO: Record<string, { label: string; tone: 'teal' | 'amber' | 'danger' | 'neutral' | 'purple' }> = {
+  paga: { label: 'Paga', tone: 'teal' },
+  a_pagar: { label: 'A pagar no próximo repasse', tone: 'amber' },
+  semana_atual: { label: 'Semana em andamento', tone: 'purple' },
+  ajuste_pendente: { label: 'Ajuste de valor pendente', tone: 'amber' },
+  abater: { label: 'Cancelada: será abatida', tone: 'danger' },
+  abatida: { label: 'Paga e depois abatida', tone: 'neutral' },
+  outra_pessoa: { label: 'Não gera: cadastrada por outra pessoa', tone: 'neutral' },
+  cancelada_antes: { label: 'Não gera: cancelada antes do repasse', tone: 'neutral' },
+}
 
 const dataBR = (iso: string) => format(parseISO(iso), 'dd/MM/yyyy')
 const KIND_LABEL: Record<string, string> = { comissao: 'Festa fechada', abatimento: 'Cancelada: abate', ajuste: 'Ajuste de valor' }
@@ -40,6 +55,11 @@ export function Commissions() {
   const [inicio, setInicio] = useState('')
   const [beneficiario, setBeneficiario] = useState('Gerente')
   const [abertoRepasse, setAbertoRepasse] = useState<string | null>(null)
+  const [historico, setHistorico] = useState<Historico[]>([])
+  const [filtroHist, setFiltroHist] = useState<'todas' | 'pagas' | 'pendentes' | 'abatidas' | 'nao_geram'>('todas')
+  const [beneficiarioId, setBeneficiarioId] = useState<string | null>(null)
+  const [benefIdEdit, setBenefIdEdit] = useState('')
+  const [usuarios, setUsuarios] = useState<{ id: string; name: string }[]>([])
 
   // formulário de pagamento
   const [pagando, setPagando] = useState(false)
@@ -64,7 +84,7 @@ export function Commissions() {
     const { data: dom } = await supabase.rpc('commission_last_sunday')
     const domingo = dom as string
     setUltimoDomingo(domingo)
-    const [pend, hoje, rep, val, cfg] = await Promise.all([
+    const [pend, hoje, rep, val, cfg, hist, us] = await Promise.all([
       supabase.rpc('commission_pending', { p_until: domingo }),
       supabase.rpc('commission_pending', { p_until: todayIso() }),
       supabase
@@ -74,7 +94,9 @@ export function Commissions() {
         .order('created_at', { ascending: false })
         .limit(30),
       supabase.from('commission_rates').select('id, amount, valid_from, created_at').order('valid_from', { ascending: false }).order('created_at', { ascending: false }),
-      supabase.from('commission_settings').select('start_date, beneficiary').maybeSingle(),
+      supabase.from('commission_settings').select('start_date, beneficiary, beneficiary_user_id').maybeSingle(),
+      supabase.rpc('commission_history', { p_from: null, p_to: null }),
+      supabase.from('user_profiles').select('id, name').eq('active', true).order('name'),
     ])
     if (pend.error) {
       setErro(
@@ -106,7 +128,11 @@ export function Commissions() {
       setInicioEdit(cfg.data.start_date)
       setBeneficiario(cfg.data.beneficiary)
       setBenefEdit(cfg.data.beneficiary)
+      setBeneficiarioId((cfg.data as any).beneficiary_user_id ?? null)
+      setBenefIdEdit((cfg.data as any).beneficiary_user_id ?? '')
     }
+    setHistorico(((hist.data ?? []) as Historico[]).map((h) => ({ ...h, devido: Number(h.devido), pago: Number(h.pago) })))
+    setUsuarios((us.data ?? []) as { id: string; name: string }[])
     setLoading(false)
   }
 
@@ -124,6 +150,15 @@ export function Commissions() {
     return Object.entries(g).map(([unitId, itens]) => ({ unitId, itens, total: itens.reduce((s, i) => s + i.amount, 0) }))
   }, [proximo])
   const totalPagavel = porUnidade.filter((u) => u.total > 0).reduce((s, u) => s + u.total, 0)
+
+  const historicoFiltrado = historico.filter((h) =>
+    filtroHist === 'todas' ? true
+      : filtroHist === 'pagas' ? h.situacao === 'paga'
+      : filtroHist === 'pendentes' ? ['a_pagar', 'semana_atual', 'ajuste_pendente', 'abater'].includes(h.situacao)
+      : filtroHist === 'abatidas' ? h.situacao === 'abatida' || h.situacao === 'abater'
+      : h.situacao === 'outra_pessoa' || h.situacao === 'cancelada_antes',
+  )
+  const nomeBeneficiario = usuarios.find((u) => u.id === beneficiarioId)?.name
 
   async function pagar(e: FormEvent) {
     e.preventDefault()
@@ -165,7 +200,7 @@ export function Commissions() {
 
   async function salvarConfig(e: FormEvent) {
     e.preventDefault()
-    const { error } = await supabase.rpc('set_commission_settings', { p_start: inicioEdit, p_beneficiary: benefEdit })
+    const { error } = await supabase.rpc('set_commission_settings', { p_start: inicioEdit, p_beneficiary: benefEdit, p_beneficiary_user: benefIdEdit || null })
     if (error) setErro(friendlyDbError(error.message))
     else {
       setAviso('Configuração salva.')
@@ -210,7 +245,7 @@ export function Commissions() {
       <div>
         <h1 className="text-2xl font-semibold">Comissões</h1>
         <p className="text-sm text-muted mt-1">
-          Comissão de {beneficiario} por festa cadastrada · repasse toda segunda-feira
+          Comissão de {beneficiario} por festa cadastrada{beneficiarioId ? ` por ${nomeBeneficiario ?? beneficiario}` : ''} · repasse toda segunda-feira
         </p>
       </div>
 
@@ -306,6 +341,59 @@ export function Commissions() {
             </Card>
           )}
 
+          <Card title="Histórico por festa">
+            <p className="text-[11px] text-muted mb-2">
+              Todas as festas cadastradas desde {inicio ? dataBR(inicio) : '—'}, com a situação da comissão de cada uma.
+              {beneficiarioId ? ` Só geram comissão as cadastradas por ${nomeBeneficiario ?? beneficiario}.` : ' Hoje todas as festas geram comissão (ninguém escolhido em Configuração).'}
+            </p>
+            <div className="flex flex-wrap gap-1 mb-3">
+              {([
+                ['todas', `Todas (${historico.length})`],
+                ['pagas', `Pagas (${historico.filter((h) => h.situacao === 'paga').length})`],
+                ['pendentes', `Pendentes (${historico.filter((h) => ['a_pagar', 'semana_atual', 'ajuste_pendente', 'abater'].includes(h.situacao)).length})`],
+                ['abatidas', 'Abatidas'],
+                ['nao_geram', 'Não geram'],
+              ] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setFiltroHist(k)} className={`px-2.5 h-7 rounded-md text-xs font-medium border ${filtroHist === k ? 'bg-purple text-white border-purple' : 'border-line text-ink/70 hover:bg-paper'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {historicoFiltrado.length === 0 ? (
+              <p className="text-sm text-muted py-2">Nenhuma festa neste filtro.</p>
+            ) : (
+              <table className="w-full text-sm min-w-[720px]">
+                <thead>
+                  <tr className="text-left text-muted border-b border-line">
+                    <th className="pb-2 font-medium">Cadastrada em</th>
+                    <th className="pb-2 font-medium">Cliente</th>
+                    <th className="pb-2 font-medium">Unidade</th>
+                    <th className="pb-2 font-medium">Cadastrada por</th>
+                    <th className="pb-2 font-medium">Situação</th>
+                    <th className="pb-2 font-medium text-right">Comissão</th>
+                    <th className="pb-2 font-medium">Pago em</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicoFiltrado.map((h) => (
+                    <tr key={h.reservation_id} className="border-b border-line last:border-0">
+                      <td className="py-2 whitespace-nowrap">{dataBR(h.cadastro)}</td>
+                      <td className="py-2">
+                        <Link to={`/reservas/${h.reservation_id}`} className="text-purple hover:underline">{h.cliente}</Link>
+                        <span className="block text-[11px] text-muted">festa em {dataBR(h.event_date)}{h.status === 'cancelada' ? ' · cancelada' : ''}</span>
+                      </td>
+                      <td className="py-2">{nomeUnidade[h.unit_id] ?? '—'}</td>
+                      <td className="py-2">{h.cadastrada_por}</td>
+                      <td className="py-2"><Badge tone={SITUACAO[h.situacao]?.tone ?? 'neutral'}>{SITUACAO[h.situacao]?.label ?? h.situacao}</Badge></td>
+                      <td className="py-2 text-right whitespace-nowrap">{h.devido > 0 ? brl(h.devido) : h.pago !== 0 ? brl(h.pago) : '—'}</td>
+                      <td className="py-2 whitespace-nowrap">{h.ultimo_repasse ? dataBR(h.ultimo_repasse) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+
           <Card title="Repasses feitos">
             {repasses.length === 0 ? (
               <p className="text-sm text-muted py-3">Nenhum repasse lançado ainda.</p>
@@ -381,7 +469,22 @@ export function Commissions() {
                       <input type="date" value={inicioEdit} onChange={(e) => setInicioEdit(e.target.value)} className="border border-line rounded-lg px-3 h-9 text-sm" required />
                     </label>
                     <label className="text-sm">
-                      <span className="block text-xs text-muted mb-1">Quem recebe</span>
+                      <span className="block text-xs text-muted mb-1">Festas cadastradas por</span>
+                      <select
+                        value={benefIdEdit}
+                        onChange={(e) => {
+                          setBenefIdEdit(e.target.value)
+                          const u = usuarios.find((x) => x.id === e.target.value)
+                          if (u) setBenefEdit(u.name)
+                        }}
+                        className="border border-line rounded-lg px-3 h-9 text-sm w-48"
+                      >
+                        <option value="">Qualquer pessoa</option>
+                        {usuarios.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-sm">
+                      <span className="block text-xs text-muted mb-1">Nome de quem recebe</span>
                       <input value={benefEdit} onChange={(e) => setBenefEdit(e.target.value)} className="border border-line rounded-lg px-3 h-9 text-sm w-44" />
                     </label>
                     <Button type="submit" variant="secondary">Salvar</Button>

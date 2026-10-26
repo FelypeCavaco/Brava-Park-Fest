@@ -1,5 +1,5 @@
 import { confirmarEmBranco } from '../lib/confirmBlank'
-import { useCurrentUserName } from '../lib/AuthContext'
+import { useAuth, useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, X, LayoutGrid, ChevronLeft, ChevronRight, MessageCircle, Trash2 } from 'lucide-react'
@@ -100,6 +100,22 @@ function formatHour(t: string) {
 
 export function Reservations() {
   const currentUserName = useCurrentUserName()
+  const { session } = useAuth()
+  // Quem está cadastrando a festa (vale para a comissão). Vem com quem está
+  // logado e pode ser trocado, ex.: a Kamila cadastrando no login de outra pessoa.
+  const [usuarios, setUsuarios] = useState<{ id: string; name: string }[]>([])
+  const [formCadastradaPor, setFormCadastradaPor] = useState('')
+  useEffect(() => {
+    supabase
+      .from('user_profiles')
+      .select('id, name')
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setUsuarios((data ?? []) as { id: string; name: string }[]))
+  }, [])
+  useEffect(() => {
+    if (!formCadastradaPor && session?.user?.id) setFormCadastradaPor(session.user.id)
+  }, [session?.user?.id, formCadastradaPor])
   const navigate = useNavigate()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
@@ -333,6 +349,7 @@ export function Reservations() {
 
   function resetForm() {
     setFormClienteId('')
+    setFormCadastradaPor(session?.user?.id ?? '')
     setFormStatus('orcamento')
     setFormTipoEvento(EVENT_TYPES[0])
     setFormTipoEventoOutro('')
@@ -462,6 +479,7 @@ export function Reservations() {
       discount_value: formDescontoTipo ? descontoValor : null,
       final_value: Math.round(finalValue * 100) / 100,
       courtesy_guests: formCortesia ? Number(formCortesia) : null,
+      registered_by: formCadastradaPor || null,
     }).select('id').single()
     setSaving(false)
 
@@ -935,6 +953,16 @@ export function Reservations() {
                     Preço já ajustado pelo dia da semana da data escolhida (segunda a quinta x sexta a domingo).
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-xs text-muted mb-1">Festa cadastrada por</label>
+                <select value={formCadastradaPor} onChange={(e) => setFormCadastradaPor(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  {usuarios.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}{u.id === session?.user?.id ? ' (você)' : ''}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted mt-0.5">Já vem com quem está logado. Troque se outra pessoa fechou a festa (vale para a comissão).</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

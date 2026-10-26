@@ -424,6 +424,14 @@ export function FestaDetalhe() {
   const [editInicio, setEditInicio] = useState('')
   const [editFim, setEditFim] = useState('')
   const [editTipoEvento, setEditTipoEvento] = useState('')
+  // Quem cadastrou a festa (vale para a comissão).
+  const [cadastradaPor, setCadastradaPor] = useState<{ id: string | null; name: string | null }>({ id: null, name: null })
+  const [editCadastradaPor, setEditCadastradaPor] = useState('')
+  const [usuariosAtivos, setUsuariosAtivos] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    if (id) loadCadastradaPor()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
   const [editTipoEventoOutro, setEditTipoEventoOutro] = useState('')
   const [editConvidados, setEditConvidados] = useState('')
   const [editValorTotal, setEditValorTotal] = useState('')
@@ -1832,8 +1840,26 @@ export function FestaDetalhe() {
     await downloadPdf(bodyHtml, styles, `escala-${festa.cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
   }
 
+  async function loadCadastradaPor() {
+    const { data } = await supabase
+      .from('reservations')
+      .select('registered_by, quem:user_profiles!reservations_registered_by_fkey(name)')
+      .eq('id', id)
+      .maybeSingle()
+    setCadastradaPor({ id: (data as any)?.registered_by ?? null, name: (data as any)?.quem?.name ?? null })
+  }
+
   function openEditDados() {
     if (!festa) return
+    setEditCadastradaPor(cadastradaPor.id ?? '')
+    if (usuariosAtivos.length === 0) {
+      supabase
+        .from('user_profiles')
+        .select('id, name')
+        .eq('active', true)
+        .order('name')
+        .then(({ data }) => setUsuariosAtivos((data ?? []) as { id: string; name: string }[]))
+    }
     setEditData(festa.eventDateIso)
     setEditInicio(festa.startTimeRaw)
     setEditFim(festa.endTimeRaw)
@@ -1893,8 +1919,10 @@ export function FestaDetalhe() {
         courtesy_guests: editCortesia ? Number(editCortesia) : null,
         child_name: editChildName.trim() || null,
         child_age: editChildAge.trim() === '' ? null : Math.max(0, Math.round(Number(editChildAge))),
+        registered_by: editCadastradaPor || null,
       })
       .eq('id', festa.id)
+    if (!error) loadCadastradaPor()
 
     // Aniversariantes adicionais (irmãos na mesma festa): só grava os que mudaram.
     let kidsError = false
@@ -2576,6 +2604,7 @@ export function FestaDetalhe() {
             <dl className="text-sm space-y-2">
               <div className="flex justify-between"><dt className="text-muted">Cliente</dt><dd className="font-medium">{festa.cliente}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">Tipo de evento</dt><dd>{festa.tipoEvento}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted">Cadastrada por</dt><dd>{cadastradaPor.name ?? '—'}</dd></div>
               <div className="flex justify-between items-center">
                 <dt className="text-muted">Tema</dt>
                 <dd>
@@ -3993,6 +4022,16 @@ export function FestaDetalhe() {
                   <label className="block text-xs text-muted mb-1">Fim</label>
                   <input type="time" value={editFim} onChange={(e) => setEditFim(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Festa cadastrada por (vale para a comissão)</label>
+                <select value={editCadastradaPor} onChange={(e) => setEditCadastradaPor(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+                  <option value="">Não informado</option>
+                  {usuariosAtivos.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  {cadastradaPor.id && !usuariosAtivos.some((u) => u.id === cadastradaPor.id) && (
+                    <option value={cadastradaPor.id}>{cadastradaPor.name ?? 'Usuário'} (inativo)</option>
+                  )}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -15,7 +15,7 @@ export async function downloadPdf(
   styles: string,
   filename: string,
   orientation: 'portrait' | 'landscape' = 'portrait',
-) {
+): Promise<Blob> {
   const container = document.createElement('div')
   container.style.position = 'fixed'
   container.style.left = '-99999px'
@@ -54,7 +54,7 @@ export async function downloadPdf(
     const html2pdf = (await import('html2pdf.js')).default
     // O pacote de tipos da lib está desatualizado e não conhece a opção
     // "pagebreak" (que existe de verdade em tempo de execução) — daí o `as any`.
-    await html2pdf()
+    const blob: Blob = await html2pdf()
       .set({
         margin: 0,
         filename,
@@ -68,7 +68,18 @@ export async function downloadPdf(
         pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'li', '.avoid-break'] },
       } as any)
       .from(content)
-      .save()
+      .outputPdf('blob')
+    // Baixa o arquivo e devolve o mesmo PDF (para guardar, por exemplo, nos
+    // documentos da festa) sem gerar duas vezes.
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000)
+    return blob
   } finally {
     document.body.removeChild(container)
   }

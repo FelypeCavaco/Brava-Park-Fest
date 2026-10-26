@@ -371,6 +371,9 @@ export function FestaDetalhe() {
   const [unitInventoryItems, setUnitInventoryItems] = useState<InventoryItemLite[]>([])
   const [stockConsumption, setStockConsumption] = useState<StockConsumptionEntry[]>([])
   const [consumptionForm, setConsumptionForm] = useState<Record<string, string>>({})
+  // Como a quantidade é informada: o que foi consumido, ou o que sobrou no
+  // estoque depois da festa (consumido = estoque antes − o que sobrou).
+  const [consumoModo, setConsumoModo] = useState<'consumido' | 'sobrou'>('consumido')
   const [outroQtd, setOutroQtd] = useState('')
   const [outroDesc, setOutroDesc] = useState('')
   const [editingConsumptionId, setEditingConsumptionId] = useState<string | null>(null)
@@ -381,6 +384,8 @@ export function FestaDetalhe() {
   const [festaExtras, setFestaExtras] = useState<FestaExtraItem[]>([])
   const [novoExtraId, setNovoExtraId] = useState('')
   const [novoExtraQtd, setNovoExtraQtd] = useState('1')
+  // Cadastro rápido de item extra que ainda não está no catálogo.
+  const [extraRapido, setExtraRapido] = useState<{ name: string; price: string; saving: boolean; error: string | null } | null>(null)
 
   const [guestListToken, setGuestListToken] = useState<string | null>(null)
   const [guestPlaylistUrl, setGuestPlaylistUrl] = useState<string | null>(null)
@@ -1199,6 +1204,24 @@ export function FestaDetalhe() {
     )
   }
 
+  async function salvarExtraRapido() {
+    if (!extraRapido || !extraRapido.name.trim()) return
+    const price = parseDecimal(extraRapido.price)
+    if (!Number.isFinite(price) || price < 0 || extraRapido.price.trim() === "") {
+      setExtraRapido({ ...extraRapido, error: 'Informe o preço.' })
+      return
+    }
+    setExtraRapido({ ...extraRapido, saving: true, error: null })
+    const { data, error: insErr } = await supabase.from('extra_items').insert({ name: extraRapido.name.trim(), price }).select('id, name, price').single()
+    if (insErr || !data) {
+      setExtraRapido({ ...extraRapido, saving: false, error: friendlyDbError(insErr?.message) || 'Não foi possível cadastrar o item extra.' })
+      return
+    }
+    setExtraCatalog((prev) => [...prev, { id: data.id, name: data.name, price: Number(data.price) }].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')))
+    setNovoExtraId(data.id)
+    setExtraRapido(null)
+  }
+
   async function handleWhatsAppAction(templateKey: MessageTemplateKey) {
     if (!festa) return
     // No lembrete de pagamento o valor é o que falta pagar (saldo devedor),
@@ -1449,15 +1472,30 @@ export function FestaDetalhe() {
     setRefundExpense(data ? { id: data.id, amount: Number(data.amount), status: data.status, dueDate: data.due_date, paidDate: data.paid_date, paymentMethod: data.payment_method } : null)
   }
 
+  // Quantidade consumida de um item a partir do que foi digitado. No modo
+  // "sobrou", campo vazio = item não contado; sobra maior que o estoque é erro.
+  function consumoDoItem(item: { id: string; quantity: number }): { qty: number; invalido: boolean } {
+    const raw = (consumptionForm[item.id] ?? '').trim()
+    if (!raw) return { qty: 0, invalido: false }
+    const n = parseDecimal(raw) || 0
+    if (consumoModo === 'consumido') return { qty: n, invalido: false }
+    if (n > item.quantity + 1e-9) return { qty: 0, invalido: true }
+    return { qty: Math.round((item.quantity - n) * 1000) / 1000, invalido: false }
+  }
+
   async function handleSaveConsumption(e: FormEvent) {
     e.preventDefault()
+    const invalidos = unitInventoryItems.filter((item) => consumoDoItem(item).invalido)
+    if (invalidos.length > 0) {
+      setError(`O que sobrou não pode ser maior que o estoque: ${invalidos.map((i) => i.name).join(', ')}. Confira as quantidades.`)
+      return
+    }
     setSavingConsumption(true)
     setError(null)
 
     const calls: any[] = []
     for (const item of unitInventoryItems) {
-      const raw = consumptionForm[item.id]
-      const qty = raw ? parseDecimal(raw) : 0
+      const qty = consumoDoItem(item).qty
       if (!qty) continue
       calls.push(
         supabase.rpc('record_stock_consumption', {
@@ -3027,8 +3065,26 @@ export function FestaDetalhe() {
                   <Button type="submit" className="text-xs px-3 py-1.5" disabled={!novoExtraId}><Plus className="w-3.5 h-3.5" /> Adicionar</Button>
                 </form>
               ) : (
-                <p className="text-xs text-muted">Cadastre itens extras em "Pacotes e itens" para poder adicioná-los aqui.</p>
+                <p className="text-xs text-muted">Nenhum item extra cadastrado ainda.</p>
               )}
+              <Can permission="action:pacotes.criar_editar">
+                {extraRapido ? (
+                  <div className="mt-2 bg-paper rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold">Cadastrar item extra novo (entra no catálogo de "Pacotes e itens")</p>
+                    <div className="flex flex-wrap gap-2">
+                      <input autoFocus value={extraRapido.name} onChange={(e) => setExtraRapido({ ...extraRapido, name: e.target.value })} placeholder="Nome (ex: Cabine de fotos)" className="flex-1 min-w-[180px] border border-line rounded-lg px-3 py-1.5 text-sm" />
+                      <input value={extraRapido.price} onChange={(e) => setExtraRapido({ ...extraRapido, price: e.target.value })} inputMode="decimal" placeholder="Preço (R$)" className="w-28 border border-line rounded-lg px-3 py-1.5 text-sm" />
+                      <Button type="button" className="text-xs px-3 py-1.5" onClick={salvarExtraRapido} disabled={extraRapido.saving || !extraRapido.name.trim()}>{extraRapido.saving ? 'Cadastrando…' : 'Cadastrar'}</Button>
+                      <Button type="button" variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setExtraRapido(null)}>Cancelar</Button>
+                    </div>
+                    {extraRapido.error && <p className="text-xs text-danger">{extraRapido.error}</p>}
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setExtraRapido({ name: '', price: '', saving: false, error: null })} className="mt-2 text-xs text-purple font-medium flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Cadastrar item extra novo
+                  </button>
+                )}
+              </Can>
             </Can>
           </Card>
 
@@ -3440,6 +3496,27 @@ export function FestaDetalhe() {
           </p>
           <Can permission="action:festa.consumo_pos_festa">
             <form onSubmit={handleSaveConsumption} className="space-y-3 mb-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted">Vou informar:</span>
+                <div className="inline-flex rounded-lg border border-line p-0.5">
+                  {([
+                    ['consumido', 'O que foi consumido'],
+                    ['sobrou', 'O que sobrou no estoque'],
+                  ] as const).map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setConsumoModo(k)}
+                      className={`px-2.5 h-8 rounded-md text-xs font-medium ${consumoModo === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {consumoModo === 'sobrou' && (
+                  <span className="text-[11px] text-muted">Conte o que ficou no estoque depois da festa. O sistema calcula o consumido (estoque − o que sobrou). Item em branco não é contado.</span>
+                )}
+              </div>
               {unitInventoryItems.length === 0 ? (
                 <p className="text-sm text-muted">Nenhum item cadastrado no estoque desta unidade ainda.</p>
               ) : (
@@ -3447,7 +3524,7 @@ export function FestaDetalhe() {
                   {unitInventoryItems.map((item) => (
                     <div key={item.id}>
                       <label className="block text-xs text-muted mb-1">
-                        {item.name} (tem {item.quantity} {item.unitOfMeasure} em estoque)
+                        {item.name} (tem {item.quantity} {item.unitOfMeasure} em estoque){consumoModo === 'sobrou' ? ' — quanto sobrou?' : ''}
                       </label>
                       <input
                         type="text"
@@ -3457,8 +3534,15 @@ export function FestaDetalhe() {
                         placeholder="0"
                         className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                       />
-                      {(parseDecimal(consumptionForm[item.id] ?? '') || 0) > item.quantity && (
+                      {consumoModo === 'consumido' && (parseDecimal(consumptionForm[item.id] ?? '') || 0) > item.quantity && (
                         <p className="text-[11px] text-amber mt-0.5">Maior que o estoque: o estoque vai a zero (nunca fica negativo).</p>
+                      )}
+                      {consumoModo === 'sobrou' && (consumptionForm[item.id] ?? '').trim() !== '' && (
+                        consumoDoItem(item).invalido ? (
+                          <p className="text-[11px] text-danger mt-0.5">Sobrou mais do que tinha no estoque — confira.</p>
+                        ) : (
+                          <p className="text-[11px] text-teal mt-0.5">Consumido: {consumoDoItem(item).qty} {item.unitOfMeasure}</p>
+                        )
                       )}
                     </div>
                   ))}

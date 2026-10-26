@@ -4,7 +4,7 @@ import { Button } from './ui/Button'
 import { supabase } from '../lib/supabaseClient'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { brl, qtd, parseDecimal, todayIso, friendlyDbError } from '../lib/format'
-import { EXPENSE_CATEGORIES, PAYMENT_METHODS, PAYMENT_METHOD_LABEL, type PaymentMethod } from '../types'
+import { EXPENSE_CATEGORIES, INVENTORY_CATEGORIES, PAYMENT_METHODS, PAYMENT_METHOD_LABEL, type InventoryCategory, type PaymentMethod } from '../types'
 
 // Entrada de compra de estoque: lançada uma vez só, aqui. Ao salvar, o banco
 // soma quantidade e valor no estoque e cria (ou atualiza, na edição) a conta
@@ -70,6 +70,8 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
   const [paidDate, setPaidDate] = useState(todayIso())
   const [dueDate, setDueDate] = useState(todayIso())
   const [items, setItems] = useState<StockItemOption[]>([])
+  // Cadastro rápido de item que ainda não existe no estoque (sem sair da compra).
+  const [novoItem, setNovoItem] = useState<{ lineKey: string; name: string; category: InventoryCategory; unit: string; minimum: string; saving: boolean; error: string | null } | null>(null)
   const [variants, setVariants] = useState<Record<string, Variant[]>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -219,6 +221,38 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
     onSaved(editing ? 'Compra atualizada — estoque e conta a pagar ajustados.' : `Compra lançada: ${brl(total)} no estoque e no Financeiro.`)
   }
 
+  async function salvarNovoItem() {
+    if (!novoItem || !novoItem.name.trim() || !unitId) return
+    const nome = novoItem.name.trim()
+    const existente = items.find((i) => i.name.trim().toLowerCase() === nome.toLowerCase())
+    if (existente) {
+      updateLine(novoItem.lineKey, { itemId: existente.id, variantId: '' })
+      setNovoItem(null)
+      return
+    }
+    setNovoItem({ ...novoItem, saving: true, error: null })
+    const { data, error: insErr } = await supabase
+      .from('inventory_items')
+      .insert({
+        unit_id: unitId,
+        name: nome,
+        category: novoItem.category,
+        unit_of_measure: novoItem.unit.trim() || 'un',
+        quantity: 0,
+        minimum_quantity: parseDecimal(novoItem.minimum) || 0,
+        consumption_type: 'por_festa',
+      })
+      .select('id, name, unit_of_measure')
+      .single()
+    if (insErr || !data) {
+      setNovoItem({ ...novoItem, saving: false, error: friendlyDbError(insErr?.message) || 'Não foi possível cadastrar o item.' })
+      return
+    }
+    setItems((prev) => [...prev, { id: data.id, name: data.name, unitOfMeasure: data.unit_of_measure }].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')))
+    updateLine(novoItem.lineKey, { itemId: data.id, variantId: '' })
+    setNovoItem(null)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto overscroll-contain">
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
@@ -264,10 +298,41 @@ export function StockPurchaseModal({ expenseId, defaultUnitSlug, prefill, onClos
                   const vs = variants[l.itemId] ?? []
                   return (
                     <div key={l.key} className="grid grid-cols-12 gap-2 items-start bg-paper/60 rounded-lg p-2">
-                      <select value={l.itemId} onChange={(e) => updateLine(l.key, { itemId: e.target.value, variantId: '' })} aria-label="Item" className="col-span-12 sm:col-span-4 sm:mt-[18px] border border-line rounded-lg px-2 py-2 text-sm bg-surface">
+                      <select
+                        value={l.itemId}
+                        onChange={(e) => {
+                          if (e.target.value === '__novo__') {
+                            setNovoItem({ lineKey: l.key, name: '', category: INVENTORY_CATEGORIES[0], unit: 'un', minimum: '', saving: false, error: null })
+                            return
+                          }
+                          updateLine(l.key, { itemId: e.target.value, variantId: '' })
+                        }}
+                        aria-label="Item"
+                        className="col-span-12 sm:col-span-4 sm:mt-[18px] border border-line rounded-lg px-2 py-2 text-sm bg-surface"
+                      >
                         <option value="">Escolha o item…</option>
                         {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                        <option value="__novo__">+ Cadastrar item novo…</option>
                       </select>
+                      {novoItem?.lineKey === l.key && (
+                        <div className="col-span-12 bg-surface border border-purple/30 rounded-lg p-3 space-y-2">
+                          <p className="text-xs font-semibold">Cadastrar item novo no estoque desta unidade</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <input autoFocus value={novoItem.name} onChange={(e) => setNovoItem({ ...novoItem, name: e.target.value })} placeholder="Nome do item" className="col-span-2 border border-line rounded-lg px-2 py-2 text-sm" />
+                            <select value={novoItem.category} onChange={(e) => setNovoItem({ ...novoItem, category: e.target.value as InventoryCategory })} aria-label="Categoria" className="border border-line rounded-lg px-2 py-2 text-sm bg-surface">
+                              {INVENTORY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <input value={novoItem.unit} onChange={(e) => setNovoItem({ ...novoItem, unit: e.target.value })} placeholder="un, kg, L, pacote" aria-label="Unidade de medida" className="border border-line rounded-lg px-2 py-2 text-sm" />
+                            <input value={novoItem.minimum} onChange={(e) => setNovoItem({ ...novoItem, minimum: e.target.value })} inputMode="decimal" placeholder="Mínimo (opcional)" aria-label="Estoque mínimo" className="border border-line rounded-lg px-2 py-2 text-sm" />
+                          </div>
+                          {novoItem.error && <p className="text-xs text-danger">{novoItem.error}</p>}
+                          <div className="flex gap-2">
+                            <Button type="button" onClick={salvarNovoItem} disabled={novoItem.saving || !novoItem.name.trim()}>{novoItem.saving ? 'Cadastrando…' : 'Cadastrar e usar nesta compra'}</Button>
+                            <Button type="button" variant="secondary" onClick={() => setNovoItem(null)}>Cancelar</Button>
+                          </div>
+                          <p className="text-[11px] text-muted">O item entra com quantidade zero; a quantidade e o valor desta compra somam nele ao salvar a compra. Outros detalhes (consumo por convidado, fornecedor) dá para completar depois na tela Estoque.</p>
+                        </div>
+                      )}
                       {vs.length > 0 ? (
                         <select value={l.variantId} onChange={(e) => updateLine(l.key, { variantId: e.target.value })} aria-label="Tamanho de compra" className="col-span-6 sm:col-span-2 sm:mt-[18px] border border-line rounded-lg px-2 py-2 text-sm bg-surface">
                           <option value="">Em {info.item?.unitOfMeasure ?? 'un'}</option>

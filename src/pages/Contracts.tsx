@@ -24,13 +24,37 @@ interface ContractRow {
   firstPaymentAmount: number | null
 }
 
-async function openContractPrintWindow(cliente: string, text: string) {
+async function openContractPrintWindow(cliente: string, text: string): Promise<Blob> {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const styles = `
     .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 40px; white-space: pre-wrap; line-height: 1.6; }
     h1 { color: #6D28D9; font-size: 18px; }
   `
-  await downloadPdf(escaped, styles, `contrato-${cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
+  return downloadPdf(escaped, styles, `contrato-${cliente.replace(/\s+/g, '-').toLowerCase()}.pdf`)
+}
+
+// Guarda o PDF do contrato nos Documentos da festa (Central da festa). Fica
+// sempre só a versão mais recente: a anterior é apagada ao gerar de novo.
+async function saveContractToDocuments(reservationId: string, cliente: string, blob: Blob): Promise<boolean> {
+  const fileName = `Contrato - ${cliente}.pdf`
+  const path = `${reservationId}/${Date.now()}-contrato.pdf`
+  const { error: upErr } = await supabase.storage.from('festa-documentos').upload(path, blob, { contentType: 'application/pdf' })
+  if (upErr) return false
+  const { data: antigos } = await supabase
+    .from('reservation_documents')
+    .select('id, storage_path')
+    .eq('reservation_id', reservationId)
+    .like('file_name', 'Contrato - %')
+  const { error: insErr } = await supabase.from('reservation_documents').insert({ reservation_id: reservationId, file_name: fileName, storage_path: path })
+  if (insErr) {
+    await supabase.storage.from('festa-documentos').remove([path])
+    return false
+  }
+  for (const d of antigos ?? []) {
+    await supabase.from('reservation_documents').delete().eq('id', d.id)
+    await supabase.storage.from('festa-documentos').remove([d.storage_path])
+  }
+  return true
 }
 
 export function Contracts() {
@@ -115,7 +139,9 @@ export function Contracts() {
       firstPaymentAmount: row.firstPaymentAmount,
     })
     const text = renderContractTemplate(template.body, variables)
-    openContractPrintWindow(row.cliente, text)
+    const blob = await openContractPrintWindow(row.cliente, text)
+    const guardado = await saveContractToDocuments(row.reservationId, row.cliente, blob)
+    if (!guardado) setError('O contrato foi gerado e baixado, mas não foi possível guardá-lo nos Documentos da festa (verifique a permissão de anexar documentos).')
 
     if (row.contractId) {
       await supabase.from('contracts').update({ terms_text: text, generated_at: new Date().toISOString() }).eq('id', row.contractId)
@@ -172,7 +198,12 @@ export function Contracts() {
     const row = editingContract
     setContracts((prev) => prev.map((c) => (c.reservationId === row.reservationId ? { ...c, termsText: contractDraft } : c)))
     setEditingContract(null)
-    if (downloadAfter) openContractPrintWindow(row.cliente, contractDraft)
+    // O contrato editado também substitui a versão guardada nos Documentos.
+    if (downloadAfter) {
+      const blob = await openContractPrintWindow(row.cliente, contractDraft)
+      const guardado = await saveContractToDocuments(row.reservationId, row.cliente, blob)
+      if (!guardado) setError('O contrato foi baixado, mas não foi possível atualizá-lo nos Documentos da festa.')
+    }
   }
 
   function openTemplateEditor(unitId: string) {

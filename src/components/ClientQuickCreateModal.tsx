@@ -1,3 +1,4 @@
+import { confirmarEmBranco } from '../lib/confirmBlank'
 import { FormEvent, useState } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './ui/Button'
@@ -62,6 +63,25 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
   async function handleAddClient(e: FormEvent) {
     e.preventDefault()
     if (!name.trim() || !consent) return
+    if (!source || (source === 'outro' && !sourceOutro.trim())) {
+      setError('Escolha como o cliente conheceu a gente — é obrigatório (usado no Marketing).')
+      return
+    }
+    if (
+      !confirmarEmBranco([
+        { label: 'Telefone', valor: phone },
+        { label: 'E-mail', valor: email },
+        { label: 'CPF', valor: cpf },
+        { label: 'CEP', valor: cep },
+        { label: 'Rua', valor: street },
+        { label: 'Número', valor: addressNumber },
+        { label: 'Bairro', valor: neighborhood },
+        { label: 'Cidade', valor: city },
+        { label: 'Nome da criança', valor: childName },
+        { label: 'Nascimento da criança', valor: childBirthday },
+      ])
+    )
+      return
 
     const finalSource = source === 'outro' ? sourceOutro.trim() || 'outro' : source || null
 
@@ -141,9 +161,9 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
             />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">Como conheceu a gente? (opcional)</label>
-            <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
-              <option value="">Não perguntado</option>
+            <label className="block text-xs text-muted mb-1">Como conheceu a gente? *</label>
+            <select value={source} onChange={(e) => setSource(e.target.value)} required className="w-full border border-line rounded-lg px-3 py-2 text-sm">
+              <option value="">Escolha…</option>
               {CLIENT_SOURCES.map((s) => (
                 <option key={s} value={s}>{CLIENT_SOURCE_LABEL[s]}</option>
               ))}

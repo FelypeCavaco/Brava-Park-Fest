@@ -1,3 +1,4 @@
+import { confirmarEmBranco } from '../lib/confirmBlank'
 import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -393,6 +394,19 @@ export function Reservations() {
   async function handleAddReservation(e: FormEvent) {
     e.preventDefault()
     if (!formClienteId) return
+    if (
+      !confirmarEmBranco([
+        { label: 'Pacote', valor: formPacoteId },
+        { label: 'Número de convidados', valor: Number(formConvidados) > 0 ? formConvidados : '' },
+        { label: 'Valor da festa', valor: Number(formValor) > 0 ? formValor : '' },
+        { label: 'Nome do aniversariante', valor: formChildName },
+        { label: 'Idade do aniversariante', valor: formChildAge },
+        { label: 'Tema', valor: formTema },
+        { label: 'Pratos quentes (o cliente também pode escolher depois pelo portal)', valor: formPratoQuente },
+        { label: 'Sabor do bolo (o cliente também pode escolher depois pelo portal)', valor: formSaborBolo },
+      ])
+    )
+      return
     const dbIds = unitDbIds[formUnidade]
     if (!dbIds) {
       setError('Não encontrei essa unidade no banco de dados ainda.')

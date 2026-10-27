@@ -86,6 +86,8 @@ export function Inventory() {
   const [editMinimumQuantity, setEditMinimumQuantity] = useState('')
   const [editSupplier, setEditSupplier] = useState('')
   const [editConsumptionType, setEditConsumptionType] = useState<'por_convidado' | 'por_festa'>('por_convidado')
+  const [editNotifyShopping, setEditNotifyShopping] = useState(true)
+  const [notifyShopping, setNotifyShopping] = useState(true)
 
   const [transferringItem, setTransferringItem] = useState<InventoryItem | null>(null)
   const [transferDestUnit, setTransferDestUnit] = useState('')
@@ -165,6 +167,7 @@ export function Inventory() {
         has_cost: !!i.has_cost,
         last_unit_cost: i.last_unit_cost != null ? Number(i.last_unit_cost) : null,
         consumption_type: i.consumption_type ?? 'por_convidado',
+        notify_shopping: i.notify_shopping !== false,
       })),
     )
     setLoading(false)
@@ -206,7 +209,8 @@ export function Inventory() {
     return byUnit
   }, [velaItems])
 
-  const precisamRepor = useMemo(() => filtered.filter((i) => i.quantity < effectiveMinimum(i)), [filtered, nextFestaByUnit])
+  // Só os itens marcados para avisar entram na Lista de compras.
+  const precisamRepor = useMemo(() => filtered.filter((i) => i.notify_shopping && i.quantity < effectiveMinimum(i)), [filtered, nextFestaByUnit])
   const valorEmEstoque = useMemo(() => filtered.reduce((s, i) => s + i.total_value, 0), [filtered])
   const semCusto = useMemo(() => filtered.filter((i) => !i.has_cost && i.quantity > 0).length, [filtered])
 
@@ -293,6 +297,7 @@ export function Inventory() {
           has_cost: item.has_cost,
           last_unit_cost: item.last_unit_cost,
           consumption_type: item.consumption_type,
+          notify_shopping: item.notify_shopping,
         })
         await loadItems()
       },
@@ -307,6 +312,7 @@ export function Inventory() {
     setEditMinimumQuantity(String(item.minimum_quantity))
     setEditSupplier(item.supplier ?? '')
     setEditConsumptionType(item.consumption_type)
+    setEditNotifyShopping(item.notify_shopping)
   }
 
   async function handleSaveEditItem(e: FormEvent) {
@@ -319,6 +325,7 @@ export function Inventory() {
       minimum_quantity: Number(editMinimumQuantity) || 0,
       supplier: editSupplier.trim() || null,
       consumption_type: editConsumptionType,
+      notify_shopping: editNotifyShopping,
     }
     const { error } = await supabase.from('inventory_items').update(updates).eq('id', editingItem.id)
     if (error) {
@@ -438,6 +445,7 @@ export function Inventory() {
         minimum_quantity: Number(minimumQuantity) || 0,
         quantity_per_guest: quantityPerGuest ? Number(quantityPerGuest) : null,
         consumption_type: quantityPerGuest ? 'por_convidado' : 'por_festa',
+        notify_shopping: notifyShopping,
         supplier: supplier.trim() || null,
       })
       .select()
@@ -606,6 +614,10 @@ export function Inventory() {
           <div>
             <label className="block text-xs text-muted mb-1">Quantidade por convidado (opcional)</label>
             <input type="number" step="0.01" value={quantityPerGuest} onChange={(e) => setQuantityPerGuest(e.target.value)} placeholder="Ex: 1 copo por convidado" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+            <label className="flex items-center gap-2 text-xs mt-2 cursor-pointer">
+              <input type="checkbox" checked={notifyShopping} onChange={(e) => setNotifyShopping(e.target.checked)} />
+              Avisar na Lista de compras quando ficar abaixo do mínimo
+            </label>
           </div>
           <div className="flex items-end sm:col-span-2 lg:col-span-4">
             <Button type="submit"><Plus className="w-4 h-4" /> Adicionar item</Button>
@@ -920,6 +932,13 @@ export function Inventory() {
                 <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
                 <input type="text" value={editSupplier} onChange={(e) => setEditSupplier(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
               </div>
+              <label className="flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
+                <input type="checkbox" checked={editNotifyShopping} onChange={(e) => setEditNotifyShopping(e.target.checked)} className="mt-0.5" />
+                <span>
+                  Avisar na Lista de compras
+                  <span className="block text-xs text-muted">Quando o item ficar abaixo do mínimo, ele aparece na Lista de compras. Desmarque para itens que você não quer que avisem.</span>
+                </span>
+              </label>
               <p className="text-xs text-muted">A quantidade é ajustada na tabela (+/−). O valor muda só por Entrada de compra, consumo, ajuste ou transferência.</p>
               <div className="flex gap-2 pt-2">
                 <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setEditingItem(null)}>Cancelar</Button>

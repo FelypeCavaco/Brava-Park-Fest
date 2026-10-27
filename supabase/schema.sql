@@ -5113,6 +5113,11 @@ begin
 end;
 $$;
 
+-- ---------- 4) Estoque: avisar ou não na lista de compras ----------
+-- Cada item escolhe se entra na Lista de compras quando fica abaixo do
+-- mínimo. Itens que já existem continuam avisando (padrão = sim).
+alter table inventory_items add column if not exists notify_shopping boolean not null default true;
+
 revoke all on function commission_history(date, date) from public, anon;
 grant execute on function commission_history(date, date) to authenticated;
 revoke all on function set_commission_settings(date, text, uuid) from public, anon;

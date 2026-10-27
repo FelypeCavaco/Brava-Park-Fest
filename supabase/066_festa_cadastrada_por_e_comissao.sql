@@ -15,6 +15,7 @@
 -- 3) commission_history: todas as festas desde a data de início, com a
 --    situação da comissão de cada uma (paga em tal data, a pagar, abatida,
 --    não gera e por quê).
+-- 4) Estoque: cada item escolhe se avisa na Lista de compras.
 --
 -- Não altera valores de festas, pagamentos ou contas.
 -- Roda dentro de uma transação.
@@ -148,6 +149,11 @@ begin
   order by b.cad desc, b.cli;
 end;
 $$;
+
+-- ---------- 4) Estoque: avisar ou não na lista de compras ----------
+-- Cada item escolhe se entra na Lista de compras quando fica abaixo do
+-- mínimo. Itens que já existem continuam avisando (padrão = sim).
+alter table inventory_items add column if not exists notify_shopping boolean not null default true;
 
 revoke all on function commission_history(date, date) from public, anon;
 grant execute on function commission_history(date, date) to authenticated;

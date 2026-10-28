@@ -84,8 +84,7 @@ const groups: Group[] = [
       { to: '/pacotes', label: 'Pacotes e itens', icon: Package },
       { to: '/contratos', label: 'Contratos', icon: FileText },
       { to: '/propostas', label: 'Propostas comerciais', icon: FileSignature },
-      { to: '/marketing', label: 'Tráfego e CAC', icon: TrendingUp },
-      { to: '/funil', label: 'Funil de conversão', icon: Filter },
+      { to: '/marketing', label: 'Marketing', icon: TrendingUp },
     ],
   },
   {

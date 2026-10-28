@@ -30,6 +30,7 @@ import { Marketing } from './pages/Marketing'
 import { Funnel } from './pages/Funnel'
 import { Settlements } from './pages/Settlements'
 import { Commissions } from './pages/Commissions'
+import { MarketingHub } from './pages/MarketingHub'
 import { ConsumptionAverages } from './pages/ConsumptionAverages'
 
 function RedirectToPortal() {
@@ -73,7 +74,7 @@ export default function App() {
           <Route path="/fornecedores" element={<Suppliers />} />
           <Route path="/relatorios" element={<Reports />} />
           <Route path="/usuarios" element={<Users />} />
-          <Route path="/marketing" element={<Marketing />} />
+          <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
         </Route>
       </Route>

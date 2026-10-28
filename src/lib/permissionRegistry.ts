@@ -87,7 +87,7 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
   },
   {
     group: 'Tráfego e CAC',
-    items: [{ key: 'page:marketing', label: 'Ver Tráfego e CAC', group: 'Tráfego e CAC', route: '/marketing' }],
+    items: [{ key: 'page:marketing', label: 'Ver Marketing (ocupação, perfil, vendas, canais, tráfego e CAC)', group: 'Marketing', route: '/marketing' }],
   },
   {
     group: 'Funil de conversão',

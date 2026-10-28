@@ -67,12 +67,19 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
       setError('Escolha como o cliente conheceu a gente — é obrigatório (usado no Marketing).')
       return
     }
+    // CEP é obrigatório, mas dá para deixar em branco se confirmar (ex.: cliente não sabe na hora).
+    if (
+      !cep.trim() &&
+      !window.confirm(
+        'O CEP ficou em branco.\n\nO CEP é usado no Marketing (de onde vêm os clientes) e no contrato.\n\nTem certeza que vai deixar sem CEP?\n(OK = salvar sem CEP · Cancelar = voltar e preencher)',
+      )
+    )
+      return
     if (
       !confirmarEmBranco([
         { label: 'Telefone', valor: phone },
         { label: 'E-mail', valor: email },
         { label: 'CPF', valor: cpf },
-        { label: 'CEP', valor: cep },
         { label: 'Rua', valor: street },
         { label: 'Número', valor: addressNumber },
         { label: 'Bairro', valor: neighborhood },
@@ -178,19 +185,22 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
               />
             )}
           </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">CEP *</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={cep}
+              onChange={(e) => setCep(e.target.value)}
+              onBlur={handleCepBlur}
+              placeholder={cepLoading ? 'Buscando...' : '00000-000'}
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+            />
+            <p className="text-[11px] text-muted mt-1">Ao digitar o CEP, rua, bairro e cidade são preenchidos sozinhos.</p>
+          </div>
           <div className="pt-2 border-t border-line">
-            <p className="text-xs text-muted mb-2">Dados para contrato (opcional, preencha ao fechar a festa)</p>
-            <div className="grid grid-cols-2 gap-3">
-              <input type="text" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF" className="border border-line rounded-lg px-3 py-2 text-sm" />
-              <input
-                type="text"
-                value={cep}
-                onChange={(e) => setCep(e.target.value)}
-                onBlur={handleCepBlur}
-                placeholder={cepLoading ? 'Buscando...' : 'CEP'}
-                className="border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
+            <p className="text-xs text-muted mb-2">Dados para contrato (preencha ao fechar a festa)</p>
+            <input type="text" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
             <div className="grid grid-cols-3 gap-3 mt-2">
               <input type="text" value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua/Avenida" className="col-span-2 border border-line rounded-lg px-3 py-2 text-sm" />
               <input type="text" value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} placeholder="Número" className="border border-line rounded-lg px-3 py-2 text-sm" />

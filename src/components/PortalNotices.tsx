@@ -13,6 +13,8 @@ import { openWhatsApp } from '../lib/whatsapp'
 
 interface Aviso {
   id: string
+  // Avisos agrupados (lista de convidados) marcam todos os registros juntos.
+  ids: string[]
   kind: string
   description: string
   createdAt: string
@@ -91,7 +93,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
         .select('id, kind, description, created_at, ref_id, reservation_id, reservation:reservations(event_date, unit_id, child_name, client:clients(name))')
         .is('seen_at', null)
         .order('created_at', { ascending: false })
-        .limit(60),
+        .limit(500),
       supabase
         .from('reservations')
         .select('id, event_date, unit_id, child_name, final_value, menu_confirmed_at, client:clients(name, phone), payments(amount), reservation_extra_items(price_snapshot, quantity), reservation_consumption(quantity, unit_price), guest_list_pages(token)')
@@ -100,9 +102,10 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
         .lte('event_date', addDays(hoje, 7)),
     ])
 
-    const lista: Aviso[] = ((evs ?? []) as any[])
+    const brutos: Aviso[] = ((evs ?? []) as any[])
       .map((e) => ({
         id: e.id,
+        ids: [e.id],
         kind: e.kind,
         description: e.description,
         createdAt: e.created_at,
@@ -114,6 +117,36 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
         cliente: e.reservation?.client?.name ?? '—',
       }))
       .filter((a) => !unitFilter || a.unitId === unitFilter)
+
+    // Lista de convidados: o cliente adiciona um nome por vez, então em vez
+    // de um aviso por pessoa mostra um só por festa, com o resumo.
+    const lista: Aviso[] = []
+    const convidadosPorFesta: Record<string, { aviso: Aviso; add: number; rem: number }> = {}
+    for (const a of brutos) {
+      if (a.kind !== 'convidados') {
+        lista.push(a)
+        continue
+      }
+      const n = /^Adicionou (\d+) convidados/.exec(a.description)
+      const add = n ? Number(n[1]) : a.description.startsWith('Adicionou') ? 1 : 0
+      const rem = a.description.startsWith('Removeu') ? 1 : 0
+      const g = convidadosPorFesta[a.reservationId]
+      if (g) {
+        g.aviso.ids.push(a.id)
+        g.add += add
+        g.rem += rem
+      } else {
+        const aviso = { ...a, ids: [a.id] }
+        convidadosPorFesta[a.reservationId] = { aviso, add, rem }
+        lista.push(aviso)
+      }
+    }
+    for (const { aviso, add, rem } of Object.values(convidadosPorFesta)) {
+      if (aviso.ids.length === 1) continue
+      const partes = [add > 0 ? `adicionou ${add} ${add === 1 ? 'nome' : 'nomes'}` : '', rem > 0 ? `removeu ${rem} ${rem === 1 ? 'nome' : 'nomes'}` : ''].filter(Boolean)
+      aviso.description = `Mexeu na lista de convidados: ${partes.join(' e ')}`
+    }
+
     setAvisos(lista.filter((a) => (mode === 'financeiro' ? a.kind === 'comprovante' : mode === 'operacao' ? a.kind !== 'comprovante' : true)))
 
     const refIds = lista.filter((a) => a.kind === 'comprovante' && a.refId).map((a) => a.refId as string)
@@ -193,7 +226,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
   async function marcarVisto(ids: string[]) {
     const { error: err } = await supabase.rpc('mark_portal_events_seen', { p_ids: ids })
     if (err) return setError(friendlyDbError(err.message))
-    setAvisos((prev) => prev.filter((a) => !ids.includes(a.id)))
+    setAvisos((prev) => prev.filter((a) => !a.ids.some((x) => ids.includes(x))))
   }
 
   async function verComprovante(path: string) {
@@ -225,7 +258,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
       {(mode !== 'financeiro' || avisos.length > 0) && (
       <Card
         title={`${mode === 'financeiro' ? 'Comprovantes do portal do cliente' : 'Portal do cliente'}${avisos.length ? ` · ${avisos.length} novo${avisos.length > 1 ? 's' : ''}` : ''}`}
-        action={avisos.length > 1 ? <button onClick={() => marcarVisto(avisos.map((a) => a.id))} className="text-xs text-muted hover:text-purple">Marcar todos como vistos</button> : undefined}
+        action={avisos.length > 1 ? <button onClick={() => marcarVisto(avisos.flatMap((a) => a.ids))} className="text-xs text-muted hover:text-purple">Marcar todos como vistos</button> : undefined}
       >
         {avisos.length === 0 ? (
           <p className="text-sm text-muted">Nada novo. Toda alteração feita pelos clientes no portal aparece aqui.</p>
@@ -260,7 +293,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
                     ) : (
                       <>
                         <button onClick={() => navigate(`/reservas/${a.reservationId}`)} className="text-xs border border-line rounded-lg px-2.5 py-1.5">Abrir festa</button>
-                        <button onClick={() => marcarVisto([a.id])} className="text-xs bg-purple-light text-purple-dark font-semibold rounded-lg px-2.5 py-1.5">Marcar como visto</button>
+                        <button onClick={() => marcarVisto(a.ids)} className="text-xs bg-purple-light text-purple-dark font-semibold rounded-lg px-2.5 py-1.5">Marcar como visto</button>
                       </>
                     )}
                   </div>

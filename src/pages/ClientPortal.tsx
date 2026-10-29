@@ -85,6 +85,9 @@ const FORMA: Record<string, string> = {
 }
 
 const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
+
+// Idade a partir da qual a criança conta como convidado, por unidade.
+const idadeConta = (unidade: string) => (unidade === 'São Vicente' ? 2 : 5)
 const diaMes = (iso: string) => iso.slice(5, 10).split('-').reverse().join('/')
 const dataHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
@@ -389,7 +392,7 @@ export function ClientPortal() {
   ]
 
   const regras = [
-    { titulo: 'Limite de convidados', texto: `Até ${d.convidados_limite} pessoas, contando a partir de 5 anos. O excedente depende de aprovação e tem cobrança adicional.` },
+    { titulo: 'Limite de convidados', texto: `Até ${d.convidados_limite} pessoas, contando a partir de ${idadeConta(d.unidade)} anos. O excedente depende de aprovação e tem cobrança adicional.` },
     { titulo: 'Horário', texto: 'Respeitar início e término. Tempo excedente é cobrado por hora adicional, conforme disponibilidade.' },
     { titulo: 'Itens de fora', texto: 'Não é permitida a entrada de bebidas alcoólicas, comidas, decorações ou equipamentos externos sem autorização prévia.' },
     { titulo: 'Bebidas alcoólicas', texto: 'Não estão inclusas no pacote; podem ser adquiridas no local.' },
@@ -611,7 +614,7 @@ export function ClientPortal() {
               </section>
               <div className="rounded-xl px-3 py-2.5 flex gap-2.5 text-[13px]" style={{ background: '#E8EEFC', color: C.marinho }}>
                 <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                <p>Coloque <strong>todas as pessoas que estarão presentes</strong>, incluindo você e o aniversariante. Contamos como convidado quem tem <strong>5 anos ou mais</strong>.</p>
+                <p>Coloque <strong>todas as pessoas que estarão presentes</strong>, incluindo você e o aniversariante. Contamos como convidado quem tem <strong>{idadeConta(d.unidade)} anos ou mais</strong>.</p>
               </div>
               {!x.convidadosFechado && (
                 <>

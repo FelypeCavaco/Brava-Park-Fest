@@ -87,7 +87,7 @@ const FORMA: Record<string, string> = {
 const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
 
 // Idade a partir da qual a criança conta como convidado, por unidade.
-const idadeConta = (unidade: string) => (unidade === 'São Vicente' ? 2 : 5)
+const idadeConta = (unidade: string) => (unidade === 'São Vicente' ? 3 : 5)
 const diaMes = (iso: string) => iso.slice(5, 10).split('-').reverse().join('/')
 const dataHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 

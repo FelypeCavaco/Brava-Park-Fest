@@ -33,8 +33,8 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     ],
   },
   {
-    group: 'Agenda de visitas',
-    items: [{ key: 'page:visitas', label: 'Ver Agenda de visitas', group: 'Agenda de visitas', route: '/visitas' }],
+    group: 'Agenda',
+    items: [{ key: 'page:visitas', label: 'Ver a Agenda (visitas e compromissos)', group: 'Agenda', route: '/visitas' }],
   },
   {
     group: 'Central da festa',
@@ -165,7 +165,7 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/lembretes', key: 'page:lembretes' },
   { test: (p) => p === '/reservas', key: 'page:reservas' },
   { test: (p) => p.startsWith('/reservas/'), key: 'page:festa_detalhe' },
-  { test: (p) => p === '/visitas', key: 'page:visitas' },
+  { test: (p) => p === '/visitas' || p === '/agenda', key: 'page:visitas' },
   { test: (p) => p === '/clientes', key: 'page:clientes' },
   { test: (p) => p === '/reativacao', key: 'page:reativacao' },
   { test: (p) => p === '/satisfacao', key: 'page:satisfacao' },

@@ -40,6 +40,7 @@ const ENTITY_LABEL: Record<string, string> = {
   festa_fixed_costs: 'uma despesa fixa das festas',
   suppliers: 'um fornecedor',
   visits: 'uma visita',
+  agenda_items: 'um compromisso da Agenda',
   proposals: 'uma proposta',
   waitlist: 'a lista de espera',
   unit_goals: 'a meta da unidade',
@@ -169,7 +170,7 @@ function rowSummary(entity: string, row: Record<string, unknown> | undefined): s
   if (!row) return ''
   if (entity === 'payments') return ` de ${formatValue('amount', row.amount)}`
   if (entity === 'reservation_costs' || entity === 'expenses') return `: ${row.description ?? ''} ${formatValue('amount', row.amount)}`.trimEnd()
-  const label = row.name ?? row.staff_name ?? row.description ?? row.item ?? row.item_name ?? row.body
+  const label = row.name ?? row.staff_name ?? row.description ?? row.item ?? row.item_name ?? row.body ?? row.title
   return label ? `: ${String(label)}` : ''
 }
 

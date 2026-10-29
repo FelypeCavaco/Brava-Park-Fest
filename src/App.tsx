@@ -10,7 +10,7 @@ import { Reservations } from './pages/Reservations'
 import { FestaDetalhe } from './pages/FestaDetalhe'
 import { Clients } from './pages/Clients'
 import { Reactivation } from './pages/Reactivation'
-import { Visits } from './pages/Visits'
+import { Agenda } from './pages/Agenda'
 import { Packages } from './pages/Packages'
 import { Contracts } from './pages/Contracts'
 import { Payments } from './pages/Payments'
@@ -55,7 +55,8 @@ export default function App() {
           <Route path="/reservas/:id" element={<FestaDetalhe />} />
           <Route path="/clientes" element={<Clients />} />
           <Route path="/reativacao" element={<Reactivation />} />
-          <Route path="/visitas" element={<Visits />} />
+          <Route path="/visitas" element={<Agenda />} />
+          <Route path="/agenda" element={<Agenda />} />
           <Route path="/pacotes" element={<Packages />} />
           <Route path="/contratos" element={<Contracts />} />
           <Route path="/propostas" element={<Proposals />} />

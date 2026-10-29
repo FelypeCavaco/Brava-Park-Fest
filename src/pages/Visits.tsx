@@ -30,7 +30,8 @@ function toLocalInputValue(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function Visits() {
+// `embedded`: aparece como aba dentro da Agenda (sem o título da página).
+export function Visits({ embedded = false }: { embedded?: boolean } = {}) {
   const currentUserName = useCurrentUserName()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const { scheduleDelete } = useUndo()
@@ -166,10 +167,14 @@ export function Visits() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Agenda de visitas</h1>
-        <p className="text-sm text-muted mt-1">Antes de fechar contrato, o cliente costuma visitar o espaço</p>
-      </div>
+      {embedded ? (
+        <p className="text-sm text-muted">Antes de fechar contrato, o cliente costuma visitar o espaço. As visitas também aparecem no calendário.</p>
+      ) : (
+        <div>
+          <h1 className="text-2xl font-semibold">Agenda de visitas</h1>
+          <p className="text-sm text-muted mt-1">Antes de fechar contrato, o cliente costuma visitar o espaço</p>
+        </div>
+      )}
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 

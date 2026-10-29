@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge'
 import { DashboardMascot } from '../components/mascot/DashboardMascot'
 import { QuickActionsBar } from '../components/layout/QuickActionsBar'
 import { PortalNotices } from '../components/PortalNotices'
+import { AgendaNotices } from '../components/AgendaNotices'
 import { FestasPorMesChart } from '../components/FestasPorMesChart'
 import { useAuth } from '../lib/AuthContext'
 import logo from '../assets/logo-brava-park-fest.png'
@@ -527,6 +528,7 @@ export function Dashboard() {
         <Card><p className="text-sm text-muted py-6 text-center">Carregando...</p></Card>
       ) : (
         <>
+          <AgendaNotices />
           <PortalNotices mode={avisosFinanceiroNoTopo ? 'operacao' : 'all'} />
           {!avisosFinanceiroNoTopo && (
             <>

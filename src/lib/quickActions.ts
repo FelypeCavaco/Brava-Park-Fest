@@ -16,7 +16,8 @@ export interface QuickAction {
 // useOpenOnQueryParam nas páginas que aceitam esse parâmetro).
 export const QUICK_ACTIONS: QuickAction[] = [
   { key: 'nova-reserva', label: 'Nova reserva', icon: CalendarPlus, to: '/reservas?novo=1', requires: ['page:reservas', 'action:reservas.nova_reserva'] },
-  { key: 'nova-visita', label: 'Agendar visita', icon: CalendarClock, to: '/visitas', requires: ['page:visitas'] },
+  { key: 'nova-visita', label: 'Agendar visita', icon: CalendarClock, to: '/visitas?aba=visitas', requires: ['page:visitas'] },
+  { key: 'novo-compromisso', label: 'Novo compromisso', icon: CalendarClock, to: '/visitas?novo=1', requires: ['page:visitas'] },
   { key: 'novo-cliente', label: 'Novo cliente', icon: UserPlus, to: '/clientes?novo=1', requires: ['page:clientes', 'action:clientes.criar_editar'] },
   { key: 'nova-despesa', label: 'Nova despesa', icon: Receipt, to: '/financeiro', requires: ['page:financeiro', 'action:financeiro.registrar_despesa'] },
   { key: 'novo-pacote', label: 'Novo pacote', icon: PackagePlus, to: '/pacotes?novo=1', requires: ['page:pacotes', 'action:pacotes.criar_editar'] },

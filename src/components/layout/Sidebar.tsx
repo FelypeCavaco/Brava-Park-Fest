@@ -63,7 +63,7 @@ const groups: Group[] = [
     icon: CalendarDays,
     items: [
       { to: '/reservas', label: 'Mapa de reservas', icon: CalendarDays },
-      { to: '/visitas', label: 'Agenda de visitas', icon: CalendarClock },
+      { to: '/visitas', label: 'Agenda', icon: CalendarClock },
     ],
   },
   {

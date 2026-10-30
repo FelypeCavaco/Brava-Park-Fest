@@ -162,6 +162,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = PERMISSION_GROUPS.flatMap((g) =>
 // path -> permission_key, pra checagem de rota (Sidebar/RequireAuth)
 export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key: string }[] = [
   { test: (p) => p === '/', key: 'page:painel' },
+  { test: (p) => p === '/configuracoes', key: 'setup:empresa' },
   { test: (p) => p === '/lembretes', key: 'page:lembretes' },
   { test: (p) => p === '/reservas', key: 'page:reservas' },
   { test: (p) => p.startsWith('/reservas/'), key: 'page:festa_detalhe' },

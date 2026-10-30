@@ -1,14 +1,15 @@
 -- =========================================================
 -- BANCO DOS CLIENTES — PASSO 2 DE 2: PRIMEIRO ACESSO
 --
--- Rode UMA vez no projeto NOVO, depois do passo 1 e depois de criar o seu
--- login em Authentication > Users > Add user (marque "Auto Confirm User").
--- O seu deve ser o ÚNICO login do projeto neste momento: o arquivo usa ele.
+-- Rode UMA vez no projeto NOVO, depois das partes da estrutura e depois de
+-- criar o seu login em Authentication > Users > Add user (marque "Auto
+-- Confirm User"). O seu deve ser o ÚNICO login do projeto neste momento.
 --
 -- Faz três coisas:
---   1) cria a empresa de demonstração "Festa Feliz (demonstração)", com você
---      como administrador dela (serve para testar e para mostrar o sistema);
---   2) te cadastra como administrador geral (painel Plataforma);
+--   1) te cadastra como administrador geral (você entra direto no painel
+--      da plataforma, sem ser funcionário de nenhuma empresa);
+--   2) cria a empresa de demonstração "Festa Feliz (demonstração)", que
+--      você abre pelo painel (serve para testar e para mostrar o sistema);
 --   3) define o nome provisório do sistema na tela de login (troque depois
 --      em Plataforma > Produto).
 -- Roda dentro de uma transação: ou tudo, ou nada.
@@ -19,7 +20,6 @@ begin;
 do $$
 declare
   v_user uuid;
-  v_email text;
 begin
   if (select count(*) from auth.users) = 0 then
     raise exception 'Nenhum login criado ainda. Crie o seu em Authentication > Users > Add user.';
@@ -30,10 +30,10 @@ begin
   if exists (select 1 from platform_admins) then
     raise exception 'O administrador geral já foi cadastrado neste banco.';
   end if;
-  select id, email into v_user, v_email from auth.users;
+  select id into v_user from auth.users;
 
-  perform platform_create_company('Festa Feliz (demonstração)', v_user, 'Administrador geral', v_email);
   insert into platform_admins (user_id) values (v_user);
+  perform platform_create_company('Festa Feliz (demonstração)', null, null, null);
   insert into platform_settings (name, tagline) values ('Gestão de Festas', 'Sistema para casas de festa')
   on conflict (unica) do nothing;
 end $$;

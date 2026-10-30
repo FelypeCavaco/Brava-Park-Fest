@@ -32,7 +32,7 @@ const AuthContext = createContext<AuthContextValue>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { brand } = useCompany()
+  const { brand, isPlatformAdmin } = useCompany()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -108,16 +108,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [profile?.role?.id, session?.user?.id])
 
+  // Administrador geral não tem cadastro em empresa nenhuma: dentro de uma
+  // casa de festas ele age como administrador dela.
+  const perfilEfetivo: Profile | null = profile ?? (isPlatformAdmin
+    ? { name: 'Administrador geral', active: true, role: { id: '', name: 'Administrador geral', isAdmin: true } }
+    : null)
+
   function can(key: string) {
+    // Configurações da empresa e das unidades: no banco dos clientes, só o
+    // administrador geral.
+    if (key === 'setup:empresa') return !brand.platformManaged || isPlatformAdmin
     // Função desligada para a empresa (painel da plataforma): ninguém dela vê.
     if (chaveDesligada(key, brand.disabledModules)) return false
-    if (profile?.role?.isAdmin) return true
+    if (perfilEfetivo?.role?.isAdmin) return true
     if (!(key in permissions)) return true // chave sem regra cadastrada ainda — não bloqueia
     return permissions[key]
   }
 
   return (
-    <AuthContext.Provider value={{ session, loading, profile, profileLoading, permissions, permissionsLoading, can }}>
+    <AuthContext.Provider value={{ session, loading, profile: perfilEfetivo, profileLoading, permissions, permissionsLoading, can }}>
       {children}
     </AuthContext.Provider>
   )

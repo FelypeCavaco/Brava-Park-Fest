@@ -135,7 +135,9 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const { selectedUnit, setSelectedUnit } = useUnit()
-  const { brand, isPlatformAdmin } = useCompany()
+  const { brand, isPlatformAdmin, leaveCompany } = useCompany()
+  // Administrador geral sem empresa aberta: o menu é só o painel da plataforma.
+  const foraDaEmpresa = isPlatformAdmin && !brand.companyId
   const { profile, can } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -153,9 +155,9 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       .eq('status', 'pendente')
       .then(({ count }) => setAcertosPendentes(count ?? 0))
   }, [canSeeAcertos, location.pathname])
-  const visibleTopLinks = topLinks.filter((i) => canAccessRoute(role, can, i.to))
+  const visibleTopLinks = foraDaEmpresa ? [] : topLinks.filter((i) => canAccessRoute(role, can, i.to))
   const visibleGroups = groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => (foraDaEmpresa ? i.to === '/plataforma' : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
     .filter((g) => g.items.length > 0)
 
   async function handleLogout() {
@@ -199,6 +201,15 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         </button>
       </div>
 
+      {isPlatformAdmin && brand.companyId && (
+        <div className="relative mx-4 mb-3 rounded-lg bg-white/10 px-3 py-2.5 text-xs">
+          <p className="text-white/60">Você está dentro de</p>
+          <p className="font-semibold text-white truncate">{brand.name}</p>
+          <button onClick={leaveCompany} className="mt-1.5 text-[11px] font-medium text-green hover:underline">← Voltar ao painel da plataforma</button>
+        </div>
+      )}
+
+      {!foraDaEmpresa && (
       <div className="relative px-4 mb-4 shrink-0">
         <label className="block text-[11px] uppercase tracking-wide text-white/40 mb-1.5 px-1">
           Unidade
@@ -218,6 +229,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           ))}
         </select>
       </div>
+      )}
 
       <nav className="relative flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
         {visibleTopLinks.map((link) => (

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useCompany } from '../../lib/CompanyContext'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
@@ -13,6 +14,8 @@ export function AppLayout() {
   const location = useLocation()
   const { units } = useUnit()
   const { profile } = useAuth()
+  const { brand, isPlatformAdmin } = useCompany()
+  const foraDaEmpresa = isPlatformAdmin && !brand.companyId
   // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
   // menos uma, então só mostra o cadastro de unidades até criar a primeira.
   // (a tela da plataforma abre mesmo assim: o administrador geral pode ser de uma empresa ainda vazia)
@@ -30,17 +33,23 @@ export function AppLayout() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <QuickActionsBar className="flex-1 min-w-0" />
-          <GlobalSearch />
+          {foraDaEmpresa ? <div className="flex-1" /> : (
+            <>
+              <QuickActionsBar className="flex-1 min-w-0" />
+              <GlobalSearch />
+            </>
+          )}
         </div>
         {semUnidade ? (
           <div className="space-y-4">
             <div className="bg-amber-light text-ink text-sm rounded-lg px-4 py-3">
-              {profile?.role?.isAdmin
+              {profile?.role?.isAdmin && (!brand.platformManaged || isPlatformAdmin)
                 ? 'Para começar, cadastre a primeira unidade da empresa na aba "Unidades" abaixo.'
-                : 'A empresa ainda não tem nenhuma unidade cadastrada. Peça a um administrador para cadastrar.'}
+                : brand.platformManaged
+                  ? 'Sua empresa está sendo preparada. Assim que o suporte cadastrar as unidades, o sistema fica liberado.'
+                  : 'A empresa ainda não tem nenhuma unidade cadastrada. Peça a um administrador para cadastrar.'}
             </div>
-            {profile?.role?.isAdmin && <Settings />}
+            {profile?.role?.isAdmin && (!brand.platformManaged || isPlatformAdmin) && <Settings />}
           </div>
         ) : (
           <Outlet />

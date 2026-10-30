@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Plus, X, Building2, Ban, CheckCircle2, Copy } from 'lucide-react'
+import { Plus, X, Building2, Ban, CheckCircle2, Copy, LogIn, AlertTriangle } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -25,6 +25,8 @@ interface Empresa {
 }
 
 const dataBr = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—')
+const diasSemUso = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null)
+const SEM_USO_ALERTA = 14
 
 // Senha provisória fácil de ditar (o cliente troca depois).
 function senhaProvisoria() {
@@ -34,7 +36,8 @@ function senhaProvisoria() {
 }
 
 export function Platform() {
-  const { isPlatformAdmin, brandLoading } = useCompany()
+  const { isPlatformAdmin, brandLoading, brand, enterCompany } = useCompany()
+  const [abrindo, setAbrindo] = useState<string | null>(null)
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,6 +107,24 @@ export function Platform() {
     setProdutoMsg(err ? friendlyDbError(err.message) : 'Salvo. A tela de login mostra este nome para quem ainda não entrou.')
   }
 
+  async function abrir(c: Empresa) {
+    setAbrindo(c.id)
+    const erro = await enterCompany(c.id)
+    if (erro) {
+      setAbrindo(null)
+      setError(erro)
+    }
+  }
+
+  const ativas = empresas.filter((c) => c.active)
+  const paradas = ativas.filter((c) => (diasSemUso(c.ultima_atividade) ?? 9999) >= SEM_USO_ALERTA)
+  const resumo = [
+    { rotulo: 'Empresas ativas', valor: ativas.length, alerta: false },
+    { rotulo: 'Suspensas', valor: empresas.length - ativas.length, alerta: empresas.length - ativas.length > 0 },
+    { rotulo: 'Festas novas (30 dias)', valor: empresas.reduce((t, c) => t + c.festas_30d, 0), alerta: false },
+    { rotulo: `Sem uso há ${SEM_USO_ALERTA}+ dias`, valor: paradas.length, alerta: paradas.length > 0 },
+  ]
+
   if (brandLoading) return <p className="text-sm text-muted">Carregando...</p>
   if (!isPlatformAdmin) {
     return <Card><p className="text-sm text-muted">Esta área é só do administrador geral da plataforma.</p></Card>
@@ -113,8 +134,11 @@ export function Platform() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Plataforma</h1>
-          <p className="text-sm text-muted mt-1">Casas de festa que usam o sistema. Os dados de cada uma ficam separados: aqui aparecem só os números gerais.</p>
+          <h1 className="text-2xl font-semibold">Painel da plataforma</h1>
+          <p className="text-sm text-muted mt-1">
+            Casas de festa que usam o sistema. Aqui aparecem só os números gerais; para trabalhar dentro de uma empresa, clique em <strong>Abrir</strong>.
+            {brand.companyId && <> Você está com <strong>{brand.name}</strong> aberta.</>}
+          </p>
         </div>
         <Button onClick={() => setNova({ empresa: '', admin_nome: '', email: '', senha: senhaProvisoria() })}><Plus className="w-4 h-4" /> Nova empresa</Button>
       </div>
@@ -129,7 +153,7 @@ export function Platform() {
       {criada && (
         <Card className="border-teal/40">
           <p className="font-semibold text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-teal" /> {criada.empresa} criada</p>
-          <p className="text-sm mt-2">Entre com este login para configurar a empresa (unidades, pacotes, cardápio) e depois passe para o cliente trocar a senha:</p>
+          <p className="text-sm mt-2">Clique em <strong>Abrir</strong> na lista para configurar a empresa (unidades, pacotes, cardápio). Este é o login do administrador do cliente — passe para ele trocar a senha no primeiro acesso:</p>
           <div className="mt-2 bg-paper rounded-lg px-3 py-2 text-sm font-mono flex flex-wrap items-center gap-3">
             <span>{criada.email}</span>
             <span>senha: {criada.senha}</span>
@@ -138,6 +162,17 @@ export function Platform() {
           <p className="text-xs text-muted mt-2">Guarde agora: por segurança a senha não aparece de novo.</p>
           <button onClick={() => setCriada(null)} className="text-xs text-muted mt-2">Fechar</button>
         </Card>
+      )}
+
+      {!loading && empresas.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {resumo.map((r) => (
+            <div key={r.rotulo} className={`rounded-card border px-4 py-3 bg-surface ${r.alerta ? 'border-amber/50' : 'border-line'}`}>
+              <p className="text-xs text-muted">{r.rotulo}</p>
+              <p className={`text-2xl font-display font-semibold tabular-nums ${r.alerta ? 'text-amber' : ''}`}>{r.valor}</p>
+            </div>
+          ))}
+        </div>
       )}
 
       <Card title={`Empresas${empresas.length ? ` · ${empresas.length}` : ''}`}>
@@ -175,10 +210,26 @@ export function Platform() {
                     <td className="py-3 text-right tabular-nums">{c.unidades}</td>
                     <td className="py-3 text-right tabular-nums">{c.festas}</td>
                     <td className="py-3 text-right tabular-nums">{c.festas_30d}</td>
-                    <td className="py-3 text-muted">{dataBr(c.ultima_atividade)}</td>
+                    <td className="py-3">
+                      {(() => {
+                        const d = diasSemUso(c.ultima_atividade)
+                        const alerta = c.active && (d === null || d >= SEM_USO_ALERTA)
+                        return (
+                          <span className={`flex items-center gap-1 ${alerta ? 'text-amber font-medium' : 'text-muted'}`}>
+                            {alerta && <AlertTriangle className="w-3.5 h-3.5" />}
+                            {d === null ? 'nunca usou' : d === 0 ? 'hoje' : d === 1 ? 'ontem' : `há ${d} dias`}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td className="py-3 text-muted">{dataBr(c.created_at)}</td>
-                    <td className="py-3 text-right">
-                      <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setEditando({ ...c, disabled_modules: [...c.disabled_modules] })}>Gerenciar</Button>
+                    <td className="py-3 text-right whitespace-nowrap">
+                      <span className="inline-flex gap-2">
+                        <Button className="text-xs px-3 py-1.5" disabled={abrindo !== null} onClick={() => abrir(c)}>
+                          <LogIn className="w-3.5 h-3.5" /> {abrindo === c.id ? 'Abrindo...' : brand.companyId === c.id ? 'Aberta' : 'Abrir'}
+                        </Button>
+                        <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setEditando({ ...c, disabled_modules: [...c.disabled_modules] })}>Gerenciar</Button>
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -237,7 +288,7 @@ export function Platform() {
                 <input required value={nova.senha} onChange={(e) => setNova({ ...nova, senha: e.target.value })} className="w-full border border-line rounded-lg px-3 py-2 text-sm font-mono" />
                 <p className="text-[11px] text-muted mt-1">Você usa para configurar e depois o cliente troca.</p>
               </div>
-              <p className="text-xs text-muted bg-paper rounded-lg px-3 py-2">A empresa nasce com o perfil Administrador, as formas de pagamento e o visual padrão. Ao entrar, o sistema pede para cadastrar a primeira unidade.</p>
+              <p className="text-xs text-muted bg-paper rounded-lg px-3 py-2">A empresa nasce com o perfil Administrador, as formas de pagamento e o visual padrão. Depois, clique em Abrir para cadastrar as unidades e configurar o resto antes de entregar ao cliente.</p>
               <Button type="submit" className="w-full justify-center" disabled={saving}>{saving ? 'Criando...' : 'Criar empresa'}</Button>
             </form>
           </div>

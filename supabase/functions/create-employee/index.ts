@@ -45,14 +45,25 @@ Deno.serve(async (req) => {
     const callerRole = callerProfile?.role as { is_admin: boolean } | { is_admin: boolean }[] | null
     const callerIsAdmin = Array.isArray(callerRole) ? callerRole[0]?.is_admin : callerRole?.is_admin
 
-    if (!callerProfile || !callerIsAdmin || !callerProfile.active) {
-      return jsonResponse({ error: 'Só administradores podem criar novos usuários.' }, 403)
+    // Administrador geral (sem cadastro em empresa): cadastra na empresa que
+    // ele abriu pelo painel da plataforma.
+    let companyId: string | null = null
+    if (!callerProfile) {
+      const { data: plat } = await admin.from('platform_admins').select('user_id').eq('user_id', callerData.user.id).maybeSingle()
+      const { data: aberta } = await admin.from('company_members').select('company_id').eq('user_id', callerData.user.id).maybeSingle()
+      if (!plat) return jsonResponse({ error: 'Só administradores podem criar novos usuários.' }, 403)
+      if (!aberta) return jsonResponse({ error: 'Abra uma empresa no painel da plataforma antes de cadastrar funcionários.' }, 400)
+      companyId = aberta.company_id
+    } else {
+      if (!callerIsAdmin || !callerProfile.active) {
+        return jsonResponse({ error: 'Só administradores podem criar novos usuários.' }, 403)
+      }
+      // O funcionário novo entra na mesma empresa de quem está cadastrando.
+      const callerCompany = callerProfile.company as { active: boolean } | { active: boolean }[] | null
+      const companyActive = Array.isArray(callerCompany) ? callerCompany[0]?.active : callerCompany?.active
+      if (companyActive === false) return jsonResponse({ error: 'Empresa suspensa. Fale com o suporte.' }, 403)
+      companyId = (callerProfile as { company_id?: string }).company_id ?? null
     }
-    // O funcionário novo entra na mesma empresa de quem está cadastrando.
-    const callerCompany = callerProfile.company as { active: boolean } | { active: boolean }[] | null
-    const companyActive = Array.isArray(callerCompany) ? callerCompany[0]?.active : callerCompany?.active
-    if (companyActive === false) return jsonResponse({ error: 'Empresa suspensa. Fale com o suporte.' }, 403)
-    const companyId = (callerProfile as { company_id?: string }).company_id ?? null
 
     const { name, email, password, role_id } = await req.json()
     if (!name?.trim() || !email?.trim() || !password || !role_id) {

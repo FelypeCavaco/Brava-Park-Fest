@@ -16,10 +16,16 @@ export interface CompanyBrand {
   disabledModules: string[]
   // false = empresa suspensa: ninguém dela entra.
   active: boolean
+  // Empresa de quem está logado (null = administrador geral no painel, sem
+  // empresa aberta, ou tela de login).
+  companyId: string | null
+  // Banco com administrador geral (o dos clientes): só ele mexe nas
+  // configurações da empresa e das unidades.
+  platformManaged: boolean
 }
 
 // Enquanto carrega (frações de segundo) mostra só o nome neutro do sistema.
-const NEUTRO: CompanyBrand = { name: '', logoUrl: null, tagline: null, teamWhatsapp: null, mascotEnabled: false, portalTheme: 'padrao', disabledModules: [], active: true }
+const NEUTRO: CompanyBrand = { name: '', logoUrl: null, tagline: null, teamWhatsapp: null, mascotEnabled: false, portalTheme: 'padrao', disabledModules: [], active: true, companyId: null, platformManaged: false }
 
 interface CompanyContextValue {
   brand: CompanyBrand
@@ -27,9 +33,12 @@ interface CompanyContextValue {
   reloadBrand: () => Promise<void>
   // Quem está logado administra a plataforma (painel de empresas)?
   isPlatformAdmin: boolean
+  // Administrador geral: abrir uma casa de festas / voltar ao painel.
+  enterCompany: (id: string) => Promise<string | null>
+  leaveCompany: () => Promise<void>
 }
 
-const CompanyContext = createContext<CompanyContextValue>({ brand: NEUTRO, brandLoading: true, reloadBrand: async () => {}, isPlatformAdmin: false })
+const CompanyContext = createContext<CompanyContextValue>({ brand: NEUTRO, brandLoading: true, reloadBrand: async () => {}, isPlatformAdmin: false, enterCompany: async () => null, leaveCompany: async () => {} })
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const [brand, setBrand] = useState<CompanyBrand>(NEUTRO)
@@ -49,6 +58,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         portalTheme: row.portal_theme === 'mario' ? 'mario' : 'padrao',
         disabledModules: row.disabled_modules ?? [],
         active: row.active !== false,
+        companyId: row.company_id ?? null,
+        platformManaged: !!row.platform_managed,
       })
     }
     if (sessao.session) {
@@ -70,12 +81,25 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe()
   }, [reloadBrand])
 
+  // Abrir/voltar recarrega o sistema inteiro: unidades, permissões e dados
+  // passam a ser os da empresa aberta.
+  const enterCompany = useCallback(async (id: string) => {
+    const { error } = await supabase.rpc('platform_enter_company', { p_company: id })
+    if (error) return error.message.replace(/^[A-Z_]+: /, '')
+    window.location.assign('/')
+    return null
+  }, [])
+  const leaveCompany = useCallback(async () => {
+    await supabase.rpc('platform_leave_company')
+    window.location.assign('/plataforma')
+  }, [])
+
   useEffect(() => {
     if (brand.name) document.title = brand.name
     setEmpresaMensagens(brand.name)
   }, [brand.name])
 
-  return <CompanyContext.Provider value={{ brand, brandLoading, reloadBrand, isPlatformAdmin }}>{children}</CompanyContext.Provider>
+  return <CompanyContext.Provider value={{ brand, brandLoading, reloadBrand, isPlatformAdmin, enterCompany, leaveCompany }}>{children}</CompanyContext.Provider>
 }
 
 export function useCompany() {

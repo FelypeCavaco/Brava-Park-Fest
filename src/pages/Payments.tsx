@@ -119,7 +119,7 @@ export function Payments() {
     if (Number.isNaN(feePercent) || feePercent < 0) return
     setSavingFee(method)
     setFeePercentByMethod((prev) => ({ ...prev, [method]: feePercent }))
-    await supabase.from('payment_method_fees').upsert({ payment_method: method, fee_percent: feePercent }, { onConflict: 'payment_method' })
+    await supabase.from('payment_method_fees').upsert({ payment_method: method, fee_percent: feePercent }, { onConflict: 'company_id,payment_method' })
     setSavingFee(null)
     loadAll()
   }

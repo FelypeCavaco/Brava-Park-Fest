@@ -1296,7 +1296,7 @@ export function FestaDetalhe() {
     setSavingFornecedoresTemplate(true)
     const { error } = await supabase
       .from('message_templates')
-      .upsert({ key: 'confirmar_fornecedores', body: editingFornecedoresTemplate, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      .upsert({ key: 'confirmar_fornecedores', body: editingFornecedoresTemplate, updated_at: new Date().toISOString() }, { onConflict: 'company_id,key' })
     setSavingFornecedoresTemplate(false)
     if (error) {
       setError('Não foi possível salvar a mensagem padrão.')

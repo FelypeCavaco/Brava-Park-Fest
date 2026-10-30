@@ -40,6 +40,7 @@ interface Prazo {
 
 const SIGLA: Record<string, string> = { cardapio: 'CA', convidados: 'LC', musica: 'MU', comprovante: 'R$', mensagem: 'MS', avaliacao: 'AV' }
 
+const antes = (n: number) => (n === 0 ? 'no dia da festa' : n === 7 ? '1 semana antes da festa' : `${n} ${n === 1 ? 'dia' : 'dias'} antes da festa`)
 const dm = (iso: string) => iso.slice(5, 10).split('-').reverse().join('/')
 
 function addDays(iso: string, n: number) {
@@ -96,10 +97,10 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
         .limit(500),
       supabase
         .from('reservations')
-        .select('id, event_date, unit_id, child_name, final_value, menu_confirmed_at, client:clients(name, phone), payments(amount), reservation_extra_items(price_snapshot, quantity), reservation_consumption(quantity, unit_price), guest_list_pages(token)')
+        .select('id, event_date, unit_id, child_name, final_value, menu_confirmed_at, client:clients(name, phone), payments(amount), reservation_extra_items(price_snapshot, quantity), reservation_consumption(quantity, unit_price), guest_list_pages(token), unit:units(menu_deadline_days, guest_deadline_days, payment_deadline_days)')
         .neq('status', 'cancelada')
         .gte('event_date', hoje)
-        .lte('event_date', addDays(hoje, 7)),
+        .lte('event_date', addDays(hoje, 61)),
     ])
 
     const brutos: Aviso[] = ((evs ?? []) as any[])
@@ -173,22 +174,27 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
       const token = pages[0]?.token as string | undefined
       const link = token ? `${window.location.origin}/portal/${token}` : ''
       const primeiroNome = nome.split(' ')[0]
-      const prazoCardapio = addDays(f.event_date, -7)
-      const prazoUmDia = addDays(f.event_date, -1)
+      // Prazos configurados na unidade (Configurações → Unidades → Portal do cliente).
+      const diasCardapio = f.unit?.menu_deadline_days ?? 7
+      const diasLista = f.unit?.guest_deadline_days ?? 1
+      const diasSaldo = f.unit?.payment_deadline_days ?? 1
+      const prazoCardapio = addDays(f.event_date, -diasCardapio)
+      const prazoLista = addDays(f.event_date, -diasLista)
+      const prazoSaldo = addDays(f.event_date, -diasSaldo)
       if (!f.menu_confirmed_at && hoje >= prazoCardapio) {
         out.push({
           key: `${f.id}-cardapio`, reservationId: f.id, cliente: nome, phone: f.client?.phone ?? null, festa: festaLabel, tipo: 'cardapio',
           venceHoje: hoje === prazoCardapio,
-          texto: `ainda não confirmou o cardápio — prato quente e bolo (prazo: ${hoje === prazoCardapio ? 'hoje' : dm(prazoCardapio)}, 1 semana antes da festa).`,
+          texto: `ainda não confirmou o cardápio — prato quente e bolo (prazo: ${hoje === prazoCardapio ? 'hoje' : dm(prazoCardapio)}, ${antes(diasCardapio)}).`,
           mensagem: `Olá, ${primeiroNome}! O prazo para escolher o cardápio da festa (pratos quentes e bolo) ${hoje === prazoCardapio ? 'termina hoje' : 'já terminou'}. ${link ? `É só escolher pelo portal: ${link}` : 'Me conta aqui as escolhas?'}`,
         })
       }
-      if (hoje >= prazoUmDia && (!token || (guestCount[token] ?? 0) === 0)) {
+      if (hoje >= prazoLista && (!token || (guestCount[token] ?? 0) === 0)) {
         out.push({
           key: `${f.id}-convidados`, reservationId: f.id, cliente: nome, phone: f.client?.phone ?? null, festa: festaLabel, tipo: 'convidados',
-          venceHoje: hoje === prazoUmDia,
-          texto: `ainda não enviou a lista de convidados (prazo: ${hoje === prazoUmDia ? 'hoje' : dm(prazoUmDia)}, 1 dia antes da festa).`,
-          mensagem: `Olá, ${primeiroNome}! A lista de convidados da festa precisa ser enviada ${hoje === prazoUmDia ? 'até hoje' : 'o quanto antes'}. ${link ? `Pelo portal é rapidinho: ${link}` : ''}`.trim(),
+          venceHoje: hoje === prazoLista,
+          texto: `ainda não enviou a lista de convidados (prazo: ${hoje === prazoLista ? 'hoje' : dm(prazoLista)}, ${antes(diasLista)}).`,
+          mensagem: `Olá, ${primeiroNome}! A lista de convidados da festa precisa ser enviada ${hoje === prazoLista ? 'até hoje' : 'o quanto antes'}. ${link ? `Pelo portal é rapidinho: ${link}` : ''}`.trim(),
         })
       }
       const devido = Number(f.final_value || 0)
@@ -196,12 +202,12 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
         + (f.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0)
       const pago = (f.payments ?? []).reduce((s: number, x: any) => s + Number(x.amount), 0)
       const saldo = Math.round((devido - pago) * 100) / 100
-      if (saldo > 0.005 && hoje >= prazoUmDia) {
+      if (saldo > 0.005 && hoje >= prazoSaldo) {
         out.push({
           key: `${f.id}-saldo`, reservationId: f.id, cliente: nome, phone: f.client?.phone ?? null, festa: festaLabel, tipo: 'saldo',
-          venceHoje: hoje === prazoUmDia,
-          texto: `ainda tem saldo de ${brl(saldo)} em aberto (prazo: ${hoje === prazoUmDia ? 'hoje' : dm(prazoUmDia)}, 1 dia antes da festa).`,
-          mensagem: `Olá, ${primeiroNome}! Passando para lembrar do saldo de ${brl(saldo)} da festa, com prazo ${hoje === prazoUmDia ? 'até hoje' : 'já vencido'}. ${link ? `No portal tem a chave Pix e você envia o comprovante: ${link}` : ''}`.trim(),
+          venceHoje: hoje === prazoSaldo,
+          texto: `ainda tem saldo de ${brl(saldo)} em aberto (prazo: ${hoje === prazoSaldo ? 'hoje' : dm(prazoSaldo)}, ${antes(diasSaldo)}).`,
+          mensagem: `Olá, ${primeiroNome}! Passando para lembrar do saldo de ${brl(saldo)} da festa, com prazo ${hoje === prazoSaldo ? 'até hoje' : 'já vencido'}. ${link ? `No portal tem a chave Pix e você envia o comprovante: ${link}` : ''}`.trim(),
         })
       }
     }

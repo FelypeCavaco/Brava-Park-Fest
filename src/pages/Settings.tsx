@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Plus, Upload, X, Building2, Store } from 'lucide-react'
+import { Plus, Upload, X, Building2, Store, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { BrandLogo } from '../components/BrandLogo'
@@ -26,9 +26,42 @@ interface UnitRow {
   default_deposit_percent: number | null
   google_review_link: string | null
   staff_whatsapp_group_link: string | null
+  // Portal do cliente (migração 069)
+  guest_min_age?: number
+  menu_deadline_days?: number
+  guest_deadline_days?: number
+  payment_deadline_days?: number
+  playlist_enabled?: boolean
+  parabens_after_min?: number
+  hot_dish_after_parabens_min?: number
+  cake_after_parabens_min?: number
+  portal_rules?: Regra[]
 }
 
-type UnitForm = Record<Exclude<keyof UnitRow, 'id' | 'sort' | 'extra_hour_price' | 'default_deposit_percent'>, string> & {
+interface Regra {
+  titulo: string
+  texto: string
+}
+
+// Números do portal: [campo, rótulo, ajuda, mínimo, máximo]
+const CAMPOS_PORTAL: [PortalNum, string, string, number, number][] = [
+  ['guest_min_age', 'Idade que conta como convidado', 'A partir de quantos anos a criança entra na conta da lista.', 0, 18],
+  ['menu_deadline_days', 'Prazo do cardápio (dias antes)', 'Depois disso o cliente ainda envia, mas fica marcado "após o prazo".', 0, 60],
+  ['guest_deadline_days', 'Prazo da lista de convidados (dias antes)', 'Depois disso a lista fecha no portal.', 0, 60],
+  ['payment_deadline_days', 'Prazo do saldo (dias antes)', 'Aparece para o cliente e nos avisos do Painel.', 0, 60],
+  ['parabens_after_min', 'Parabéns (minutos após o início)', 'Ex.: 90 = 1h30 depois do início.', 0, 720],
+  ['hot_dish_after_parabens_min', 'Pratos quentes (minutos após o parabéns)', 'Só aparece em festa com pratos quentes.', 0, 240],
+  ['cake_after_parabens_min', 'Bolo (minutos após o parabéns)', '', 0, 240],
+]
+type PortalNum = 'guest_min_age' | 'menu_deadline_days' | 'guest_deadline_days' | 'payment_deadline_days' | 'parabens_after_min' | 'hot_dish_after_parabens_min' | 'cake_after_parabens_min'
+const PORTAL_PADRAO: Record<PortalNum, number> = {
+  guest_min_age: 5, menu_deadline_days: 7, guest_deadline_days: 1, payment_deadline_days: 1,
+  parabens_after_min: 90, hot_dish_after_parabens_min: 10, cake_after_parabens_min: 30,
+}
+
+type UnitForm = Record<Exclude<keyof UnitRow, 'id' | 'sort' | 'extra_hour_price' | 'default_deposit_percent' | PortalNum | 'playlist_enabled' | 'portal_rules'>, string> & Record<PortalNum, string> & {
+  playlist_enabled: boolean
+  portal_rules: Regra[] | null
   id: string | null
   sort: string
   extra_hour_price: string
@@ -62,6 +95,10 @@ function toForm(u: UnitRow | null, nextSort: number): UnitForm {
     default_deposit_percent: u?.default_deposit_percent != null ? String(u.default_deposit_percent).replace('.', ',') : '',
     google_review_link: u?.google_review_link ?? '',
     staff_whatsapp_group_link: u?.staff_whatsapp_group_link ?? '',
+    ...(Object.fromEntries(CAMPOS_PORTAL.map(([k]) => [k, String(u?.[k] ?? PORTAL_PADRAO[k])])) as Record<PortalNum, string>),
+    playlist_enabled: u?.playlist_enabled ?? false,
+    // null = unidade nova: o banco preenche com as regras padrão.
+    portal_rules: u?.portal_rules ? u.portal_rules.map((r) => ({ ...r })) : null,
   }
 }
 
@@ -227,6 +264,14 @@ function UnidadesTab() {
     const sinal = form.default_deposit_percent.trim() ? parseDecimal(form.default_deposit_percent) : null
     if (form.extra_hour_price.trim() && (hora == null || hora < 0)) return setError('Valor da hora extra inválido.')
     if (form.default_deposit_percent.trim() && (sinal == null || sinal < 0 || sinal > 100)) return setError('O sinal precisa ser um percentual entre 0 e 100.')
+    const nums: Partial<Record<PortalNum, number>> = {}
+    for (const [k, rot, , min, max] of CAMPOS_PORTAL) {
+      const n = Number.parseInt(form[k], 10)
+      if (!Number.isFinite(n) || n < min || n > max || String(n) !== form[k].trim()) return setError(`"${rot}": use um número inteiro de ${min} a ${max}.`)
+      nums[k] = n
+    }
+    const regras = (form.portal_rules ?? []).map((r) => ({ titulo: r.titulo.trim(), texto: r.texto.trim() })).filter((r) => r.titulo || r.texto)
+    if (regras.some((r) => !r.titulo || !r.texto)) return setError('Cada regra do portal precisa de título e texto.')
     const t = (s: string) => s.trim() || null
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
@@ -242,6 +287,9 @@ function UnidadesTab() {
       default_deposit_percent: sinal,
       google_review_link: t(form.google_review_link),
       staff_whatsapp_group_link: t(form.staff_whatsapp_group_link),
+      ...nums,
+      playlist_enabled: form.playlist_enabled,
+      ...(form.portal_rules ? { portal_rules: regras } : {}),
     }
     setSaving(true)
     const { error: err } = form.id
@@ -326,6 +374,53 @@ function UnidadesTab() {
               <div>
                 <label className="block text-xs text-muted mb-1">Sinal padrão (%)</label>
                 <input value={form.default_deposit_percent} onChange={(e) => setForm({ ...form, default_deposit_percent: e.target.value })} inputMode="decimal" placeholder="Ex: 30" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div className="sm:col-span-2 border-t border-line pt-4 mt-1">
+                <p className="font-semibold text-sm">Portal do cliente</p>
+                <p className="text-xs text-muted">Regras que o cliente vê no portal da festa desta unidade.</p>
+              </div>
+              {CAMPOS_PORTAL.map(([k, rot, ajuda]) => (
+                <div key={k}>
+                  <label className="block text-xs text-muted mb-1">{rot}</label>
+                  <input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} inputMode="numeric" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                  {ajuda && <p className="text-[11px] text-muted mt-1">{ajuda}</p>}
+                </div>
+              ))}
+              <label className="sm:col-span-2 flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
+                <input type="checkbox" checked={form.playlist_enabled} onChange={(e) => setForm({ ...form, playlist_enabled: e.target.checked })} className="mt-0.5" />
+                <span>
+                  Cliente pode enviar playlist do Spotify
+                  <span className="block text-xs text-muted">Mostra a opção "Música da festa" no portal: equipe escolhe ou o cliente envia a playlist.</span>
+                </span>
+              </label>
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted">Regras da casa — use {'{{convidados}}'} e {'{{idade}}'} para o limite da festa e a idade acima.</p>
+                </div>
+                {form.portal_rules === null ? (
+                  <p className="text-xs text-muted bg-paper rounded-lg px-3 py-2">A unidade nova recebe as regras padrão ao salvar. Depois é só editar aqui.</p>
+                ) : (
+                  <>
+                    {form.portal_rules.map((r, i) => {
+                      const regras = form.portal_rules as Regra[]
+                      const mudar = (nova: Regra[]) => setForm({ ...form, portal_rules: nova })
+                      return (
+                        <div key={i} className="border border-line rounded-lg p-2.5 space-y-1.5">
+                          <div className="flex gap-2">
+                            <input value={r.titulo} onChange={(e) => mudar(regras.map((x, j) => (j === i ? { ...x, titulo: e.target.value } : x)))} placeholder="Título" className="flex-1 min-w-0 border border-line rounded-lg px-2.5 py-1.5 text-sm font-medium" />
+                            <button type="button" disabled={i === 0} onClick={() => mudar(regras.map((x, j) => (j === i - 1 ? regras[i] : j === i ? regras[i - 1] : x)))} className="text-muted hover:text-ink disabled:opacity-30" aria-label="Subir"><ArrowUp className="w-4 h-4" /></button>
+                            <button type="button" disabled={i === regras.length - 1} onClick={() => mudar(regras.map((x, j) => (j === i + 1 ? regras[i] : j === i ? regras[i + 1] : x)))} className="text-muted hover:text-ink disabled:opacity-30" aria-label="Descer"><ArrowDown className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => mudar(regras.filter((_, j) => j !== i))} className="text-muted hover:text-danger" aria-label="Apagar regra"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                          <textarea value={r.texto} onChange={(e) => mudar(regras.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} rows={2} placeholder="Texto da regra" className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm" />
+                        </div>
+                      )
+                    })}
+                    <button type="button" onClick={() => setForm({ ...form, portal_rules: [...(form.portal_rules ?? []), { titulo: '', texto: '' }] })} className="text-sm text-purple font-medium flex items-center gap-1">
+                      <Plus className="w-4 h-4" /> Adicionar regra
+                    </button>
+                  </>
+                )}
               </div>
               <div className="sm:col-span-2">
                 {!form.id && <p className="text-xs text-muted mb-2">A unidade nova já aparece no seletor de unidade, nos filtros e nos gráficos. Depois cadastre os pacotes e o contrato-base dela.</p>}

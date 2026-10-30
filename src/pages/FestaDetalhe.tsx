@@ -60,6 +60,7 @@ interface FestaDetalhada {
   id: string
   unitId: string
   unidadeNome: string
+  playlistHabilitada: boolean
   unidadeWhatsappGroupLink: string | null
   googleReviewLink: string | null
   cliente: string
@@ -647,7 +648,7 @@ export function FestaDetalhe() {
     setLoading(true)
     const { data, error } = await supabase
       .from('reservations')
-      .select('*, client:clients(name, phone), unit:units(name, staff_whatsapp_group_link, google_review_link), package:packages(name)')
+      .select('*, client:clients(name, phone), unit:units(name, staff_whatsapp_group_link, google_review_link, playlist_enabled), package:packages(name)')
       .eq('id', id)
       .maybeSingle()
 
@@ -661,6 +662,7 @@ export function FestaDetalhe() {
       id: data.id,
       unitId: data.unit_id,
       unidadeNome: data.unit?.name ?? '',
+      playlistHabilitada: !!data.unit?.playlist_enabled,
       unidadeWhatsappGroupLink: data.unit?.staff_whatsapp_group_link ?? null,
       googleReviewLink: data.unit?.google_review_link ?? null,
       cliente: data.client?.name ?? '—',
@@ -964,7 +966,7 @@ export function FestaDetalhe() {
             <ArrowDownAZ className="w-3.5 h-3.5" /> Ordem alfabética
           </button>
         </div>
-        {festa?.unidadeNome === 'Vila Operária' && (
+        {festa?.playlistHabilitada && (
           <div className="flex items-center justify-between gap-2 mb-3 border border-line rounded-lg px-3 py-2 flex-wrap">
             <p className="text-xs flex items-center gap-1.5">
               <Music className="w-3.5 h-3.5 text-[#1DB954]" />

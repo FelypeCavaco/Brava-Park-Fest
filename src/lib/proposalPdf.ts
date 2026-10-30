@@ -22,6 +22,9 @@ export interface ProposalPrintData {
   total: number
   unidadeNome: string
   unidadeEndereco: string | null
+  // Marca da empresa (Configurações → Empresa). "estiloBrava" = logo, urso
+  // Theo e rodapé "BRAVA PARK Fest" como sempre foi na Brava.
+  marca: { nome: string; logoUrl: string | null; frase: string | null; estiloBrava: boolean }
 }
 
 const COLORS = {
@@ -44,6 +47,7 @@ function currency(v: number) {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous' // logo enviada fica no Storage (outro endereço)
     img.onload = () => resolve(img)
     img.onerror = reject
     img.src = src
@@ -116,7 +120,12 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   const marginX = 15
   const contentW = pageW - marginX * 2
 
-  const [logoImg, mascotImg] = await Promise.all([loadImage(logoUrl), loadImage(mascotUrl)])
+  const m = p.marca
+  // Logo: a da Brava (embutida), a enviada pela empresa ou, sem logo, as iniciais.
+  const [logoImg, mascotImg] = await Promise.all([
+    m.estiloBrava ? loadImage(logoUrl) : m.logoUrl ? loadImage(m.logoUrl).catch(() => null) : Promise.resolve(null),
+    m.estiloBrava ? loadImage(mascotUrl) : Promise.resolve(null),
+  ])
 
   // ---------- Header ----------
   const headerH = 56
@@ -131,7 +140,17 @@ export async function generateProposalPdf(p: ProposalPrintData) {
 
   // logo
   const logoSize = 26
-  doc.addImage(logoImg, 'PNG', marginX, 10, logoSize, logoSize)
+  if (logoImg) {
+    doc.addImage(logoImg, 'PNG', marginX, 10, logoSize, logoSize)
+  } else {
+    doc.setFillColor(...COLORS.white)
+    doc.circle(marginX + logoSize / 2, 10 + logoSize / 2, logoSize / 2, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.setTextColor(...COLORS.purple)
+    const ini = m.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase()).join('')
+    doc.text(ini, marginX + logoSize / 2, 10 + logoSize / 2 + 1.6, { align: 'center' })
+  }
 
   const textX = marginX + logoSize + 8
   doc.setTextColor(...COLORS.white)
@@ -147,18 +166,20 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.setTextColor(...COLORS.white)
-  doc.text('Aqui a diversão é garantida!', textX, 34)
+  if (m.frase) doc.text(m.frase.endsWith('!') || m.frase.endsWith('.') ? m.frase : `${m.frase}!`, textX, 34)
 
   doc.setFontSize(8.5)
   doc.setTextColor(213, 197, 240)
-  const unitLine = `${p.unidadeNome || 'Brava Park Fest'}${p.unidadeEndereco ? ' - ' + p.unidadeEndereco : ''}`
+  const unitLine = `${p.unidadeNome || m.nome}${p.unidadeEndereco ? ' - ' + p.unidadeEndereco : ''}`
   const unitLines = doc.splitTextToSize(unitLine, 105)
   doc.text(unitLines, textX, 41)
 
-  // mascote, sobrepondo a borda de baixo do cabeçalho
-  const mascotW = 48
-  const mascotH = mascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
-  doc.addImage(mascotImg, 'PNG', pageW - mascotW - 4, headerH - mascotH + 6, mascotW, mascotH)
+  // mascote, sobrepondo a borda de baixo do cabeçalho (só no estilo da Brava)
+  if (mascotImg) {
+    const mascotW = 48
+    const mascotH = mascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
+    doc.addImage(mascotImg, 'PNG', pageW - mascotW - 4, headerH - mascotH + 6, mascotW, mascotH)
+  }
 
   // ---------- Meta pills ----------
   let y = headerH + 16
@@ -301,12 +322,14 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   const footerH = 38
   doc.setFillColor(...COLORS.purpleLight)
   doc.rect(0, y, pageW, footerH, 'F')
-  const footMascotW = 34
-  const footMascotH = footMascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
-  // espelhado (largura negativa = flip horizontal)
-  doc.addImage(mascotImg, 'PNG', marginX + footMascotW, y + (footerH - footMascotH) / 2, -footMascotW, footMascotH)
+  const footMascotW = mascotImg ? 34 : 0
+  if (mascotImg) {
+    const footMascotH = footMascotW * (mascotImg.naturalHeight / mascotImg.naturalWidth)
+    // espelhado (largura negativa = flip horizontal)
+    doc.addImage(mascotImg, 'PNG', marginX + footMascotW, y + (footerH - footMascotH) / 2, -footMascotW, footMascotH)
+  }
 
-  const footTextX = marginX + footMascotW + 8
+  const footTextX = marginX + footMascotW + (mascotImg ? 8 : 4)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9.5)
   doc.setTextColor(...COLORS.muted)
@@ -315,11 +338,15 @@ export async function generateProposalPdf(p: ProposalPrintData) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
   doc.setTextColor(...COLORS.purple)
-  doc.text('BRAVA PARK', footTextX, y + 20)
-  const brandW = doc.getTextWidth('BRAVA PARK ')
-  doc.setFont('helvetica', 'bolditalic')
-  doc.setTextColor(...COLORS.green)
-  doc.text('Fest', footTextX + brandW, y + 20)
+  if (m.estiloBrava) {
+    doc.text('BRAVA PARK', footTextX, y + 20)
+    const brandW = doc.getTextWidth('BRAVA PARK ')
+    doc.setFont('helvetica', 'bolditalic')
+    doc.setTextColor(...COLORS.green)
+    doc.text('Fest', footTextX + brandW, y + 20)
+  } else {
+    doc.text(m.nome, footTextX, y + 20)
+  }
 
   drawEmoji(doc, '🎉', footTextX, y + 23, 5.5)
   doc.setFont('helvetica', 'normal')

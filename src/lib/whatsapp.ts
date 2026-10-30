@@ -11,10 +11,10 @@ export const MESSAGE_TEMPLATES = {
   pedir_avaliacao: 'Olá, {{cliente}}! Esperamos que a festa tenha sido incrível! Pode nos contar como foi sua experiência? Se puder, deixe também uma avaliação no Google, é rapidinho: {{link}}',
   avaliacao_pos_festa: 'Olá, {{cliente}}! Esperamos que a festa de ontem tenha sido inesquecível! 🎉 Poderia nos contar como foi sua experiência? Se puder, deixe também uma avaliação no Google, é rapidinho: {{link}}',
   reativacao: 'Olá, {{cliente}}! Faz um tempinho que vocês fizeram uma festa aqui com a gente. Já pensaram em comemorar o próximo aniversário conosco? Temos condições especiais para quem já é cliente!',
-  lista_convidados: 'Olá, {{cliente}}! Este é o portal da sua festa na Brava Park Fest: por ele você escolhe o cardápio, envia a lista de convidados, acompanha os pagamentos e fala com a equipe. É só abrir: {{link}}',
+  lista_convidados: 'Olá, {{cliente}}! Este é o portal da sua festa na {{empresa}}: por ele você escolhe o cardápio, envia a lista de convidados, acompanha os pagamentos e fala com a equipe. É só abrir: {{link}}',
   vaga_disponivel: 'Olá, {{cliente}}! Surgiu uma vaga disponível na unidade {{unidade}} pertinho da data que você tinha interesse ({{data}}). Quer aproveitar? É só responder aqui!',
   pedidos:
-    'Olá, {{cliente}}!\n\nSua festa está chegando e já estamos a todo vapor por aqui para deixar tudo perfeito para o(a) {{aniversariante}}!\n\nPara a gente caprichar no cardápio do dia {{data}}, preciso que você escolha:\n\n- Os pratos da festa\n- O sabor do bolo\n\nVou te enviar o cardápio logo em seguida, com todas as opções. Depois é só me responder por aqui mesmo, assim:\nPratos: ...\nBolo: ...\n\nUm abraço,\nEquipe Brava Park Fest',
+    'Olá, {{cliente}}!\n\nSua festa está chegando e já estamos a todo vapor por aqui para deixar tudo perfeito para o(a) {{aniversariante}}!\n\nPara a gente caprichar no cardápio do dia {{data}}, preciso que você escolha:\n\n- Os pratos da festa\n- O sabor do bolo\n\nVou te enviar o cardápio logo em seguida, com todas as opções. Depois é só me responder por aqui mesmo, assim:\nPratos: ...\nBolo: ...\n\nUm abraço,\nEquipe {{empresa}}',
   // Fica editável de verdade pela tela (tabela message_templates) — isto
   // aqui é só o texto de reserva, usado se a migration 035 ainda não rodou.
   confirmar_fornecedores:
@@ -42,11 +42,16 @@ export const MESSAGE_TEMPLATE_LABEL: Record<MessageTemplateKey, string> = {
   confirmar_fornecedores: 'Confirmar com fornecedores',
 }
 
-// WhatsApp da equipe (o mesmo número atende as duas unidades).
-export const TEAM_WHATSAPP = '47992261550'
+// Nome da empresa para o {{empresa}} das mensagens (definido pela marca
+// carregada em CompanyContext).
+let empresaPadrao = ''
+export function setEmpresaMensagens(nome: string) {
+  empresaPadrao = nome
+}
 
 export function buildMessage(template: string, vars: Record<string, string>) {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '')
+  const todas: Record<string, string> = { empresa: empresaPadrao, ...vars }
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => todas[key] ?? '')
 }
 
 export function openWhatsApp(phone: string | null, message: string) {

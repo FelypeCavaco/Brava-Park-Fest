@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { useCompany } from '../lib/CompanyContext'
 import { format, parseISO } from 'date-fns'
 import { FileDown, FileText, Pencil, Trash2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -58,6 +59,7 @@ async function saveContractToDocuments(reservationId: string, cliente: string, b
 }
 
 export function Contracts() {
+  const { brand } = useCompany()
   const { scheduleDelete } = useUndo()
   const [contracts, setContracts] = useState<ContractRow[]>([])
   const [units, setUnits] = useState<Unit[]>([])
@@ -137,6 +139,7 @@ export function Contracts() {
       unit: row.unit,
       pkg: row.pkg,
       firstPaymentAmount: row.firstPaymentAmount,
+      empresaNome: brand.name,
     })
     const text = renderContractTemplate(template.body, variables)
     const blob = await openContractPrintWindow(row.cliente, text)

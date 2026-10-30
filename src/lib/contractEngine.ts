@@ -29,12 +29,14 @@ interface ContractVars {
   unit: Unit
   pkg: Package | null
   firstPaymentAmount: number | null // primeiro pagamento registrado, ou null se nenhum ainda
+  empresaNome?: string // nome da empresa (Configurações → Empresa), usado em textos do contrato
 }
 
 // Monta o dicionário de variáveis {{...}} -> valor, a partir dos dados
 // reais da reserva/cliente/unidade/pacote (ver seção 3.2 da especificação).
 export function buildContractVariables(vars: ContractVars): Record<string, string> {
   const { reservation: r, client, unit, pkg, firstPaymentAmount } = vars
+  const empresa = vars.empresaNome?.trim() || 'A CONTRATADA'
 
   return {
     contratante_nome: client.name ?? '',
@@ -42,6 +44,7 @@ export function buildContractVariables(vars: ContractVars): Record<string, strin
     contratante_telefone: client.phone ?? '',
     contratante_endereco: buildClientAddress(client),
 
+    empresa_nome: empresa,
     contratada_razao_social: unit.legal_name ?? '',
     contratada_endereco: unit.full_address ?? '',
     contratada_cnpj: unit.cnpj ?? '',
@@ -64,7 +67,7 @@ export function buildContractVariables(vars: ContractVars): Record<string, strin
     })(),
     convidados_cortesia_paragrafo:
       r.courtesy_guests && r.courtesy_guests > 0
-        ? `Convidados de cortesia: O Brava Park Fest concederá, como cortesia, ${guestPhrase(r.courtesy_guests)} convidados adicionais gratuitos, sem qualquer custo extra ao CONTRATANTE, conforme as condições estabelecidas nesse contrato.`
+        ? `Convidados de cortesia: ${empresa === 'A CONTRATADA' ? empresa : `O ${empresa}`} concederá, como cortesia, ${guestPhrase(r.courtesy_guests)} convidados adicionais gratuitos, sem qualquer custo extra ao CONTRATANTE, conforme as condições estabelecidas nesse contrato.`
         : '',
 
     aniversariante_nome: r.child_name ?? '',

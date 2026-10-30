@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react'
 import { supabase } from './supabaseClient'
+import { setEmpresaMensagens } from './whatsapp'
 
 // Marca da empresa (nome, logo, WhatsApp da equipe, mascote, tema do portal),
 // editável em Configurações. Lida por uma função pública porque a tela de
@@ -71,6 +72,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (brand.name) document.title = brand.name
+    setEmpresaMensagens(brand.name)
   }, [brand.name])
 
   return <CompanyContext.Provider value={{ brand, brandLoading, reloadBrand, isPlatformAdmin }}>{children}</CompanyContext.Provider>

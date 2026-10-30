@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useCompany } from '../lib/CompanyContext'
 import { format, parseISO } from 'date-fns'
 import { FileDown, Trash2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -42,6 +43,8 @@ function currency(v: number) {
 }
 
 export function Proposals() {
+  const { brand } = useCompany()
+  const marcaPdf = { nome: brand.name, logoUrl: brand.logoUrl, frase: brand.tagline, estiloBrava: brand.mascotEnabled }
   const { selectedUnit, unitDbIds } = useUnit()
   const { scheduleDelete } = useUndo()
   const [proposals, setProposals] = useState<Proposal[]>([])
@@ -190,6 +193,7 @@ export function Proposals() {
       pacotePreco: pacotePrecoEfetivo,
       unidadeNome: unitRow?.name ?? '',
       unidadeEndereco: unitRow?.full_address ?? null,
+      marca: marcaPdf,
     })
 
     setCliente('')
@@ -211,6 +215,7 @@ export function Proposals() {
       total: p.total,
       unidadeNome: unitRow?.name ?? '',
       unidadeEndereco: unitRow?.full_address ?? null,
+      marca: marcaPdf,
     })
   }
 

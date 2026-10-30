@@ -13,6 +13,7 @@ import { FestasPorMesChart } from '../components/FestasPorMesChart'
 import { useAuth } from '../lib/AuthContext'
 import { BrandLogo } from '../components/BrandLogo'
 import { useCompany } from '../lib/CompanyContext'
+import { loadLegacyMenuFields } from '../lib/menuSections'
 import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { describeAudit, type AuditEntry } from '../lib/auditLabels'
@@ -260,6 +261,7 @@ export function Dashboard() {
     )
 
     const in14days = format(addDays(new Date(), 14), 'yyyy-MM-dd')
+    const camposCardapio = await loadLegacyMenuFields()
     const { data: proximasFestas } = await supabase
       .from('reservations')
       .select('id, event_date, theme, child_name, child_age, hot_dish_flavors, cake_flavor, unit_id, client:clients(name)')
@@ -276,8 +278,8 @@ export function Dashboard() {
           if (!r.theme) faltando.push('tema')
           if (!r.child_name) faltando.push('nome do aniversariante')
           if (r.child_age == null) faltando.push('idade')
-          if (!r.hot_dish_flavors) faltando.push('sabor do prato quente')
-          if (!r.cake_flavor) faltando.push('sabor do bolo')
+          if (camposCardapio.has('hot_dish_flavors') && !r.hot_dish_flavors) faltando.push('sabor do prato quente')
+          if (camposCardapio.has('cake_flavor') && !r.cake_flavor) faltando.push('sabor do bolo')
           return {
             id: r.id,
             cliente: r.client?.name ?? '—',

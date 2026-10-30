@@ -160,6 +160,9 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
 
     // Prazos: cardápio (7 dias antes), convidados e saldo (1 dia antes).
     const fs = ((festas ?? []) as any[]).filter((f) => !unitFilter || f.unit_id === unitFilter)
+    // Cardápio só cobra prazo em unidade que tem seções de cardápio.
+    const { data: secoesCardapio } = await supabase.from('menu_sections').select('unit_id').eq('active', true)
+    const temCardapio = (unitId: string) => (secoesCardapio ?? []).some((sc: any) => !sc.unit_id || sc.unit_id === unitId)
     const tokens = fs.flatMap((f) => (Array.isArray(f.guest_list_pages) ? f.guest_list_pages : f.guest_list_pages ? [f.guest_list_pages] : []).map((g: any) => g.token))
     const guestCount: Record<string, number> = {}
     if (tokens.length > 0) {
@@ -181,7 +184,7 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
       const prazoCardapio = addDays(f.event_date, -diasCardapio)
       const prazoLista = addDays(f.event_date, -diasLista)
       const prazoSaldo = addDays(f.event_date, -diasSaldo)
-      if (!f.menu_confirmed_at && hoje >= prazoCardapio) {
+      if (temCardapio(f.unit_id) && !f.menu_confirmed_at && hoje >= prazoCardapio) {
         out.push({
           key: `${f.id}-cardapio`, reservationId: f.id, cliente: nome, phone: f.client?.phone ?? null, festa: festaLabel, tipo: 'cardapio',
           venceHoje: hoje === prazoCardapio,

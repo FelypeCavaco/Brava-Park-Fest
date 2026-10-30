@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { loadLegacyMenuFields } from '../lib/menuSections'
 import { format, parseISO } from 'date-fns'
 import { FileDown } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -52,6 +53,8 @@ export function BirthdayReport() {
   const [from, setFrom] = useState(todayIso())
   const [to, setTo] = useState(addDaysIso(30))
   const [rows, setRows] = useState<BirthdayRow[]>([])
+  // true = a empresa não usa os campos de prato quente/bolo: mostra o resumo do cardápio.
+  const [cardapioGenerico, setCardapioGenerico] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,6 +80,14 @@ export function BirthdayReport() {
       return
     }
 
+    const campos = await loadLegacyMenuFields()
+    const generico = !campos.has('hot_dish_flavors') && !campos.has('cake_flavor')
+    const resumoPorFesta: Record<string, string> = {}
+    if (generico && (data ?? []).length > 0) {
+      const { data: rs } = await supabase.rpc('festas_menu_resumo', { p_reservations: (data ?? []).map((r: any) => r.id) })
+      for (const x of (rs ?? []) as { reservation_id: string; resumo: string | null }[]) if (x.resumo) resumoPorFesta[x.reservation_id] = x.resumo
+    }
+    setCardapioGenerico(generico)
     setRows(
       (data ?? []).map((r: any) => {
         const startTime = String(r.start_time).slice(0, 5)
@@ -92,8 +103,8 @@ export function BirthdayReport() {
           idade: r.child_age != null ? `${r.child_age} anos` : '—',
           convidados: `${r.guest_count ?? 0}${r.courtesy_guests ? ` + ${r.courtesy_guests} cortesia` : ''}`,
           tema: r.theme ?? '—',
-          pratoQuente: r.hot_dish_flavors ?? '—',
-          bolo: r.cake_flavor ? (r.cake_dough ? `${r.cake_flavor} (massa ${String(r.cake_dough).toLowerCase()})` : r.cake_flavor) : '—',
+          pratoQuente: generico ? resumoPorFesta[r.id] ?? '—' : r.hot_dish_flavors ?? '—',
+          bolo: generico ? '' : r.cake_flavor ? (r.cake_dough ? `${r.cake_flavor} (massa ${String(r.cake_dough).toLowerCase()})` : r.cake_flavor) : '—',
         }
       }),
     )
@@ -120,8 +131,7 @@ export function BirthdayReport() {
               <th>Vai fazer</th>
               <th>Convidados</th>
               <th>Tema</th>
-              <th>Sabores do prato quente</th>
-              <th>Sabor do bolo</th>
+              ${cardapioGenerico ? '<th>Cardápio</th>' : '<th>Sabores do prato quente</th><th>Sabor do bolo</th>'}
             </tr>
           </thead>
           <tbody>
@@ -138,7 +148,7 @@ export function BirthdayReport() {
                     <td>${r.convidados}</td>
                     <td>${r.tema}</td>
                     <td>${r.pratoQuente}</td>
-                    <td>${r.bolo}</td>
+                    ${cardapioGenerico ? '' : `<td>${r.bolo}</td>`}
                   </tr>`,
               )
               .join('')}
@@ -207,8 +217,8 @@ export function BirthdayReport() {
                 <th className="pb-3 font-medium">Vai fazer</th>
                 <th className="pb-3 font-medium">Convidados</th>
                 <th className="pb-3 font-medium">Tema</th>
-                <th className="pb-3 font-medium">Prato quente</th>
-                <th className="pb-3 font-medium">Bolo</th>
+                <th className="pb-3 font-medium">{cardapioGenerico ? 'Cardápio' : 'Prato quente'}</th>
+                {!cardapioGenerico && <th className="pb-3 font-medium">Bolo</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -223,7 +233,7 @@ export function BirthdayReport() {
                   <td className="py-2.5">{r.convidados}</td>
                   <td className="py-2.5">{r.tema}</td>
                   <td className="py-2.5">{r.pratoQuente}</td>
-                  <td className="py-2.5">{r.bolo}</td>
+                  {!cardapioGenerico && <td className="py-2.5">{r.bolo}</td>}
                 </tr>
               ))}
             </tbody>

@@ -41,6 +41,9 @@ const ENTITY_LABEL: Record<string, string> = {
   suppliers: 'um fornecedor',
   visits: 'uma visita',
   agenda_items: 'um compromisso da Agenda',
+  menu_sections: 'uma seção do cardápio',
+  units: 'uma unidade',
+  companies: 'os dados da empresa',
   proposals: 'uma proposta',
   waitlist: 'a lista de espera',
   unit_goals: 'a meta da unidade',
@@ -69,6 +72,7 @@ const FIELD_LABEL: Record<string, string> = {
   child_name: 'aniversariante',
   child_age: 'idade',
   hot_dish_flavors: 'pratos quentes',
+  menu_choices: 'cardápio escolhido',
   cake_flavor: 'sabor do bolo',
   discount_type: 'tipo de desconto',
   discount_value: 'desconto',
@@ -162,6 +166,9 @@ function formatValue(field: string, value: unknown): string {
   }
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value.split('-').reverse().join('/')
   if (typeof value === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(value)) return value.slice(0, 5)
+  // Listas e escolhas (ex.: cardápio escolhido, regras do portal): só os textos.
+  if (Array.isArray(value)) return value.map((v) => (typeof v === 'object' && v ? Object.values(v).join(': ') : String(v))).join(', ') || '—'
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).map((v) => (Array.isArray(v) ? v.join(', ') : String(v))).filter(Boolean).join(' · ') || '—'
   return String(value)
 }
 

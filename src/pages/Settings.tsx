@@ -36,6 +36,17 @@ interface UnitRow {
   hot_dish_after_parabens_min?: number
   cake_after_parabens_min?: number
   portal_rules?: Regra[]
+  schedule_enabled?: boolean
+  schedule_items?: ItemRoteiro[]
+}
+
+// Item do roteiro: "X min depois do início" ou "X min antes do fim".
+interface ItemRoteiro {
+  titulo: string
+  detalhe: string
+  ref: 'inicio' | 'fim'
+  minutos: number | string
+  secao: string | null
 }
 
 interface Regra {
@@ -49,19 +60,15 @@ const CAMPOS_PORTAL: [PortalNum, string, string, number, number][] = [
   ['menu_deadline_days', 'Prazo do cardápio (dias antes)', 'Depois disso o cliente ainda envia, mas fica marcado "após o prazo".', 0, 60],
   ['guest_deadline_days', 'Prazo da lista de convidados (dias antes)', 'Depois disso a lista fecha no portal.', 0, 60],
   ['payment_deadline_days', 'Prazo do saldo (dias antes)', 'Aparece para o cliente e nos avisos do Painel.', 0, 60],
-  ['parabens_after_min', 'Parabéns (minutos após o início)', 'Ex.: 90 = 1h30 depois do início.', 0, 720],
-  ['hot_dish_after_parabens_min', 'Pratos quentes (minutos após o parabéns)', 'Só aparece em festa com pratos quentes.', 0, 240],
-  ['cake_after_parabens_min', 'Bolo (minutos após o parabéns)', '', 0, 240],
 ]
-type PortalNum = 'guest_min_age' | 'menu_deadline_days' | 'guest_deadline_days' | 'payment_deadline_days' | 'parabens_after_min' | 'hot_dish_after_parabens_min' | 'cake_after_parabens_min'
-const PORTAL_PADRAO: Record<PortalNum, number> = {
-  guest_min_age: 5, menu_deadline_days: 7, guest_deadline_days: 1, payment_deadline_days: 1,
-  parabens_after_min: 90, hot_dish_after_parabens_min: 10, cake_after_parabens_min: 30,
-}
+type PortalNum = 'guest_min_age' | 'menu_deadline_days' | 'guest_deadline_days' | 'payment_deadline_days'
+const PORTAL_PADRAO: Record<PortalNum, number> = { guest_min_age: 5, menu_deadline_days: 7, guest_deadline_days: 1, payment_deadline_days: 1 }
 
-type UnitForm = Record<Exclude<keyof UnitRow, 'id' | 'sort' | 'extra_hour_price' | 'default_deposit_percent' | PortalNum | 'playlist_enabled' | 'portal_rules'>, string> & Record<PortalNum, string> & {
+type UnitForm = Record<Exclude<keyof UnitRow, 'id' | 'sort' | 'extra_hour_price' | 'default_deposit_percent' | PortalNum | 'playlist_enabled' | 'portal_rules' | 'schedule_enabled' | 'schedule_items' | 'parabens_after_min' | 'hot_dish_after_parabens_min' | 'cake_after_parabens_min'>, string> & Record<PortalNum, string> & {
   playlist_enabled: boolean
   portal_rules: Regra[] | null
+  schedule_enabled: boolean
+  schedule_items: ItemRoteiro[]
   id: string | null
   sort: string
   extra_hour_price: string
@@ -99,6 +106,8 @@ function toForm(u: UnitRow | null, nextSort: number): UnitForm {
     playlist_enabled: u?.playlist_enabled ?? false,
     // null = unidade nova: o banco preenche com as regras padrão.
     portal_rules: u?.portal_rules ? u.portal_rules.map((r) => ({ ...r })) : null,
+    schedule_enabled: u?.schedule_enabled ?? false,
+    schedule_items: (u?.schedule_items ?? []).map((it) => ({ ...it, detalhe: it.detalhe ?? '', minutos: String(it.minutos) })),
   }
 }
 
@@ -240,6 +249,10 @@ function EmpresaTab() {
 
 function UnidadesTab() {
   const { reloadUnits } = useUnit()
+  const [secoes, setSecoes] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    supabase.from('menu_sections').select('id, name').eq('active', true).order('sort').then(({ data }) => setSecoes(data ?? []))
+  }, [])
   const [rows, setRows] = useState<UnitRow[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<UnitForm | null>(null)
@@ -272,6 +285,15 @@ function UnidadesTab() {
     }
     const regras = (form.portal_rules ?? []).map((r) => ({ titulo: r.titulo.trim(), texto: r.texto.trim() })).filter((r) => r.titulo || r.texto)
     if (regras.some((r) => !r.titulo || !r.texto)) return setError('Cada regra do portal precisa de título e texto.')
+    const roteiro: ItemRoteiro[] = []
+    for (const it of form.schedule_items) {
+      if (!it.titulo.trim() && !String(it.minutos).trim()) continue
+      const min = Number.parseInt(String(it.minutos), 10)
+      if (!it.titulo.trim()) return setError('Cada item do roteiro precisa de um nome.')
+      if (!Number.isFinite(min) || min < 0 || min > 720 || String(min) !== String(it.minutos).trim()) return setError(`Roteiro, "${it.titulo}": os minutos precisam ser um número inteiro de 0 a 720.`)
+      roteiro.push({ titulo: it.titulo.trim(), detalhe: it.detalhe.trim(), ref: it.ref, minutos: min, secao: it.secao || null })
+    }
+    if (form.schedule_enabled && roteiro.length === 0) return setError('Para mostrar a programação no portal, adicione pelo menos um item ao roteiro.')
     const t = (s: string) => s.trim() || null
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
@@ -289,6 +311,8 @@ function UnidadesTab() {
       staff_whatsapp_group_link: t(form.staff_whatsapp_group_link),
       ...nums,
       playlist_enabled: form.playlist_enabled,
+      schedule_enabled: form.schedule_enabled,
+      schedule_items: roteiro,
       ...(form.portal_rules ? { portal_rules: regras } : {}),
     }
     setSaving(true)
@@ -386,6 +410,45 @@ function UnidadesTab() {
                   {ajuda && <p className="text-[11px] text-muted mt-1">{ajuda}</p>}
                 </div>
               ))}
+              <div className="sm:col-span-2 border border-line rounded-lg p-3 space-y-2">
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={form.schedule_enabled} onChange={(e) => setForm({ ...form, schedule_enabled: e.target.checked })} className="mt-0.5" />
+                  <span>
+                    Mostrar a programação sugerida no portal
+                    <span className="block text-xs text-muted">Início e encerramento entram sozinhos, pelo horário de cada festa. Os itens aparecem em ordem de horário.</span>
+                  </span>
+                </label>
+                {form.schedule_items.map((it, i) => {
+                  const itens = form.schedule_items
+                  const mudar = (novo: Partial<ItemRoteiro>) => setForm({ ...form, schedule_items: itens.map((x, j) => (j === i ? { ...x, ...novo } : x)) })
+                  return (
+                    <div key={i} className="bg-paper rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex gap-2">
+                        <input value={it.titulo} onChange={(e) => mudar({ titulo: e.target.value })} placeholder="Ex: Parabéns, Show de mágica" className="flex-1 min-w-0 border border-line rounded-lg px-2.5 py-1.5 text-sm font-medium bg-surface" />
+                        <button type="button" onClick={() => setForm({ ...form, schedule_items: itens.filter((_, j) => j !== i) })} className="text-muted hover:text-danger" aria-label="Apagar item"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <input value={String(it.minutos)} onChange={(e) => mudar({ minutos: e.target.value })} inputMode="numeric" className="w-16 border border-line rounded-lg px-2 py-1.5 text-sm bg-surface" aria-label="Minutos" />
+                        <span>minutos</span>
+                        <select value={it.ref} onChange={(e) => mudar({ ref: e.target.value as 'inicio' | 'fim' })} className="border border-line rounded-lg px-2 py-1.5 text-sm bg-surface">
+                          <option value="inicio">depois do início</option>
+                          <option value="fim">antes do fim</option>
+                        </select>
+                      </div>
+                      <input value={it.detalhe} onChange={(e) => mudar({ detalhe: e.target.value })} placeholder="Descrição (opcional). Ex: Servido logo após o parabéns." className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm bg-surface" />
+                      {secoes.length > 0 && (
+                        <select value={it.secao ?? ''} onChange={(e) => mudar({ secao: e.target.value || null })} className="w-full border border-line rounded-lg px-2 py-1.5 text-xs bg-surface">
+                          <option value="">Aparece em todas as festas</option>
+                          {secoes.map((sc) => <option key={sc.id} value={sc.id}>Só se a festa tiver "{sc.name}" no cardápio</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )
+                })}
+                <button type="button" onClick={() => setForm({ ...form, schedule_items: [...form.schedule_items, { titulo: '', detalhe: '', ref: 'inicio', minutos: '', secao: null }] })} className="text-sm text-purple font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Adicionar item ao roteiro
+                </button>
+              </div>
               <label className="sm:col-span-2 flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
                 <input type="checkbox" checked={form.playlist_enabled} onChange={(e) => setForm({ ...form, playlist_enabled: e.target.checked })} className="mt-0.5" />
                 <span>

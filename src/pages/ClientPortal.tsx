@@ -13,7 +13,6 @@ import theo from '../assets/theo-vermelho.png'
 // Portal do cliente: link sem login (o token da festa). Tudo o que o cliente
 // faz aqui grava direto na festa e aparece para a equipe no Painel.
 
-const OUTRO_SABOR = 'Outro sabor (combinar com a equipe)'
 
 // Cores do portal por tema da empresa (Configurações). "mario" é o visual
 // da Brava (azul, vermelho e amarelo); "padrao" usa as cores do sistema de
@@ -93,6 +92,9 @@ interface PortalData {
   roteiro?: { parabens: number; pratos: number; bolo: number }
   regras?: { titulo: string; texto: string }[]
   empresa?: { nome: string; logo_url: string | null; whatsapp: string | null; tema: 'mario' | 'padrao' } | null
+  roteiro_ligado?: boolean
+  roteiro_itens?: ItemRoteiro[]
+  cardapio?: { secoes: SecaoCardapio[]; escolhas: Record<string, string[]> }
   endereco: string | null
   pix: string | null
   google_review_link: string | null
@@ -123,6 +125,29 @@ interface PortalData {
   historico: { em: string; texto: string }[]
   avaliou: boolean
   menu: { pratos: string[]; massas: string[]; sabores: string[] }
+}
+
+// Seção do cardápio (Pacotes → Cardápio do portal): quantas escolhas a
+// festa faz já vem calculada (ex.: pratos quentes pelo pacote).
+interface SecaoCardapio {
+  id: string
+  nome: string
+  ajuda: string | null
+  modo: 'uma' | 'varias' | 'pacote'
+  quantidade: number
+  outro: boolean
+  outro_rotulo: string
+  opcoes: string[]
+}
+
+// Item do roteiro (Configurações → Unidades): X min depois do início ou
+// antes do fim; `secao` = só aparece se a festa escolhe algo nessa seção.
+interface ItemRoteiro {
+  titulo: string
+  detalhe: string | null
+  ref: 'inicio' | 'fim'
+  minutos: number
+  secao: string | null
 }
 
 type Tab = 'inicio' | 'cardapio' | 'convidados' | 'pagamento' | 'mais' | 'musica' | 'historico' | 'contrato' | 'programacao' | 'regras' | 'chegar' | 'equipe' | 'avaliacao'
@@ -193,9 +218,7 @@ export function ClientPortal() {
   const [busy, setBusy] = useState(false)
 
   // cardápio
-  const [pratos, setPratos] = useState<string[]>([])
-  const [massa, setMassa] = useState('')
-  const [sabor, setSabor] = useState('')
+  const [escolhas, setEscolhas] = useState<Record<string, string[]>>({})
   // convidados
   const [novoNome, setNovoNome] = useState('')
   const [colar, setColar] = useState('')
@@ -234,7 +257,7 @@ export function ClientPortal() {
     if (import.meta.env.DEV) {
       const q = new URLSearchParams(window.location.search)
       if (q.get('demo')) {
-        Object.assign(p, { cliente: 'Mariana', cliente_nome: 'Mariana Souza', crianca: 'Alice', idade: 6, tema: 'Jardim encantado', historico: [], mensagens: [] })
+        Object.assign(p, { cliente: 'Mariana', cliente_nome: 'Mariana Souza', crianca: 'Sofia', idade: 6, tema: 'Jardim encantado', historico: [], mensagens: [] })
         const nomes = ['Mariana Souza', 'Rafael Souza', 'Alice Souza', 'Beatriz Lima', 'Carlos Lima', 'Helena Costa', 'João Pedro Alves', 'Laura Mendes', 'Miguel Rocha', 'Sofia Martins', 'Davi Ferreira', 'Valentina Gomes']
         lista = lista.map((g, i) => ({ ...g, name: nomes[i % nomes.length] }))
       }
@@ -246,9 +269,7 @@ export function ClientPortal() {
     setData(p)
     setGuests(lista)
     if (first) {
-      setPratos(p.pratos ?? [])
-      setMassa(p.bolo_massa ?? '')
-      setSabor(p.bolo_sabor ?? '')
+      setEscolhas(p.cardapio?.escolhas ?? {})
       setMusica(p.musica)
       setPlaylist(p.playlist ?? '')
       setValorComprovante(p.saldo > 0 ? String(p.saldo.toFixed(2)).replace('.', ',') : '')
@@ -283,10 +304,11 @@ export function ClientPortal() {
     if (!data) return null
     const hoje = data.hoje
     const dias = Math.round((new Date(`${data.data}T00:00:00`).getTime() - new Date(`${hoje}T00:00:00`).getTime()) / 86400000)
-    const limitePratos = data.pratos_inclusos + data.pratos_adicionais
+    const secoes = data.cardapio?.secoes ?? []
     return {
       dias,
-      limitePratos,
+      secoes,
+      temCardapio: secoes.length > 0,
       cardapioAposPrazo: hoje > data.prazo_cardapio,
       cardapioFechado: hoje > data.data,
       convidadosFechado: hoje > data.prazo_convidados,
@@ -318,13 +340,13 @@ export function ClientPortal() {
   const isSub = !['inicio', 'cardapio', 'convidados', 'pagamento', 'mais'].includes(tab)
 
   const tarefas = [
-    {
-      titulo: 'Cardápio (pratos quentes e bolo)', tab: 'cardapio' as Tab, done: !!d.cardapio_confirmado_em,
+    ...(x.temCardapio ? [{
+      titulo: 'Cardápio', tab: 'cardapio' as Tab, done: !!d.cardapio_confirmado_em,
       detalhe: d.cardapio_confirmado_em
         ? d.cardapio_apos_prazo ? 'Enviado após o prazo' : 'Confirmado'
         : x.cardapioAposPrazo ? `Prazo encerrado em ${diaMes(d.prazo_cardapio)} — ainda dá para enviar` : `Escolher até ${diaMes(d.prazo_cardapio)}`,
       atrasado: !d.cardapio_confirmado_em && x.cardapioAposPrazo,
-    },
+    }] : []),
     {
       titulo: 'Lista de convidados', tab: 'convidados' as Tab, done: guests.length > 0,
       detalhe: `${guests.length} ${guests.length === 1 ? 'nome' : 'nomes'} · enviar até ${diaMes(d.prazo_convidados)}`,
@@ -347,7 +369,9 @@ export function ClientPortal() {
     ...(temPlaylist ? [{ titulo: 'Música da festa', detalhe: 'Equipe escolhe ou você envia sua playlist', tab: 'musica' as Tab }] : []),
     { titulo: 'Histórico de alterações', detalhe: 'Tudo o que foi feito neste portal', tab: 'historico' },
     { titulo: 'Contrato', detalhe: 'Ver resumo e baixar em PDF', tab: 'contrato' },
-    { titulo: 'Programação sugerida', detalhe: 'Parabéns, pratos quentes e bolo', tab: 'programacao' },
+    ...(d.roteiro_ligado && (d.roteiro_itens ?? []).length > 0
+      ? [{ titulo: 'Programação sugerida', detalhe: (d.roteiro_itens ?? []).slice(0, 3).map((it) => it.titulo).join(', '), tab: 'programacao' as Tab }]
+      : []),
     { titulo: 'Regras da casa', detalhe: 'Conforme o contrato', tab: 'regras' },
     { titulo: 'Como chegar', detalhe: 'Endereço e rota', tab: 'chegar' },
     { titulo: 'Falar com a equipe', detalhe: 'Conversar pelo WhatsApp', tab: 'equipe' },
@@ -364,24 +388,29 @@ export function ClientPortal() {
     setAviso('A festa já aconteceu. Para alterar o cardápio, fale com a equipe.')
   }
 
-  function togglePrato(nome: string) {
+  function escolher(sc: SecaoCardapio, nome: string) {
     if (x.cardapioFechado) return avisarPrazoCardapio()
-    setPratos((prev) => {
-      if (prev.includes(nome)) return prev.filter((p) => p !== nome)
-      if (x.limitePratos === 1) return [nome]
-      if (prev.length >= x.limitePratos) return prev
-      return [...prev, nome]
+    setEscolhas((prev) => {
+      const atual = prev[sc.id] ?? []
+      let nova: string[]
+      if (atual.includes(nome)) nova = sc.quantidade === 1 ? atual : atual.filter((p) => p !== nome)
+      else if (sc.quantidade === 1) nova = [nome]
+      else if (atual.length >= sc.quantidade) nova = atual
+      else nova = [...atual, nome]
+      return { ...prev, [sc.id]: nova }
     })
   }
 
-  const cardapioIncompleto = pratos.length !== x.limitePratos || !massa || !sabor
-  const cardapioMudou =
-    !d.cardapio_confirmado_em || massa !== (d.bolo_massa ?? '') || sabor !== (d.bolo_sabor ?? '') || [...pratos].sort().join('|') !== [...d.pratos].sort().join('|')
+  const faltando = x.secoes.find((sc) => (escolhas[sc.id] ?? []).length !== sc.quantidade)
+  const cardapioIncompleto = !!faltando
+  const mesmaLista = (a: string[] = [], b: string[] = []) => [...a].sort().join('|') === [...b].sort().join('|')
+  const cardapioMudou = !d.cardapio_confirmado_em || x.secoes.some((sc) => !mesmaLista(escolhas[sc.id], d.cardapio?.escolhas?.[sc.id]))
 
   async function salvarCardapio() {
     if (x.cardapioFechado || cardapioIncompleto) return
+    const envio = Object.fromEntries(x.secoes.map((sc) => [sc.id, escolhas[sc.id] ?? []]))
     await run(
-      () => supabase.rpc('portal_save_menu', { p_token: token, p_pratos: pratos, p_massa: massa, p_sabor: sabor }),
+      () => supabase.rpc('portal_save_menu_choices', { p_token: token, p_escolhas: envio }),
       x.cardapioAposPrazo ? 'Cardápio enviado! A equipe recebeu o aviso de que foi depois do prazo.' : 'Cardápio confirmado! A equipe já recebeu.',
     )
   }
@@ -476,19 +505,32 @@ export function ClientPortal() {
 
   const navPrincipal: { tab: Tab; label: string; icon: typeof Home }[] = [
     { tab: 'inicio', label: 'Início', icon: Home },
-    { tab: 'cardapio', label: 'Cardápio', icon: UtensilsCrossed },
+    ...(x.temCardapio ? [{ tab: 'cardapio' as Tab, label: 'Cardápio', icon: UtensilsCrossed }] : []),
     { tab: 'convidados', label: 'Convidados', icon: Users },
     { tab: 'pagamento', label: 'Pagamento', icon: CreditCard },
   ]
 
-  const rot = d.roteiro ?? { parabens: 90, pratos: 10, bolo: 30 }
+  // Roteiro da unidade: cada item "X min depois do início" ou "X min antes do
+  // fim", em ordem de horário, entre o início e o encerramento da festa.
+  const minutosDe = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
+  const duracaoFesta = ((minutosDe(d.fim) - minutosDe(d.inicio)) + 1440) % 1440 || 1440
+  const qtdSecao = (id: string) => x.secoes.find((sc) => sc.id === id)?.quantidade ?? 0
+  const itensRoteiro = (d.roteiro_itens ?? [])
+    .filter((it) => !it.secao || qtdSecao(it.secao) > 0)
+    .map((it) => ({ ...it, offset: it.ref === 'fim' ? duracaoFesta - it.minutos : it.minutos }))
+    .filter((it) => it.offset >= 0 && it.offset <= duracaoFesta)
+    .sort((a, b) => a.offset - b.offset)
   const horarios = [
     { hora: hora(d.inicio), titulo: 'Início da festa', detalhe: 'A recepção confere os nomes da lista na entrada.', cor: C.azul },
-    { hora: somaMinutos(d.inicio, rot.parabens), titulo: 'Parabéns', detalhe: rot.parabens ? `${duracao(rot.parabens)} após o início.` : 'Logo no início.', cor: C.vermelho },
-    ...(x.limitePratos > 0 ? [{ hora: somaMinutos(d.inicio, rot.parabens + rot.pratos), titulo: 'Pratos quentes', detalhe: rot.pratos <= 15 ? 'Servidos logo após o parabéns.' : `Servidos ${duracao(rot.pratos)} após o parabéns.`, cor: C.azul }] : []),
-    { hora: somaMinutos(d.inicio, rot.parabens + rot.bolo), titulo: 'Bolo', detalhe: rot.bolo ? `Servido ${duracao(rot.bolo)} após o parabéns.` : 'Servido logo após o parabéns.', cor: C.azul },
+    ...itensRoteiro.map((it, i) => ({
+      hora: somaMinutos(d.inicio, it.offset),
+      titulo: it.titulo,
+      detalhe: it.detalhe?.trim() || (it.ref === 'fim' ? `${duracao(it.minutos)} antes do encerramento.` : `${duracao(it.minutos)} após o início.`),
+      cor: i === 0 ? C.vermelho : C.azul,
+    })),
     { hora: hora(d.fim), titulo: 'Encerramento', detalhe: `Hora extra pode ser contratada com a equipe${d.hora_extra ? ` (${brl(d.hora_extra)} por hora)` : ''}.`, cor: C.azul },
   ]
+  const temRoteiro = !!d.roteiro_ligado && itensRoteiro.length > 0
 
   // Regras da casa (Configurações → Unidades). {{convidados}} e {{idade}}
   // viram o limite da festa e a idade que conta como convidado.
@@ -619,7 +661,7 @@ export function ClientPortal() {
           )}
 
           {/* ===== CARDÁPIO ===== */}
-          {tab === 'cardapio' && (
+          {tab === 'cardapio' && x.temCardapio && (
             <>
               <div className="rounded-xl px-3 py-2.5 flex gap-2.5 items-start text-sm" style={{ background: x.cardapioFechado ? '#F8E5E5' : x.cardapioAposPrazo ? '#FCF1DF' : C.navSel, color: x.cardapioFechado ? '#B23A3A' : x.cardapioAposPrazo ? '#6B4306' : C.marinho }}>
                 <Clock className="w-4 h-4 shrink-0 mt-0.5" />
@@ -633,67 +675,67 @@ export function ClientPortal() {
                 </span>
               </div>
 
-              <section>
-                <div className="flex justify-between items-baseline mb-2">
-                  <h2 className="font-display font-semibold text-lg">Pratos quentes</h2>
-                  <span className="text-sm font-semibold" style={{ color: C.azul }}>{pratos.length} de {x.limitePratos}</span>
-                </div>
-                <div className={`${card} px-4 py-2.5 mb-2 text-sm space-y-1`} style={{ borderColor: C.borda, color: C.texto2 }}>
-                  <div className="flex justify-between"><span>Inclusos no plano {d.pacote ?? ''}</span><strong>{d.pratos_inclusos}</strong></div>
-                  <div className="flex justify-between"><span>Adicionais contratados</span><strong>{d.pratos_adicionais}</strong></div>
-                </div>
-                {x.limitePratos === 0 ? (
-                  <p className="text-sm" style={{ color: C.muted }}>Seu plano não inclui pratos quentes. Para incluir, fale com a equipe.</p>
-                ) : (
-                  <div className={`${card} overflow-hidden`} style={{ borderColor: C.borda }}>
-                    {d.menu.pratos.map((nome) => {
-                      const sel = pratos.includes(nome)
-                      return (
-                        <button key={nome} onClick={() => togglePrato(nome)} aria-pressed={sel} className="w-full flex items-center gap-3 text-left px-4 py-2.5 min-h-[46px] text-sm"
-                          style={{ borderBottom: `1px solid ${C.linha}`, background: sel ? C.sel : 'white', color: x.cardapioFechado && !sel ? C.muted2 : C.texto }}>
-                          {radio(sel)} {nome}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <h2 className="font-display font-semibold text-lg mb-2">Bolo</h2>
-                {secaoTitulo('Massa')}
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  {d.menu.massas.map((m) => (
-                    <button key={m} onClick={() => (x.cardapioFechado ? avisarPrazoCardapio() : setMassa(m))} aria-pressed={massa === m} className="h-11 rounded-xl text-sm font-medium"
-                      style={{ border: `1.5px solid ${massa === m ? C.azul : C.borda3}`, background: massa === m ? C.azul : 'white', color: massa === m ? 'white' : C.texto }}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
-                {secaoTitulo('Recheio')}
-                <div className={`${card} overflow-hidden`} style={{ borderColor: C.borda }}>
-                  {[...d.menu.sabores, OUTRO_SABOR].map((s) => (
-                    <button key={s} onClick={() => (x.cardapioFechado ? avisarPrazoCardapio() : setSabor(s))} aria-pressed={sabor === s} className="w-full flex items-center gap-3 text-left px-4 py-2.5 min-h-[44px] text-sm"
-                      style={{ borderBottom: `1px solid ${C.linha}`, background: sabor === s ? C.sel : 'white' }}>
-                      {radio(sabor === s)} {s}
-                    </button>
-                  ))}
-                </div>
-                {sabor === OUTRO_SABOR && (
-                  <p className="text-xs mt-2 rounded-lg px-3 py-2" style={{ background: '#FFF6DB', color: '#5C4300' }}>
-                    Ao confirmar, a equipe recebe o aviso e combina o sabor com você.
-                    <button onClick={() => chamarNoWhatsApp('Quero combinar um sabor de bolo fora da lista.')} className="block mt-1.5 font-semibold underline">Combinar pelo WhatsApp agora</button>
-                  </p>
-                )}
-              </section>
+              {x.secoes.map((sc) => {
+                const marcadas = escolhas[sc.id] ?? []
+                const opcoes = [...sc.opcoes, ...(sc.outro ? [sc.outro_rotulo] : [])]
+                const emGrade = sc.quantidade === 1 && opcoes.length <= 6 && opcoes.every((o) => o.length <= 14)
+                return (
+                  <section key={sc.id}>
+                    <div className="flex justify-between items-baseline mb-2">
+                      <h2 className="font-display font-semibold text-lg">{sc.nome}</h2>
+                      {sc.quantidade > 1 && <span className="text-sm font-semibold" style={{ color: C.azul }}>{marcadas.length} de {sc.quantidade}</span>}
+                    </div>
+                    {sc.ajuda && <p className="text-xs mb-2" style={{ color: C.muted }}>{sc.ajuda}</p>}
+                    {sc.modo === 'pacote' && (
+                      <div className={`${card} px-4 py-2.5 mb-2 text-sm space-y-1`} style={{ borderColor: C.borda, color: C.texto2 }}>
+                        <div className="flex justify-between"><span>Inclusos no plano {d.pacote ?? ''}</span><strong>{d.pratos_inclusos}</strong></div>
+                        <div className="flex justify-between"><span>Adicionais contratados</span><strong>{d.pratos_adicionais}</strong></div>
+                      </div>
+                    )}
+                    {sc.quantidade === 0 ? (
+                      <p className="text-sm" style={{ color: C.muted }}>Seu plano não inclui {sc.nome.toLowerCase()}. Para incluir, fale com a equipe.</p>
+                    ) : emGrade ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {opcoes.map((o) => {
+                          const sel = marcadas.includes(o)
+                          return (
+                            <button key={o} onClick={() => escolher(sc, o)} aria-pressed={sel} className="h-11 rounded-xl text-sm font-medium px-1"
+                              style={{ border: `1.5px solid ${sel ? C.azul : C.borda3}`, background: sel ? C.azul : 'white', color: sel ? 'white' : C.texto }}>
+                              {o}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className={`${card} overflow-hidden`} style={{ borderColor: C.borda }}>
+                        {opcoes.map((o) => {
+                          const sel = marcadas.includes(o)
+                          return (
+                            <button key={o} onClick={() => escolher(sc, o)} aria-pressed={sel} className="w-full flex items-center gap-3 text-left px-4 py-2.5 min-h-[46px] text-sm"
+                              style={{ borderBottom: `1px solid ${C.linha}`, background: sel ? C.sel : 'white', color: x.cardapioFechado && !sel ? C.muted2 : C.texto }}>
+                              {radio(sel)} {o}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {sc.outro && marcadas.includes(sc.outro_rotulo) && (
+                      <p className="text-xs mt-2 rounded-lg px-3 py-2" style={{ background: '#FFF6DB', color: '#5C4300' }}>
+                        Ao confirmar, a equipe recebe o aviso e combina com você.
+                        <button onClick={() => chamarNoWhatsApp(`Quero combinar ${sc.nome.toLowerCase()} fora da lista.`)} className="block mt-1.5 font-semibold underline">Combinar pelo WhatsApp agora</button>
+                      </p>
+                    )}
+                  </section>
+                )
+              })}
 
               <button onClick={salvarCardapio} disabled={busy || x.cardapioFechado || cardapioIncompleto || !cardapioMudou}
                 className="w-full h-12 rounded-xl font-semibold text-white disabled:opacity-100"
-                style={{ background: x.cardapioFechado || cardapioIncompleto ? '#DCE3F3' : !cardapioMudou ? '#1F7A5C' : C.vermelho, color: x.cardapioFechado || cardapioIncompleto ? C.muted2 : 'white' }}>
+                style={{ background: x.cardapioFechado || cardapioIncompleto ? C.borda : !cardapioMudou ? '#1F7A5C' : C.vermelho, color: x.cardapioFechado || cardapioIncompleto ? C.muted2 : 'white' }}>
                 {x.cardapioFechado ? 'A festa já aconteceu'
-                  : pratos.length !== x.limitePratos ? (x.limitePratos === 1 ? 'Escolha o prato quente' : `Escolha ${x.limitePratos} pratos quentes`)
-                  : !massa ? 'Escolha a massa do bolo' : !sabor ? 'Escolha o recheio do bolo'
-                  : !cardapioMudou ? (d.cardapio_apos_prazo ? 'Enviado após o prazo' : 'Cardápio confirmado') : busy ? 'Salvando...' : x.cardapioAposPrazo ? 'Enviar mesmo após o prazo' : 'Confirmar cardápio'}
+                  : faltando ? (faltando.quantidade === 1 ? `Escolha: ${faltando.nome.toLowerCase()}` : `Escolha ${faltando.quantidade} em ${faltando.nome.toLowerCase()}`)
+                  : !cardapioMudou ? (d.cardapio_apos_prazo ? 'Enviado após o prazo' : 'Cardápio confirmado')
+                  : busy ? 'Salvando...' : x.cardapioAposPrazo ? 'Enviar mesmo após o prazo' : 'Confirmar cardápio'}
               </button>
               {!x.cardapioFechado && !x.cardapioAposPrazo && <p className="text-xs text-center" style={{ color: C.muted }}>Depois de confirmar, você ainda pode trocar até o prazo.</p>}
             </>
@@ -904,7 +946,7 @@ export function ClientPortal() {
               <section className={`${card} px-4 text-[13px]`} style={{ borderColor: C.borda }}>
                 {[
                   ['Plano', d.pacote ?? '—'],
-                  ['Pratos quentes', `${d.pratos_inclusos} do plano${d.pratos_adicionais ? ` + ${d.pratos_adicionais} adicional(is)` : ''}`],
+                  ...x.secoes.filter((sc) => sc.modo === 'pacote').map((sc) => [sc.nome, `${d.pratos_inclusos} do plano${d.pratos_adicionais ? ` + ${d.pratos_adicionais} adicional(is)` : ''}`]),
                   ['Data e horário', `${dataBr(d.data)} · ${hora(d.inicio)} às ${hora(d.fim)}`],
                   ['Convidados', `até ${d.convidados_limite}`],
                   ['Valor', brl(d.valor_total)],
@@ -923,7 +965,7 @@ export function ClientPortal() {
           )}
 
           {/* ===== PROGRAMAÇÃO ===== */}
-          {tab === 'programacao' && (
+          {tab === 'programacao' && temRoteiro && (
             <section className={`${card} p-4`} style={{ borderColor: C.borda }}>
               {horarios.map((h, i) => (
                 <div key={h.titulo} className="flex gap-3.5">
@@ -1032,7 +1074,7 @@ export function ClientPortal() {
       </div>
 
       {/* Barra de abas (celular) */}
-      <nav aria-label="Seções do portal" className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white grid grid-cols-5 px-1 pt-1 pb-2" style={{ borderTop: `1px solid ${C.borda}` }}>
+      <nav aria-label="Seções do portal" className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white grid px-1 pt-1 pb-2" style={{ borderTop: `1px solid ${C.borda}`, gridTemplateColumns: `repeat(${navPrincipal.length + 1}, minmax(0, 1fr))` }}>
         {[...navPrincipal, { tab: 'mais' as Tab, label: 'Mais', icon: MenuIcon }].map((n) => {
           const ativa = n.tab === 'mais' ? isSub || tab === 'mais' : tab === n.tab
           return (

@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { useLegacyMenuFields } from '../lib/menuSections'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { subDays, parseISO, isPast, format } from 'date-fns'
 import {
@@ -298,6 +299,9 @@ export function FestaDetalhe() {
   const [portalMessages, setPortalMessages] = useState<{ id: string; fromClient: boolean; author: string | null; body: string; createdAt: string }[]>([])
   const [portalEvents, setPortalEvents] = useState<{ id: string; description: string; createdAt: string }[]>([])
   const [portalInfo, setPortalInfo] = useState<{ cakeDough: string | null; menuConfirmedAt: string | null; musicChoice: string | null; menuLate: boolean } | null>(null)
+  const camposCardapio = useLegacyMenuFields()
+  // Cardápio escolhido, por seção ("Pratos quentes: A, B · Massa do bolo: X").
+  const [menuResumo, setMenuResumo] = useState<string | null>(null)
   const [portalReply, setPortalReply] = useState('')
 
   const [payments, setPayments] = useState<PaymentRow[]>([])
@@ -1404,12 +1408,14 @@ export function FestaDetalhe() {
   }
 
   async function loadPortal() {
-    const [{ data: rc }, { data: msgs }, { data: evs }, { data: info }] = await Promise.all([
+    const [{ data: rc }, { data: msgs }, { data: evs }, { data: info }, { data: resumo }] = await Promise.all([
       supabase.from('portal_receipts').select('id, amount, status, storage_path, created_at, reject_reason, decided_by_name').eq('reservation_id', id).order('created_at', { ascending: false }),
       supabase.from('portal_messages').select('id, from_client, author_name, body, created_at').eq('reservation_id', id).order('created_at'),
       supabase.from('portal_events').select('id, description, created_at').eq('reservation_id', id).order('created_at', { ascending: false }).limit(15),
       supabase.from('reservations').select('cake_dough, menu_confirmed_at, music_choice, menu_sent_late').eq('id', id).maybeSingle(),
+      supabase.rpc('festas_menu_resumo', { p_reservations: [id] }),
     ])
+    setMenuResumo(((resumo ?? []) as { resumo: string | null }[])[0]?.resumo ?? null)
     const receipts = (rc ?? []).map((r) => ({
       id: r.id, amount: Number(r.amount), status: r.status, storagePath: r.storage_path, createdAt: r.created_at, rejectReason: r.reject_reason, decidedBy: r.decided_by_name,
     }))
@@ -2624,6 +2630,7 @@ export function FestaDetalhe() {
                   )}
                 </dd>
               </div>
+              {camposCardapio.has('hot_dish_flavors') && (
               <div className="flex justify-between items-center gap-3">
                 <dt className="text-muted shrink-0">Sabores prato quente</dt>
                 <dd className="flex-1">
@@ -2641,6 +2648,8 @@ export function FestaDetalhe() {
                   )}
                 </dd>
               </div>
+              )}
+              {camposCardapio.has('cake_flavor') && (
               <div className="flex justify-between items-center gap-3">
                 <dt className="text-muted shrink-0">Sabor do bolo</dt>
                 <dd className="flex-1">
@@ -2658,6 +2667,7 @@ export function FestaDetalhe() {
                   )}
                 </dd>
               </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-muted">Convidados</dt>
                 <dd>{festa.convidados}{festa.courtesyGuests ? ` + ${festa.courtesyGuests} cortesia` : ''}</dd>
@@ -2764,8 +2774,9 @@ export function FestaDetalhe() {
                     <p className="text-xs text-muted">Cardápio</p>
                     {portalInfo?.menuConfirmedAt ? (
                       <>
-                        <p className="font-medium">{festa.hotDishFlavors || 'Sem pratos quentes'}</p>
-                        <p className="text-xs text-muted">Bolo: massa {portalInfo.cakeDough?.toLowerCase() ?? '—'}, recheio {festa.cakeFlavor ?? '—'}</p>
+                        {(menuResumo ?? '').split(' · ').filter(Boolean).map((linha) => (
+                          <p key={linha} className="text-xs"><span className="text-muted">{linha.split(': ')[0]}:</span> <span className="font-medium">{linha.split(': ').slice(1).join(': ')}</span></p>
+                        ))}
                         <p className={`text-[11px] ${portalInfo.menuLate ? 'text-amber font-semibold' : 'text-teal'}`}>
                           {portalInfo.menuLate ? 'Enviado APÓS O PRAZO em' : 'Confirmado em'} {new Date(portalInfo.menuConfirmedAt).toLocaleDateString('pt-BR')}
                         </p>

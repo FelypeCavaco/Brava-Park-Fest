@@ -1,4 +1,5 @@
 import { confirmarEmBranco } from '../lib/confirmBlank'
+import { useLegacyMenuFields } from '../lib/menuSections'
 import { useAuth, useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -155,6 +156,7 @@ export function Reservations() {
   const [formChildName, setFormChildName] = useState('')
   const [formChildAge, setFormChildAge] = useState('')
   const [formTema, setFormTema] = useState('')
+  const camposCardapio = useLegacyMenuFields()
   const [formPratoQuente, setFormPratoQuente] = useState('')
   const [formSaborBolo, setFormSaborBolo] = useState('')
   const [formDescontoTipo, setFormDescontoTipo] = useState<DiscountType | ''>('')
@@ -419,8 +421,8 @@ export function Reservations() {
         { label: 'Nome do aniversariante', valor: formChildName },
         { label: 'Idade do aniversariante', valor: formChildAge },
         { label: 'Tema', valor: formTema },
-        { label: 'Pratos quentes (o cliente também pode escolher depois pelo portal)', valor: formPratoQuente },
-        { label: 'Sabor do bolo (o cliente também pode escolher depois pelo portal)', valor: formSaborBolo },
+        ...(camposCardapio.has('hot_dish_flavors') ? [{ label: 'Pratos quentes (o cliente também pode escolher depois pelo portal)', valor: formPratoQuente }] : []),
+        ...(camposCardapio.has('cake_flavor') ? [{ label: 'Sabor do bolo (o cliente também pode escolher depois pelo portal)', valor: formSaborBolo }] : []),
       ])
     )
       return
@@ -1077,6 +1079,7 @@ export function Reservations() {
                 />
               </div>
 
+              {camposCardapio.has('hot_dish_flavors') && (
               <div>
                 <label className="block text-xs text-muted mb-1">Sabores do prato quente (opcional)</label>
                 <input
@@ -1088,7 +1091,9 @@ export function Reservations() {
                 />
                 <p className="text-xs text-muted mt-1">O número de pratos varia com o plano — separe os sabores com "/".</p>
               </div>
+              )}
 
+              {camposCardapio.has('cake_flavor') && (
               <div>
                 <label className="block text-xs text-muted mb-1">Sabor do bolo (opcional)</label>
                 <input
@@ -1099,6 +1104,7 @@ export function Reservations() {
                   className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                 />
               </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

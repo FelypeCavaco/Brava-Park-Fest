@@ -265,6 +265,25 @@ export function ClientPortal() {
       if ((tema === 'padrao' || tema === 'mario') && p.empresa) {
         p.empresa = { ...p.empresa, tema, ...(tema === 'padrao' ? { nome: 'Festa Feliz', logo_url: null } : {}) }
       }
+      // Empresa fictícia com cardápio e roteiro diferentes dos da Brava.
+      if (q.get('demo') === 'outra') {
+        p.cardapio = {
+          secoes: [
+            { id: 'd1', nome: 'Salgados', ajuda: 'Servidos durante toda a festa.', modo: 'varias', quantidade: 3, outro: false, outro_rotulo: '', opcoes: ['Coxinha', 'Risole de queijo', 'Kibe', 'Bolinha de queijo', 'Esfiha de carne', 'Enroladinho de salsicha'] },
+            { id: 'd2', nome: 'Sabor do bolo', ajuda: null, modo: 'uma', quantidade: 1, outro: true, outro_rotulo: 'Outro sabor (combinar com a equipe)', opcoes: ['Brigadeiro', 'Ninho com morango', 'Prestígio', 'Doce de leite'] },
+            { id: 'd3', nome: 'Suco', ajuda: null, modo: 'uma', quantidade: 1, outro: false, outro_rotulo: '', opcoes: ['Uva', 'Laranja', 'Maracujá'] },
+          ],
+          escolhas: { d1: ['Coxinha', 'Kibe'], d2: ['Ninho com morango'] },
+        }
+        p.cardapio_confirmado_em = null
+        p.roteiro_ligado = true
+        p.roteiro_itens = [
+          { titulo: 'Brinquedos liberados', detalhe: 'Monitores acompanham as crianças.', ref: 'inicio', minutos: 0, secao: null },
+          { titulo: 'Show de mágica', detalhe: '', ref: 'inicio', minutos: 75, secao: null },
+          { titulo: 'Parabéns', detalhe: '', ref: 'fim', minutos: 45, secao: null },
+          { titulo: 'Entrega das lembrancinhas', detalhe: 'Na saída, com a equipe.', ref: 'fim', minutos: 10, secao: null },
+        ]
+      }
     }
     setData(p)
     setGuests(lista)

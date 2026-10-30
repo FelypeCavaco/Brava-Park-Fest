@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Trash2, Eye, EyeOff, Plus, Pencil, X } from 'lucide-react'
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
@@ -220,7 +221,8 @@ export function PortalMenuEditor() {
         </div>
       )}
 
-      {form && (
+      {/* Janela aberta no corpo da página: dentro do quadro (que tem animação) ela ficaria presa nele. */}
+      {form && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setForm(null)} />
           <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
@@ -270,7 +272,8 @@ export function PortalMenuEditor() {
               <Button type="submit" className="w-full justify-center">Salvar</Button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </Card>
   )

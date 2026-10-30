@@ -3,17 +3,21 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
 import { supabase } from '../../lib/supabaseClient'
+import { useCompany } from '../../lib/CompanyContext'
 
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()
   const location = useLocation()
+  const { brand, brandLoading } = useCompany()
+  // Empresa suspensa pelo administrador geral: sai e mostra o aviso no login.
+  const suspensa = !!session && !brandLoading && brand.active === false
 
   const deactivated = !!profile && !profile.active
   const needsPermissions = !!profile && !profile.role?.isAdmin
 
   useEffect(() => {
-    if (deactivated) supabase.auth.signOut()
-  }, [deactivated])
+    if (deactivated || suspensa) supabase.auth.signOut()
+  }, [deactivated, suspensa])
 
   if (loading || (session && profileLoading) || (needsPermissions && permissionsLoading)) {
     return (
@@ -23,8 +27,8 @@ export function RequireAuth() {
     )
   }
 
-  if (!session || deactivated) {
-    return <Navigate to="/login" state={{ from: location, deactivated }} replace />
+  if (!session || deactivated || suspensa) {
+    return <Navigate to="/login" state={{ from: location, deactivated, suspensa }} replace />
   }
 
   if (location.pathname !== '/' && !canAccessRoute(profile?.role ?? null, can, location.pathname)) {

@@ -7,6 +7,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { todayIso, friendlyDbError } from '../lib/format'
 import { diasParaAvisar, horarioLabel, quandoLabel, type AgendaItem } from '../lib/agenda'
+import { useCompany } from '../lib/CompanyContext'
 
 // Painel: compromissos da Agenda marcados com "Avisar no Painel". Aparecem
 // para todos os usuários (mesmo quem não abre a Agenda) até alguém marcar
@@ -20,6 +21,7 @@ interface Linha {
 
 export function AgendaNotices() {
   const { can } = useAuth()
+  const { brand } = useCompany()
   const navigate = useNavigate()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const [itens, setItens] = useState<(AgendaItem & { done_dates: string[] })[]>([])
@@ -60,7 +62,8 @@ export function AgendaNotices() {
     setItens((prev) => prev.map((i) => (i.id === l.item.id ? { ...i, done_dates: [...i.done_dates, l.dia] } : i)))
   }
 
-  if (unitDbIdsLoading || linhas.length === 0) return null
+  // Agenda desligada para a empresa (painel da plataforma): sem avisos.
+  if (brand.disabledModules.includes('agenda') || unitDbIdsLoading || linhas.length === 0) return null
   const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '' : allUnitsLabel())
 
   return (

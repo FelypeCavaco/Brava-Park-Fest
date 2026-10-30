@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { GlobalSearch } from './GlobalSearch'
@@ -10,11 +10,13 @@ import { Settings } from '../../pages/Settings'
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
   const { units } = useUnit()
   const { profile } = useAuth()
   // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
   // menos uma, então só mostra o cadastro de unidades até criar a primeira.
-  const semUnidade = units.length === 0
+  // (a tela da plataforma abre mesmo assim: o administrador geral pode ser de uma empresa ainda vazia)
+  const semUnidade = units.length === 0 && location.pathname !== '/plataforma'
 
   return (
     <div className="flex min-h-screen bg-paper">

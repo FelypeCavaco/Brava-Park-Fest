@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import type { Role } from '../types'
+import { useCompany } from './CompanyContext'
+import { chaveDesligada } from './modules'
 
 interface Profile {
   role: Role | null
@@ -30,6 +32,7 @@ const AuthContext = createContext<AuthContextValue>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { brand } = useCompany()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -106,6 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [profile?.role?.id, session?.user?.id])
 
   function can(key: string) {
+    // Função desligada para a empresa (painel da plataforma): ninguém dela vê.
+    if (chaveDesligada(key, brand.disabledModules)) return false
     if (profile?.role?.isAdmin) return true
     if (!(key in permissions)) return true // chave sem regra cadastrada ainda — não bloqueia
     return permissions[key]

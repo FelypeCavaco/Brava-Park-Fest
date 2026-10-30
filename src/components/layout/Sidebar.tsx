@@ -122,6 +122,7 @@ const groups: Group[] = [
     icon: UserCog,
     items: [
       { to: '/configuracoes', label: 'Empresa e unidades', icon: Building2 },
+      { to: '/plataforma', label: 'Plataforma (empresas)', icon: Building2 },
       { to: '/usuarios', label: 'Usuários e permissões', icon: UserCog },
     ],
   },
@@ -134,7 +135,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const { selectedUnit, setSelectedUnit } = useUnit()
-  const { brand } = useCompany()
+  const { brand, isPlatformAdmin } = useCompany()
   const { profile, can } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -154,7 +155,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   }, [canSeeAcertos, location.pathname])
   const visibleTopLinks = topLinks.filter((i) => canAccessRoute(role, can, i.to))
   const visibleGroups = groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => canAccessRoute(role, can, i.to)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin)) }))
     .filter((g) => g.items.length > 0)
 
   async function handleLogout() {

@@ -19,6 +19,7 @@ export function Login() {
 
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/'
   const deactivated = (location.state as { deactivated?: boolean })?.deactivated ?? false
+  const suspensa = (location.state as { suspensa?: boolean })?.suspensa ?? false
 
   // Se já estiver logado (ex: sessão salva no navegador) e cair aqui de novo, manda direto pra dentro.
   useEffect(() => {
@@ -70,7 +71,11 @@ export function Login() {
           onSubmit={handleSubmit}
           className="bg-surface/95 backdrop-blur-xl rounded-card p-6 space-y-4 shadow-2xl border border-white/10"
         >
-          {deactivated && (
+          {suspensa ? (
+            <p className="text-sm text-danger bg-danger-light rounded-lg px-3 py-2">
+              O acesso desta empresa está suspenso. Fale com o suporte do sistema.
+            </p>
+          ) : deactivated && (
             <p className="text-sm text-danger bg-danger-light rounded-lg px-3 py-2">
               Seu acesso foi desativado. Fale com um administrador do sistema.
             </p>
@@ -106,7 +111,7 @@ export function Login() {
         </form>
 
         <p className="text-center text-xs text-white/40 mt-4">
-          Acesso restrito à equipe. Usuários criados manualmente no painel do Supabase.
+          Acesso restrito à equipe.
         </p>
       </div>
     </div>

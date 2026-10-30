@@ -12,6 +12,7 @@ import { Clients } from './pages/Clients'
 import { Reactivation } from './pages/Reactivation'
 import { Agenda } from './pages/Agenda'
 import { Settings } from './pages/Settings'
+import { Platform } from './pages/Platform'
 import { Packages } from './pages/Packages'
 import { Contracts } from './pages/Contracts'
 import { Payments } from './pages/Payments'
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/relatorios" element={<Reports />} />
           <Route path="/usuarios" element={<Users />} />
           <Route path="/configuracoes" element={<Settings />} />
+          <Route path="/plataforma" element={<Platform />} />
           <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
         </Route>

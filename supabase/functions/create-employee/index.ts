@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile } = await admin
       .from('user_profiles')
-      .select('active, role:roles(is_admin)')
+      .select('active, company_id, role:roles(is_admin), company:companies(active)')
       .eq('id', callerData.user.id)
       .maybeSingle()
 
@@ -48,6 +48,11 @@ Deno.serve(async (req) => {
     if (!callerProfile || !callerIsAdmin || !callerProfile.active) {
       return jsonResponse({ error: 'Só administradores podem criar novos usuários.' }, 403)
     }
+    // O funcionário novo entra na mesma empresa de quem está cadastrando.
+    const callerCompany = callerProfile.company as { active: boolean } | { active: boolean }[] | null
+    const companyActive = Array.isArray(callerCompany) ? callerCompany[0]?.active : callerCompany?.active
+    if (companyActive === false) return jsonResponse({ error: 'Empresa suspensa. Fale com o suporte.' }, 403)
+    const companyId = (callerProfile as { company_id?: string }).company_id ?? null
 
     const { name, email, password, role_id } = await req.json()
     if (!name?.trim() || !email?.trim() || !password || !role_id) {
@@ -68,7 +73,7 @@ Deno.serve(async (req) => {
 
     const { error: profileError } = await admin
       .from('user_profiles')
-      .insert({ id: created.user.id, name: name.trim(), email: email.trim(), role_id, active: true })
+      .insert({ id: created.user.id, name: name.trim(), email: email.trim(), role_id, active: true, ...(companyId ? { company_id: companyId } : {}) })
 
     if (profileError) {
       // desfaz o login criado pra não sobrar um acesso sem perfil associado

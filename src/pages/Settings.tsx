@@ -47,6 +47,7 @@ interface ItemRoteiro {
   ref: 'inicio' | 'fim'
   minutos: number | string
   secao: string | null
+  destaque: boolean
 }
 
 interface Regra {
@@ -107,7 +108,13 @@ function toForm(u: UnitRow | null, nextSort: number): UnitForm {
     // null = unidade nova: o banco preenche com as regras padrão.
     portal_rules: u?.portal_rules ? u.portal_rules.map((r) => ({ ...r })) : null,
     schedule_enabled: u?.schedule_enabled ?? false,
-    schedule_items: (u?.schedule_items ?? []).map((it) => ({ ...it, detalhe: it.detalhe ?? '', minutos: String(it.minutos) })),
+    // Roteiro salvo antes da opção "destacar": o primeiro item era o destacado.
+    schedule_items: (u?.schedule_items ?? []).map((it, i, todos) => ({
+      ...it,
+      detalhe: it.detalhe ?? '',
+      minutos: String(it.minutos),
+      destaque: todos.some((x) => x.destaque !== undefined) ? !!it.destaque : i === 0,
+    })),
   }
 }
 
@@ -291,7 +298,7 @@ function UnidadesTab() {
       const min = Number.parseInt(String(it.minutos), 10)
       if (!it.titulo.trim()) return setError('Cada item do roteiro precisa de um nome.')
       if (!Number.isFinite(min) || min < 0 || min > 720 || String(min) !== String(it.minutos).trim()) return setError(`Roteiro, "${it.titulo}": os minutos precisam ser um número inteiro de 0 a 720.`)
-      roteiro.push({ titulo: it.titulo.trim(), detalhe: it.detalhe.trim(), ref: it.ref, minutos: min, secao: it.secao || null })
+      roteiro.push({ titulo: it.titulo.trim(), detalhe: it.detalhe.trim(), ref: it.ref, minutos: min, secao: it.secao || null, destaque: !!it.destaque })
     }
     if (form.schedule_enabled && roteiro.length === 0) return setError('Para mostrar a programação no portal, adicione pelo menos um item ao roteiro.')
     const t = (s: string) => s.trim() || null
@@ -436,6 +443,10 @@ function UnidadesTab() {
                         </select>
                       </div>
                       <input value={it.detalhe} onChange={(e) => mudar({ detalhe: e.target.value })} placeholder="Descrição (opcional). Ex: Servido logo após o parabéns." className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm bg-surface" />
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={it.destaque} onChange={(e) => mudar({ destaque: e.target.checked })} />
+                        Destacar este item (bolinha colorida na programação, ex.: o parabéns)
+                      </label>
                       {secoes.length > 0 && (
                         <select value={it.secao ?? ''} onChange={(e) => mudar({ secao: e.target.value || null })} className="w-full border border-line rounded-lg px-2 py-1.5 text-xs bg-surface">
                           <option value="">Aparece em todas as festas</option>
@@ -445,7 +456,7 @@ function UnidadesTab() {
                     </div>
                   )
                 })}
-                <button type="button" onClick={() => setForm({ ...form, schedule_items: [...form.schedule_items, { titulo: '', detalhe: '', ref: 'inicio', minutos: '', secao: null }] })} className="text-sm text-purple font-medium flex items-center gap-1">
+                <button type="button" onClick={() => setForm({ ...form, schedule_items: [...form.schedule_items, { titulo: '', detalhe: '', ref: 'inicio', minutos: '', secao: null, destaque: false }] })} className="text-sm text-purple font-medium flex items-center gap-1">
                   <Plus className="w-4 h-4" /> Adicionar item ao roteiro
                 </button>
               </div>

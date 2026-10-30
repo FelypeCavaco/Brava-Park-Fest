@@ -148,6 +148,7 @@ interface ItemRoteiro {
   ref: 'inicio' | 'fim'
   minutos: number
   secao: string | null
+  destaque?: boolean
 }
 
 type Tab = 'inicio' | 'cardapio' | 'convidados' | 'pagamento' | 'mais' | 'musica' | 'historico' | 'contrato' | 'programacao' | 'regras' | 'chegar' | 'equipe' | 'avaliacao'
@@ -280,7 +281,7 @@ export function ClientPortal() {
         p.roteiro_itens = [
           { titulo: 'Brinquedos liberados', detalhe: 'Monitores acompanham as crianças.', ref: 'inicio', minutos: 0, secao: null },
           { titulo: 'Show de mágica', detalhe: '', ref: 'inicio', minutos: 75, secao: null },
-          { titulo: 'Parabéns', detalhe: '', ref: 'fim', minutos: 45, secao: null },
+          { titulo: 'Parabéns', detalhe: '', ref: 'fim', minutos: 45, secao: null, destaque: true },
           { titulo: 'Entrega das lembrancinhas', detalhe: 'Na saída, com a equipe.', ref: 'fim', minutos: 10, secao: null },
         ]
       }
@@ -539,13 +540,16 @@ export function ClientPortal() {
     .map((it) => ({ ...it, offset: it.ref === 'fim' ? duracaoFesta - it.minutos : it.minutos }))
     .filter((it) => it.offset >= 0 && it.offset <= duracaoFesta)
     .sort((a, b) => a.offset - b.offset)
+  // Item destacado (bolinha colorida): o que a empresa marcou. Roteiros salvos
+  // antes dessa opção existir destacam o primeiro item, como era antes.
+  const escolheuDestaque = (d.roteiro_itens ?? []).some((it) => it.destaque !== undefined)
   const horarios = [
     { hora: hora(d.inicio), titulo: 'Início da festa', detalhe: 'A recepção confere os nomes da lista na entrada.', cor: C.azul },
     ...itensRoteiro.map((it, i) => ({
       hora: somaMinutos(d.inicio, it.offset),
       titulo: it.titulo,
       detalhe: it.detalhe?.trim() || (it.ref === 'fim' ? `${duracao(it.minutos)} antes do encerramento.` : `${duracao(it.minutos)} após o início.`),
-      cor: i === 0 ? C.vermelho : C.azul,
+      cor: (escolheuDestaque ? it.destaque : i === 0) ? C.vermelho : C.azul,
     })),
     { hora: hora(d.fim), titulo: 'Encerramento', detalhe: `Hora extra pode ser contratada com a equipe${d.hora_extra ? ` (${brl(d.hora_extra)} por hora)` : ''}.`, cor: C.azul },
   ]

@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 import { Bar, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, unitColor } from '../lib/UnitContext'
 
 // Festas por mês, por unidade, com a linha do ano anterior para comparar.
 // Dois modos:
@@ -13,7 +13,6 @@ import { useUnit, UNITS } from '../lib/UnitContext'
 //     orçamento e as que depois foram canceladas (aparecem no resumo).
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-const CORES: Record<string, string> = { 'vila-operaria': '#6D28D9', 'sao-vicente': '#7CB92E' }
 
 type Modo = 'realizadas' | 'fechadas'
 interface Linha { event_date: string; created_at: string; unit_id: string; status: string }
@@ -130,7 +129,7 @@ export function FestasPorMesChart() {
           <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {unidades.map((u) => (
-            <Bar key={u} dataKey={u} name={UNITS.find((x) => x.id === u)?.name ?? u} stackId="festas" fill={CORES[u] ?? '#6D28D9'} radius={[3, 3, 0, 0]} />
+            <Bar key={u} dataKey={u} name={UNITS.find((x) => x.id === u)?.name ?? u} stackId="festas" fill={unitColor(u)} radius={[3, 3, 0, 0]} />
           ))}
           {totalAnterior > 0 && <Line type="monotone" dataKey="anterior" name={`${ano - 1} (total)`} stroke="#F2900C" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2 }} />}
         </ComposedChart>

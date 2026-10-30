@@ -4,7 +4,7 @@ import { Plus, Trash2, CalendarClock, X } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { useUnit, UNITS, SPACES_BY_UNIT } from '../lib/UnitContext'
+import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
 
@@ -98,7 +98,7 @@ export function Visits({ embedded = false }: { embedded?: boolean } = {}) {
       .insert({
         client_name: cliente.trim(),
         unit_id: dbIds.unitId,
-        space_name: SPACES_BY_UNIT[unitSlug]?.[0] ?? '',
+        space_name: UNITS.find((u) => u.id === unitSlug)?.name ?? '',
         scheduled_at: new Date(dataHora).toISOString(),
         responsible: responsavel.trim() || currentUserName,
       })

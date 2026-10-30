@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { currentMonthValue, lastNMonths } from '../lib/monthUtils'
 import { loadMonthByUnit, type MonthResult } from '../lib/financeAggregates'
 
@@ -88,7 +88,7 @@ export function MonthlyResult() {
   )
   const margemTotal = totais.receita > 0 ? (totais.lucro / totais.receita) * 100 : 0
 
-  const unitLabel = selectedUnit === 'todas' ? 'Ambas as unidades' : UNITS.find((u) => u.id === selectedUnit)?.name
+  const unitLabel = selectedUnit === 'todas' ? allUnitsLabel() : UNITS.find((u) => u.id === selectedUnit)?.name
 
   return (
     <div className="space-y-6">

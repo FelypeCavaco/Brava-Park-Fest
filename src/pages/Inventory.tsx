@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Can } from '../components/Can'
 import { StockPurchaseModal, type StockPurchasePrefill } from '../components/StockPurchaseModal'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { useUndo } from '../lib/UndoContext'
 import { brl, qtd, parseDecimal, friendlyDbError, todayIso } from '../lib/format'
@@ -625,7 +625,7 @@ export function Inventory() {
         </form>
         <p className="text-xs text-muted mt-3">
           Para registrar uma compra (com valor e conta a pagar), use <strong>Entrada de compra</strong>.
-          {selectedUnit === 'todas' && ` Como "Ambas as unidades" está selecionado, o novo item é cadastrado em ${UNITS[0].name}.`}
+          {selectedUnit === 'todas' && ` Como "${allUnitsLabel()}" está selecionado, o novo item é cadastrado em ${UNITS[0].name}.`}
         </p>
       </Card>
 

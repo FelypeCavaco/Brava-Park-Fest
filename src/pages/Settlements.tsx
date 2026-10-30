@@ -175,7 +175,7 @@ export function Settlements() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Acertos entre unidades</h1>
-        <p className="text-sm text-muted mt-1">Estoque transferido entre Vila Operária e São Vicente: quem recebeu os produtos paga a outra pelo custo, sem margem. Cada transferência já vira conta a pagar no Financeiro de quem recebeu; marcar a conta como paga (lá ou aqui) confirma o acerto e lança o recebimento na outra unidade.</p>
+        <p className="text-sm text-muted mt-1">Estoque transferido entre as unidades: quem recebeu os produtos paga a outra pelo custo, sem margem. Cada transferência já vira conta a pagar no Financeiro de quem recebeu; marcar a conta como paga (lá ou aqui) confirma o acerto e lança o recebimento na outra unidade.</p>
       </div>
 
       {error && (

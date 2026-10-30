@@ -31,11 +31,13 @@ import {
   ChevronDown,
   LogOut,
   X,
+  Building2,
 } from 'lucide-react'
-import { useUnit, UNITS } from '../../lib/UnitContext'
+import { useUnit, UNITS, allUnitsLabel } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
-import logo from '../../assets/logo-brava-park-fest.png'
+import { BrandLogo } from '../BrandLogo'
+import { useCompany } from '../../lib/CompanyContext'
 
 interface LinkItem {
   to: string
@@ -118,7 +120,10 @@ const groups: Group[] = [
     id: 'config',
     label: 'Configurações',
     icon: UserCog,
-    items: [{ to: '/usuarios', label: 'Usuários e permissões', icon: UserCog }],
+    items: [
+      { to: '/configuracoes', label: 'Empresa e unidades', icon: Building2 },
+      { to: '/usuarios', label: 'Usuários e permissões', icon: UserCog },
+    ],
   },
 ]
 
@@ -129,6 +134,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const { selectedUnit, setSelectedUnit } = useUnit()
+  const { brand } = useCompany()
   const { profile, can } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -182,14 +188,9 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       <div className="pointer-events-none absolute top-1/2 -right-20 w-56 h-56 rounded-full bg-green/10 blur-3xl" />
 
       <div className="relative flex items-center gap-2.5 px-5 py-6 shrink-0">
-        <img
-          src={logo}
-          alt="Brava Park Fest"
-          className="w-11 h-11 rounded-full shadow-lg shadow-purple/40 hover:animate-logo-drift shrink-0"
-          draggable={false}
-        />
+        <BrandLogo className="w-11 h-11 rounded-full shadow-lg shadow-purple/40 hover:animate-logo-drift shrink-0 text-sm" />
         <div className="flex-1">
-          <p className="font-display font-semibold leading-tight">Brava Park Fest</p>
+          <p className="font-display font-semibold leading-tight">{brand.name}</p>
           <p className="text-xs text-white/50">Gestão de festas</p>
         </div>
         <button onClick={onClose} className="md:hidden text-white/60 hover:text-white" aria-label="Fechar menu">
@@ -207,7 +208,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           className="w-full bg-white/10 border border-white/10 rounded-lg px-2.5 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple"
         >
           <option value="todas" className="text-ink">
-            Ambas as unidades
+            {allUnitsLabel()}
           </option>
           {UNITS.map((u) => (
             <option key={u.id} value={u.id} className="text-ink">

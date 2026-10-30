@@ -11,8 +11,9 @@ import { PortalNotices } from '../components/PortalNotices'
 import { AgendaNotices } from '../components/AgendaNotices'
 import { FestasPorMesChart } from '../components/FestasPorMesChart'
 import { useAuth } from '../lib/AuthContext'
-import logo from '../assets/logo-brava-park-fest.png'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { BrandLogo } from '../components/BrandLogo'
+import { useCompany } from '../lib/CompanyContext'
+import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { describeAudit, type AuditEntry } from '../lib/auditLabels'
 import { currentMonthValue, monthBounds, lastNMonths, daysInMonth } from '../lib/monthUtils'
@@ -127,7 +128,8 @@ export function Dashboard() {
   const [acertosPendentes, setAcertosPendentes] = useState<{ de: string; para: string; total: number; count: number }[]>([])
 
   const unitIds = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
-  const unitLabel = selectedUnit === 'todas' ? 'Ambas as unidades' : UNITS.find((u) => u.id === selectedUnit)?.name
+  const { brand } = useCompany()
+  const unitLabel = selectedUnit === 'todas' ? allUnitsLabel() : UNITS.find((u) => u.id === selectedUnit)?.name
 
   useEffect(() => {
     if (unitDbIdsLoading) return
@@ -448,7 +450,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <DashboardMascot />
+      {brand.mascotEnabled && <DashboardMascot />}
       {acessoNegado && (
         <div className="bg-amber-light text-amber text-sm rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
           Seu perfil não tem acesso a essa página.
@@ -462,7 +464,7 @@ export function Dashboard() {
         <span className="pointer-events-none absolute -top-8 right-10 w-32 h-32 rounded-full bg-green/20 blur-3xl animate-float-slow" />
         <span className="pointer-events-none absolute bottom-0 left-1/3 w-24 h-24 rounded-full bg-orange/20 blur-3xl animate-float-slow" style={{ animationDelay: '2s' }} />
         <div className="relative flex items-center gap-4">
-          <img src={logo} alt="Brava Park Fest" className="w-14 h-14 rounded-full shadow-lg ring-2 ring-white/20 hover:animate-logo-drift shrink-0" draggable={false} />
+          <BrandLogo className="w-14 h-14 rounded-full shadow-lg ring-2 ring-white/20 hover:animate-logo-drift shrink-0 text-lg" />
           <div>
             <h1 className="text-2xl font-display font-semibold">Painel</h1>
             <p className="text-sm text-white/70 mt-0.5">{unitLabel} · mês atual</p>
@@ -723,8 +725,9 @@ export function Dashboard() {
                     contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="vila-operaria" name="Vila Operária" fill="#6D28D9" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="sao-vicente" name="São Vicente" fill="#7CB92E" radius={[4, 4, 0, 0]} />
+                  {UNITS.map((u) => (
+                    <Bar key={u.id} dataKey={u.id} name={u.name} fill={u.color} radius={[4, 4, 0, 0]} />
+                  ))}
                 </BarChart>
               </ResponsiveContainer>
             </Card>

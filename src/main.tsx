@@ -5,11 +5,13 @@ import App from './App'
 import { UnitProvider } from './lib/UnitContext'
 import { AuthProvider } from './lib/AuthContext'
 import { UndoProvider } from './lib/UndoContext'
+import { CompanyProvider } from './lib/CompanyContext'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
+      <CompanyProvider>
       <AuthProvider>
         <UnitProvider>
           <UndoProvider>
@@ -17,6 +19,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           </UndoProvider>
         </UnitProvider>
       </AuthProvider>
+      </CompanyProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

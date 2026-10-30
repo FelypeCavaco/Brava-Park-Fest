@@ -4,7 +4,7 @@ import { Bell } from 'lucide-react'
 import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { todayIso, friendlyDbError } from '../lib/format'
 import { diasParaAvisar, horarioLabel, quandoLabel, type AgendaItem } from '../lib/agenda'
 
@@ -61,7 +61,7 @@ export function AgendaNotices() {
   }
 
   if (unitDbIdsLoading || linhas.length === 0) return null
-  const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '' : 'As duas unidades')
+  const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '' : allUnitsLabel())
 
   return (
     <Card title={`Agenda · ${linhas.length} aviso${linhas.length > 1 ? 's' : ''}`} className="border-amber/40">

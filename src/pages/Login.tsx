@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { Button } from '../components/ui/Button'
-import logo from '../assets/logo-brava-park-fest.png'
+import { BrandLogo } from '../components/BrandLogo'
+import { useCompany } from '../lib/CompanyContext'
 import mascotImg from '../assets/mascote-theo.png'
 
 export function Login() {
+  const { brand } = useCompany()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -48,25 +50,20 @@ export function Login() {
       <span className="pointer-events-none absolute top-[50%] left-[6%] w-1.5 h-1.5 rounded-full bg-green/60 blur-[1px] animate-float-slow" style={{ animationDelay: '3.2s' }} />
 
       {/* Mascote Theo, só em telas maiores — decorativo, não atrapalha o formulário no celular */}
-      <img
+      {brand.mascotEnabled && <img
         src={mascotImg}
         alt=""
         aria-hidden
         className="pointer-events-none select-none hidden lg:block absolute bottom-0 right-[8%] w-72 xl:w-80 drop-shadow-2xl animate-float-slow"
         style={{ animationDuration: '7s' }}
         draggable={false}
-      />
+      />}
 
       <div className="relative w-full max-w-sm animate-card-in">
         <div className="flex flex-col items-center gap-3 justify-center mb-8">
-          <img
-            src={logo}
-            alt="Brava Park Fest"
-            className="w-24 h-24 rounded-full shadow-2xl shadow-purple/50 ring-4 ring-white/10 animate-logo-drift"
-            draggable={false}
-          />
-          <span className="font-display text-2xl text-white font-semibold tracking-tight">Brava Park Fest</span>
-          <span className="text-xs text-shimmer font-medium uppercase tracking-[0.2em]">Aqui a diversão é garantida</span>
+          <BrandLogo className="w-24 h-24 rounded-full shadow-2xl shadow-purple/50 ring-4 ring-white/10 animate-logo-drift text-3xl" />
+          <span className="font-display text-2xl text-white font-semibold tracking-tight">{brand.name || 'Gestão de festas'}</span>
+          {brand.tagline && <span className="text-xs text-shimmer font-medium uppercase tracking-[0.2em]">{brand.tagline}</span>}
         </div>
 
         <form
@@ -86,7 +83,7 @@ export function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple transition-shadow"
-              placeholder="voce@bravaparkfest.com"
+              placeholder="voce@email.com"
             />
           </div>
           <div>

@@ -10,7 +10,7 @@ import { AlertTriangle, Lightbulb } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../lib/AuthContext'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, unitColor } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { brl, todayIso } from '../lib/format'
 import { CLIENT_SOURCE_LABEL } from '../types'
@@ -18,7 +18,6 @@ import { Marketing } from './Marketing'
 import { Funnel } from './Funnel'
 
 // Mesmas cores das unidades nos outros gráficos do sistema.
-const COR_UNIDADE: Record<string, string> = { 'vila-operaria': '#6D28D9', 'sao-vicente': '#7CB92E' }
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DIAS_LONGO = ['domingos', 'segundas', 'terças', 'quartas', 'quintas', 'sextas', 'sábados']
 const FECHADA = ['confirmada', 'sinal_pago', 'quitada']
@@ -478,7 +477,7 @@ export function MarketingHub() {
                     <YAxis unit="%" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
                     <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={COR_UNIDADE[s] ?? '#6D28D9'} radius={[4, 4, 0, 0]} />)}
+                    {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={unitColor(s)} radius={[4, 4, 0, 0]} />)}
                   </BarChart>
                 </ResponsiveContainer>
               </Card>
@@ -491,7 +490,7 @@ export function MarketingHub() {
                       <YAxis unit="%" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
                       <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={COR_UNIDADE[s] ?? '#6D28D9'} radius={[4, 4, 0, 0]} />)}
+                      {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={unitColor(s)} radius={[4, 4, 0, 0]} />)}
                     </BarChart>
                   </ResponsiveContainer>
                   <Tabela cab={['Dia', ...unidades.map(nomeUnidade)]} linhas={DIAS.map((d, i) => [d, ...unidades.map((s) => { const o = ocupacaoDiaSemana(s, inicio, hoje)[i]; return `${o.pct}% (${o.n} de ${o.total})` })])} />

@@ -11,6 +11,7 @@ import { FestaDetalhe } from './pages/FestaDetalhe'
 import { Clients } from './pages/Clients'
 import { Reactivation } from './pages/Reactivation'
 import { Agenda } from './pages/Agenda'
+import { Settings } from './pages/Settings'
 import { Packages } from './pages/Packages'
 import { Contracts } from './pages/Contracts'
 import { Payments } from './pages/Payments'
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/fornecedores" element={<Suppliers />} />
           <Route path="/relatorios" element={<Reports />} />
           <Route path="/usuarios" element={<Users />} />
+          <Route path="/configuracoes" element={<Settings />} />
           <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
         </Route>

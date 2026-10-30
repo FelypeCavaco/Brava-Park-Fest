@@ -553,7 +553,7 @@ export function Users() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                  placeholder="email@bravaparkfest.com"
+                  placeholder="email@empresa.com"
                 />
               </div>
               <div>

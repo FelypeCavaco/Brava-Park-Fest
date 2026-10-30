@@ -188,7 +188,7 @@ export function Reports() {
         a.payment_method ?? '',
       ])
     }
-    downloadCsv('relatorio-brava-park-fest.csv', rows)
+    downloadCsv('relatorio-festas.csv', rows)
     setExportLog((prev) => [{ id: crypto.randomUUID(), quando: new Date().toLocaleString('pt-BR'), usuario: currentUserName }, ...prev])
   }
 

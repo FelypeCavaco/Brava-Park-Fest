@@ -5,7 +5,7 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { supabase } from '../lib/supabaseClient'
-import { useUnit, UNITS } from '../lib/UnitContext'
+import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { useUndo } from '../lib/UndoContext'
 import { todayIso, friendlyDbError } from '../lib/format'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
@@ -82,7 +82,7 @@ export function Agenda() {
   useOpenOnQueryParam('novo', () => setForm(rascunhoVazio(hoje)))
 
   const unitFilter = selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null
-  const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '' : 'As duas unidades')
+  const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '' : allUnitsLabel())
 
   useEffect(() => {
     if (!unitDbIdsLoading) load()
@@ -395,7 +395,7 @@ export function Agenda() {
                 <div>
                   <label className="block text-xs text-muted mb-1">Unidade</label>
                   <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full border border-line rounded-lg px-3 py-2 text-sm">
-                    <option value="">As duas</option>
+                    <option value="">{UNITS.length === 2 ? 'As duas' : 'Todas'}</option>
                     {UNITS.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>

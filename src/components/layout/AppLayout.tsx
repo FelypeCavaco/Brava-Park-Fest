@@ -4,9 +4,17 @@ import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { GlobalSearch } from './GlobalSearch'
 import { QuickActionsBar } from './QuickActionsBar'
+import { useUnit } from '../../lib/UnitContext'
+import { useAuth } from '../../lib/AuthContext'
+import { Settings } from '../../pages/Settings'
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { units } = useUnit()
+  const { profile } = useAuth()
+  // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
+  // menos uma, então só mostra o cadastro de unidades até criar a primeira.
+  const semUnidade = units.length === 0
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -23,7 +31,18 @@ export function AppLayout() {
           <QuickActionsBar className="flex-1 min-w-0" />
           <GlobalSearch />
         </div>
-        <Outlet />
+        {semUnidade ? (
+          <div className="space-y-4">
+            <div className="bg-amber-light text-ink text-sm rounded-lg px-4 py-3">
+              {profile?.role?.isAdmin
+                ? 'Para começar, cadastre a primeira unidade da empresa na aba "Unidades" abaixo.'
+                : 'A empresa ainda não tem nenhuma unidade cadastrada. Peça a um administrador para cadastrar.'}
+            </div>
+            {profile?.role?.isAdmin && <Settings />}
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </main>
     </div>
   )

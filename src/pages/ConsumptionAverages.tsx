@@ -192,7 +192,7 @@ export function ConsumptionAverages() {
           {selectedUnit === 'todas' && (
             <label className="flex items-center gap-2 pb-2">
               <input type="checkbox" checked={juntar} onChange={(e) => setJuntar(e.target.checked)} />
-              Juntar as duas unidades
+              Juntar as unidades
             </label>
           )}
         </div>

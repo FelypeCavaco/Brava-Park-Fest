@@ -908,7 +908,7 @@ export function Finance() {
             </div>
           </Card>
 
-          <Card title={selectedUnit === 'todas' ? 'Fluxo de caixa — últimos 6 meses (Vila Operária + São Vicente)' : 'Fluxo de caixa — últimos 6 meses'}>
+          <Card title={selectedUnit === 'todas' ? `Fluxo de caixa — últimos 6 meses (${UNITS.map((u) => u.name).join(' + ')})` : 'Fluxo de caixa — últimos 6 meses'}>
             <p className="text-xs text-muted mb-2">Clique numa barra de Entradas ou Saídas pra ver o detalhe daquele mês.</p>
             <p className="text-xs text-muted mb-2">A barra de saídas do mês atual inclui custos de festas que ainda vão acontecer neste mês.</p>
             <ResponsiveContainer width="100%" height={220}>

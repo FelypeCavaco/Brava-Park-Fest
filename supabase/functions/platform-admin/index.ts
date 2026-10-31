@@ -59,7 +59,10 @@ Deno.serve(async (req) => {
       let arquivosApagados = 0
       let arquivosFalha = 0
       const porBucket: Record<string, string[]> = {}
-      for (const f of r.arquivos ?? []) (porBucket[f.bucket] ??= []).push(f.path)
+      for (const f of r.arquivos ?? []) {
+        if (!porBucket[f.bucket]) porBucket[f.bucket] = []
+        porBucket[f.bucket].push(f.path)
+      }
       for (const [bucket, paths] of Object.entries(porBucket)) {
         for (let i = 0; i < paths.length; i += 100) {
           const lote = paths.slice(i, i + 100)

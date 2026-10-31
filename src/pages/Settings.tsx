@@ -155,11 +155,17 @@ function EmpresaTab() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
   const [semMigracao, setSemMigracao] = useState(false)
+  const [erroCarga, setErroCarga] = useState<string | null>(null)
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
     ;(async () => {
+      setErroCarga(null)
       const { data, error } = await supabase.from('companies').select('id, name, tagline, team_whatsapp, logo_url').order('created_at').limit(1).maybeSingle()
-      if (error) return setSemMigracao(true)
+      // Só culpa a 068 quando falta mesmo a tabela/coluna; outro erro (conexão,
+      // sessão vencida) aparece como é, com "Tentar de novo".
+      if (error && /42P01|42703|PGRST205|PGRST204/.test(error.code ?? '')) return setSemMigracao(true)
+      if (error) return setErroCarga(error.message)
       if (!data) return
       setCompanyId(data.id)
       setName(data.name ?? '')
@@ -167,7 +173,7 @@ function EmpresaTab() {
       setWhats(data.team_whatsapp ?? '')
       setLogoUrl(data.logo_url)
     })()
-  }, [])
+  }, [tentativa])
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -212,6 +218,14 @@ function EmpresaTab() {
     reloadBrand()
   }
 
+  if (erroCarga) {
+    return (
+      <Card>
+        <p className="text-sm text-danger">Não foi possível carregar os dados da empresa: {friendlyDbError(erroCarga)}</p>
+        <button onClick={() => setTentativa((n) => n + 1)} className="mt-2 text-sm font-medium text-purple">Tentar de novo</button>
+      </Card>
+    )
+  }
   if (semMigracao) {
     return <Card><p className="text-sm text-muted">Esta tela ainda não está ativada no banco de dados (falta rodar a migração 068_empresa_e_unidades.sql).</p></Card>
   }

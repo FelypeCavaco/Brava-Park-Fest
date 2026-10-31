@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Plus, X, Building2, Ban, CheckCircle2, Copy, LogIn, AlertTriangle } from 'lucide-react'
+import { Plus, X, Building2, Ban, CheckCircle2, Copy, LogIn, AlertTriangle, Trash2, Download } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -28,6 +28,46 @@ const dataBr = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('
 const diasSemUso = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null)
 const SEM_USO_ALERTA = 14
 
+interface CopiaExcluida {
+  id: string
+  nome: string
+  excluida_em: string
+  arquivos: number
+  logins: number
+  tamanho_kb: number
+}
+
+// Erro de regra da função de servidor volta no corpo da resposta (status 400).
+async function erroDaFuncao(data: unknown, err: unknown, padrao: string): Promise<string | null> {
+  let msg: string | null = (data as { error?: string } | null)?.error ?? null
+  if (err && !msg) {
+    try {
+      const corpo = await (err as { context?: Response }).context?.json()
+      msg = corpo?.error ?? null
+    } catch {
+      // sem corpo legível
+    }
+    msg = msg ?? padrao
+  }
+  return msg
+}
+
+// Baixa a cópia guardada de uma empresa excluída (arquivo .json com todos os dados).
+async function baixarCopia(id: string, nome: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('platform_deleted_company_copy', { p_id: id })
+  if (error || !data) return 'Não foi possível baixar a cópia. Tente de novo em "Cópias de empresas excluídas".'
+  const slug = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `copia-${slug}-${new Date().toISOString().slice(0, 10)}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+  return null
+}
+
 // Senha provisória fácil de ditar (o cliente troca depois).
 function senhaProvisoria() {
   const letras = 'abcdefghjkmnpqrstuvwxyz'
@@ -47,11 +87,18 @@ export function Platform() {
   const [saving, setSaving] = useState(false)
   const [produto, setProduto] = useState({ name: '', tagline: '', logo_url: '' })
   const [produtoMsg, setProdutoMsg] = useState<string | null>(null)
+  const [copias, setCopias] = useState<CopiaExcluida[]>([])
+  const [confirmaNome, setConfirmaNome] = useState('')
+  const [excluindo, setExcluindo] = useState(false)
+  const [excluida, setExcluida] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
-    const [{ data, error: err }, { data: cfg }] = await Promise.all([supabase.rpc('platform_list_companies'), supabase.rpc('platform_get_settings')])
+    const [{ data, error: err }, { data: cfg }, { data: cop }] = await Promise.all([
+      supabase.rpc('platform_list_companies'), supabase.rpc('platform_get_settings'), supabase.rpc('platform_list_deleted_companies'),
+    ])
     setLoading(false)
+    setCopias((cop ?? []) as CopiaExcluida[]) // vazio antes da migração 076
     if (err) return setError(friendlyDbError(err.message))
     setEmpresas((data ?? []) as Empresa[])
     const c = ((cfg ?? []) as { name: string; tagline: string | null; logo_url: string | null }[])[0]
@@ -83,21 +130,43 @@ export function Platform() {
     setSaving(true)
     const { data, error: err } = await supabase.functions.invoke('platform-admin', { body: { action: 'create_company', ...nova } })
     setSaving(false)
-    // erro de regra volta no corpo da resposta (status 400)
-    let msg: string | null = (data as { error?: string } | null)?.error ?? null
-    if (err && !msg) {
-      try {
-        const corpo = await (err as { context?: Response }).context?.json()
-        msg = corpo?.error ?? null
-      } catch {
-        // sem corpo legível
-      }
-      msg = msg ?? 'Não foi possível criar a empresa. Confira se a função "platform-admin" foi publicada no Supabase.'
-    }
+    const msg = await erroDaFuncao(data, err, 'Não foi possível criar a empresa. Confira se a função "platform-admin" foi publicada no Supabase.')
     if (msg) return setError(msg)
     setCriada({ empresa: nova.empresa, email: nova.email, senha: nova.senha })
     setNova(null)
     setError(null)
+    await load()
+  }
+
+  async function excluirEmpresa() {
+    if (!editando) return
+    const nome = editando.name
+    setExcluindo(true)
+    const { data, error: err } = await supabase.functions.invoke('platform-admin', {
+      body: { action: 'delete_company', company_id: editando.id, confirm_name: confirmaNome },
+    })
+    const msg = await erroDaFuncao(data, err, 'Não foi possível excluir. Confira se a migração 076 rodou e se a função "platform-admin" foi atualizada no Supabase.')
+    if (msg) {
+      setExcluindo(false)
+      return setError(msg)
+    }
+    const r = data as { copia_id: string; arquivos_apagados: number; arquivos_falha: number; logins_apagados: number; logins_falha: number }
+    const erroCopia = await baixarCopia(r.copia_id, nome)
+    setExcluindo(false)
+    setEditando(null)
+    setConfirmaNome('')
+    setError(erroCopia)
+    const falhas = r.arquivos_falha + r.logins_falha
+    setExcluida(`${nome} foi excluída: ${r.arquivos_apagados} ${r.arquivos_apagados === 1 ? 'arquivo apagado' : 'arquivos apagados'} e ${r.logins_apagados} ${r.logins_apagados === 1 ? 'login apagado' : 'logins apagados'}.`
+      + (erroCopia ? '' : ' A cópia dos dados foi baixada para o seu computador.')
+      + (falhas > 0 ? ` Atenção: ${falhas} ${falhas === 1 ? 'item não pôde' : 'itens não puderam'} ser apagado(s); os dados da empresa já saíram, então ninguém acessa.` : ''))
+    await load()
+  }
+
+  async function apagarCopia(c: CopiaExcluida) {
+    if (!window.confirm(`Apagar de vez a cópia guardada de "${c.nome}"? Depois disso os dados dela só existem no arquivo que você baixou.`)) return
+    const { error: err } = await supabase.rpc('platform_drop_deleted_copy', { p_id: c.id })
+    if (err) return setError(friendlyDbError(err.message))
     await load()
   }
 
@@ -148,6 +217,13 @@ export function Platform() {
           <span>{error}</span>
           <button onClick={() => setError(null)} aria-label="Fechar"><X className="w-4 h-4" /></button>
         </div>
+      )}
+
+      {excluida && (
+        <Card className="border-teal/40">
+          <p className="text-sm flex items-start gap-2"><CheckCircle2 className="w-4 h-4 text-teal shrink-0 mt-0.5" /> {excluida}</p>
+          <button onClick={() => setExcluida(null)} className="text-xs text-muted mt-2">Fechar</button>
+        </Card>
       )}
 
       {criada && (
@@ -239,6 +315,26 @@ export function Platform() {
         )}
       </Card>
 
+      {copias.length > 0 && (
+        <Card title="Cópias de empresas excluídas">
+          <p className="text-xs text-muted mb-3">Os dados de cada empresa excluída ficam guardados aqui para você baixar de novo se precisar. Quando não precisar mais, apague a cópia (pela LGPD, não guarde dados de clientes sem necessidade).</p>
+          <div className="divide-y divide-line">
+            {copias.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+                <div>
+                  <p className="font-medium">{c.nome}</p>
+                  <p className="text-xs text-muted">Excluída em {dataBr(c.excluida_em)} · {c.tamanho_kb < 1024 ? `${Math.max(c.tamanho_kb, 1)} KB` : `${(c.tamanho_kb / 1024).toFixed(1).replace('.', ',')} MB`}</p>
+                </div>
+                <span className="inline-flex gap-2">
+                  <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={async () => setError(await baixarCopia(c.id, c.nome))}><Download className="w-3.5 h-3.5" /> Baixar cópia</Button>
+                  <button onClick={() => apagarCopia(c)} className="text-xs text-muted hover:text-danger px-2">Apagar cópia</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card title="Produto (tela de login)">
         <form onSubmit={salvarProduto} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div>
@@ -297,11 +393,11 @@ export function Platform() {
 
       {editando && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-ink/40" onClick={() => setEditando(null)} />
+          <div className="absolute inset-0 bg-ink/40" onClick={() => { setEditando(null); setConfirmaNome('') }} />
           <div className="relative w-full max-w-lg bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-display font-semibold">{editando.name}</h2>
-              <button onClick={() => setEditando(null)} className="text-muted hover:text-ink" aria-label="Fechar"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setEditando(null); setConfirmaNome('') }} className="text-muted hover:text-ink" aria-label="Fechar"><X className="w-5 h-5" /></button>
             </div>
             {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5 mb-3">{error}</div>}
             <form onSubmit={salvarEmpresa} className="space-y-4">
@@ -332,6 +428,26 @@ export function Platform() {
               </label>
               <Button type="submit" className="w-full justify-center" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</Button>
             </form>
+
+            <div className="mt-6 border-t border-line pt-4">
+              <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> Excluir empresa</p>
+              {empresas.find((c) => c.id === editando.id)?.active ? (
+                <p className="text-xs text-muted mt-1">Só dá para excluir uma empresa suspensa. Marque "Suspender acesso" acima, salve, e depois volte aqui.</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs bg-danger-light text-danger rounded-lg px-3 py-2">
+                    Apaga <b>de vez</b> todos os dados desta empresa (festas, clientes, pagamentos, estoque, histórico), os arquivos (logo, contratos, comprovantes) e os logins dos funcionários dela. Não dá para desfazer. Logo depois, o sistema baixa para o seu computador uma cópia dos dados (os arquivos em si não vão na cópia).
+                  </p>
+                  <label className="block text-xs text-muted">Para confirmar, digite o nome da empresa: <b className="text-ink">{empresas.find((c) => c.id === editando.id)?.name}</b></label>
+                  <input value={confirmaNome} onChange={(e) => setConfirmaNome(e.target.value)} autoComplete="off" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                  <button type="button" onClick={excluirEmpresa}
+                    disabled={excluindo || confirmaNome.trim().toLowerCase() !== (empresas.find((c) => c.id === editando.id)?.name ?? '').trim().toLowerCase()}
+                    className="w-full rounded-lg bg-danger text-white text-sm font-medium py-2.5 disabled:opacity-40">
+                    {excluindo ? 'Excluindo...' : 'Excluir empresa de vez'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

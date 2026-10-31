@@ -9,6 +9,12 @@
 //      (perfil Administrador, formas de pagamento, comissão) e o perfil dele;
 //   3) se o passo 2 falhar, apaga o login criado (não sobra acesso solto).
 //
+// Ação "delete_company": { company_id, confirm_name } (migração 076)
+//   1) platform_delete_company: confere se está suspensa e se o nome bate,
+//      guarda a cópia dos dados e apaga tudo da empresa no banco;
+//   2) apaga os arquivos dela (logo, documentos, comprovantes);
+//   3) apaga os logins dos funcionários dela (nunca o do administrador geral).
+//
 // Como publicar: painel do Supabase > Edge Functions > Deploy a new function
 // > nome "platform-admin" (apague o nome de exemplo antes) > cole este
 // arquivo inteiro > Deploy.
@@ -42,6 +48,39 @@ Deno.serve(async (req) => {
     if (!isAdmin) return jsonResponse({ error: 'Só o administrador geral pode fazer isso.' }, 403)
 
     const body = await req.json()
+
+    if (body.action === 'delete_company') {
+      const { data: res, error: delError } = await admin.rpc('platform_delete_company', {
+        p_company: String(body.company_id ?? ''), p_confirm_name: String(body.confirm_name ?? ''),
+      })
+      if (delError) return jsonResponse({ error: delError.message.replace(/^[A-Z_]+: /, '') }, 400)
+      const r = res as { copia_id: string; arquivos: { bucket: string; path: string }[]; logins: string[] }
+
+      let arquivosApagados = 0
+      let arquivosFalha = 0
+      const porBucket: Record<string, string[]> = {}
+      for (const f of r.arquivos ?? []) (porBucket[f.bucket] ??= []).push(f.path)
+      for (const [bucket, paths] of Object.entries(porBucket)) {
+        for (let i = 0; i < paths.length; i += 100) {
+          const lote = paths.slice(i, i + 100)
+          const { error } = await admin.storage.from(bucket).remove(lote)
+          if (error) arquivosFalha += lote.length
+          else arquivosApagados += lote.length
+        }
+      }
+
+      let loginsApagados = 0
+      let loginsFalha = 0
+      for (const uid of r.logins ?? []) {
+        if (uid === callerData.user.id) continue
+        const { error } = await admin.auth.admin.deleteUser(uid)
+        if (error && !/not.?found/i.test(error.message)) loginsFalha++
+        else loginsApagados++
+      }
+
+      return jsonResponse({ copia_id: r.copia_id, arquivos_apagados: arquivosApagados, arquivos_falha: arquivosFalha, logins_apagados: loginsApagados, logins_falha: loginsFalha }, 200)
+    }
+
     if (body.action !== 'create_company') return jsonResponse({ error: 'Ação desconhecida.' }, 400)
 
     const empresa = String(body.empresa ?? '').trim()

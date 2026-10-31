@@ -443,7 +443,7 @@ const LINHAS: Record<string, { titulo: string; sentido: (v: number, d: MonthView
   estornos: { titulo: 'Estornos (devoluções) pagos', sentido: (v) => `${brl(v)} saíram da conta em devoluções de cancelamento, e o caixa já descontou esse valor. O resultado não conta a devolução (conta só a multa retida), por isso o valor volta aqui.` },
   compras_estoque: { titulo: 'Compras de estoque', sentido: (v, d) => `${brl(v)} saíram da conta em compras de insumos, e o caixa já descontou esse valor. O resultado não conta a compra, conta o que as festas consumiram (${brl(d.resultado.insumos)}, na linha de insumos). Por isso a compra volta aqui e o consumo é tirado.` },
   insumos: { titulo: 'Insumos consumidos nas festas', sentido: (v) => `As festas realizadas consumiram ${brl(Math.abs(v))} em insumos do estoque (pelo custo de quando foram comprados). Não é dinheiro saindo agora, mas é custo das festas, por isso é tirado aqui.` },
-  acertos_recebidos: { titulo: 'Acertos entre unidades recebidos', sentido: (v) => `${brl(Math.abs(v))} entraram na conta vindos da outra unidade por produtos transferidos. Não é lucro de festa, por isso saem daqui.` },
+  acertos_recebidos: { titulo: 'Outras entradas (acertos entre unidades, multa e juros)', sentido: (v) => `${brl(Math.abs(v))} entraram na conta sem ser pagamento de festa: acertos vindos da outra unidade por produtos transferidos e multa e juros de parcelas pagas com atraso. Não é valor de festa, por isso saem daqui.` },
   acertos_pagos: { titulo: 'Acertos entre unidades pagos', sentido: (v) => `${brl(v)} saíram da conta para a outra unidade por produtos transferidos, e o caixa já descontou esse valor. Não é custo de festa, por isso o valor volta aqui.` },
   taxa: { titulo: 'Taxa da maquininha (estimada)', sentido: (v) => `${brl(Math.abs(v))} de taxa estimada sobre os pagamentos das festas realizadas. O caixa não desconta essa taxa; o resultado desconta, por isso é tirada aqui.` },
 }
@@ -693,7 +693,7 @@ export function ConferenciaPrevia({ summaryByUnit, unitDbIds, pronto }: {
       const d = await loadMonthViews(atual, x.id)
       const pares: [string, number, number][] = [
         ['Entradas', s.entradas, n(d.caixa.entradas)],
-        ['Acertos recebidos', s.acertosRecebidos, n(d.caixa.acertos_recebidos)],
+        ['Outras entradas (acertos, multa e juros)', s.acertosRecebidos, n(d.caixa.acertos_recebidos)],
         ['Contas pagas', s.totalDespesas, n(d.caixa.contas_pagas)],
         ['Custos das festas', s.custosFestas, n(d.caixa.custos_festas)],
         ['Saldo do mês (caixa)', s.saldo, n(d.caixa.saldo)],

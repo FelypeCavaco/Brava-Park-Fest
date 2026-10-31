@@ -1,5 +1,5 @@
 -- =========================================================
--- BANCO DOS CLIENTES — ESTRUTURA, PARTE 8 DE 9
+-- BANCO DOS CLIENTES — ESTRUTURA, PARTE 8 DE 10
 -- Rode as partes EM ORDEM (1, 2, 3...), cada uma numa query nova do SQL
 -- Editor do projeto NOVO. Se aparecer a pergunta sobre "Row Level Security",
 -- escolha rodar SEM o Supabase acrescentar nada (a segurança já está aqui).

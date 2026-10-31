@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { BillingSettings } from '../components/BillingSettings'
 import { Plus, Upload, X, Building2, Store, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -250,6 +251,7 @@ function EmpresaTab() {
           {!logoUrl && brand.name && <p className="text-[11px] text-muted text-center">Sem logo, o sistema mostra as iniciais do nome.</p>}
         </div>
       </Card>
+      <BillingSettings />
     </div>
   )
 }

@@ -30,6 +30,12 @@ interface ContractVars {
   pkg: Package | null
   firstPaymentAmount: number | null // primeiro pagamento registrado, ou null se nenhum ainda
   empresaNome?: string // nome da empresa (Configurações → Empresa), usado em textos do contrato
+  // Parcelas programadas (075): multa/juros da empresa e o cronograma da festa.
+  cobranca?: { multaPct: number; jurosPct: number; parcelas: { label: string; vencimento: string; valor: number }[] } | null
+}
+
+function pct(n: number) {
+  return `${String(Number(n.toFixed(2))).replace('.', ',')}%`
 }
 
 // Monta o dicionário de variáveis {{...}} -> valor, a partir dos dados
@@ -77,6 +83,12 @@ export function buildContractVariables(vars: ContractVars): Record<string, strin
     valor_hora_extra: unit.extra_hour_price != null ? currency(unit.extra_hour_price) : '',
     valor_total: currencyToWords(r.final_value),
     valor_sinal: firstPaymentAmount != null ? currencyToWords(firstPaymentAmount) : 'a combinar',
+
+    multa_atraso: vars.cobranca ? pct(vars.cobranca.multaPct) : '',
+    juros_atraso: vars.cobranca ? `${pct(vars.cobranca.jurosPct)} ao mês` : '',
+    parcelas_texto: (vars.cobranca?.parcelas ?? [])
+      .map((p) => `${p.label}: ${currency(p.valor)}, com vencimento em ${format(parseISO(p.vencimento), 'dd/MM/yyyy')}`)
+      .join('; '),
 
     data_geracao: format(new Date(), 'dd/MM/yyyy'),
   }

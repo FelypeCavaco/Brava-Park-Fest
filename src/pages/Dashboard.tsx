@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { InstallmentNotices } from '../components/InstallmentNotices'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { addDays, format, parseISO, differenceInCalendarDays, differenceInCalendarMonths } from 'date-fns'
 import { AlertTriangle, Sparkles, BellRing, ArrowLeftRight } from 'lucide-react'
@@ -533,6 +534,7 @@ export function Dashboard() {
       ) : (
         <>
           <AgendaNotices />
+          <InstallmentNotices />
           <PortalNotices mode={avisosFinanceiroNoTopo ? 'operacao' : 'all'} />
           {!avisosFinanceiroNoTopo && (
             <>

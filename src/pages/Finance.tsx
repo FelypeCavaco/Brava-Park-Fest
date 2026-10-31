@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { InstallmentsForecast } from '../components/InstallmentsForecast'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
@@ -839,6 +840,8 @@ export function Finance() {
         </p>
       </ExplainBox>
 
+      <InstallmentsForecast unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
+
       {fluxoResumo && (
         <p className="text-sm bg-surface border border-line rounded-card px-4 py-3">
           Neste mês, entraram {currency(fluxoResumo.entradas + fluxoResumo.acertosRecebidos)} e saíram {currency(fluxoResumo.totalDespesas + fluxoResumo.custosFestas)}. O saldo ficou em {currency(fluxoResumo.saldo)}. Isso mostra o movimento do caixa e não diz, sozinho, se as festas deram lucro.
@@ -856,7 +859,7 @@ export function Finance() {
               <Card>
                 <p className="text-xs text-muted">Entradas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
-                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de acertos entre unidades</p>}
+                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de outras entradas (acertos entre unidades, multa e juros)</p>}
                 <p className="text-[11px] text-muted mt-0.5 leading-snug">Pagamentos de clientes que você recebeu neste mês, de qualquer festa (inclusive festas de meses futuros).</p>
               </Card>
               <Card>

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { carregarCronograma, carregarRegraCobranca } from '../lib/installments'
 import { useCompany } from '../lib/CompanyContext'
 import { format, parseISO } from 'date-fns'
 import { FileDown, FileText, Pencil, Trash2 } from 'lucide-react'
@@ -133,7 +134,15 @@ export function Contracts() {
       return
     }
 
+    const [regra, cronograma] = await Promise.all([carregarRegraCobranca(), carregarCronograma(row.reservationId)])
     const variables = buildContractVariables({
+      cobranca: regra
+        ? {
+            multaPct: regra.late_fees_enabled ? regra.late_fee_percent : 0,
+            jurosPct: regra.late_fees_enabled ? regra.late_interest_percent : 0,
+            parcelas: (cronograma?.parcelas ?? []).map((p) => ({ label: p.label, vencimento: p.vencimento, valor: p.valor })),
+          }
+        : null,
       reservation: row.reservation,
       client: row.client,
       unit: row.unit,
@@ -244,7 +253,10 @@ export function Contracts() {
           Cada unidade tem seu próprio texto-base, já que os dados da contratada e os planos mudam entre elas. Use
           variáveis como <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{contratante_nome}}'}</code>,{' '}
           <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{evento_data}}'}</code> e{' '}
-          <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{valor_total}}'}</code> — elas são substituídas
+          <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{valor_total}}'}</code>
+          {' '}(e, com parcelas programadas, <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{parcelas_texto}}'}</code>,{' '}
+          <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{multa_atraso}}'}</code> e{' '}
+          <code className="bg-paper px-1.5 py-0.5 rounded text-xs">{'{{juros_atraso}}'}</code>) — elas são substituídas
           automaticamente ao gerar.
         </p>
         <div className="space-y-2">

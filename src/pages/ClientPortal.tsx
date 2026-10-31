@@ -95,6 +95,13 @@ interface PortalData {
   roteiro_ligado?: boolean
   roteiro_itens?: ItemRoteiro[]
   cardapio?: { secoes: SecaoCardapio[]; escolhas: Record<string, string[]> }
+  // Parcelas programadas (empresa no modo "parcelas"); modo livre = como sempre.
+  cobranca?: {
+    modo: 'livre' | 'parcelas'
+    multa_pct: number
+    juros_pct: number
+    cronograma: { parcelas: ParcelaPortal[]; em_atraso: number; encargos: number } | null
+  } | null
   endereco: string | null
   pix: string | null
   google_review_link: string | null
@@ -129,6 +136,20 @@ interface PortalData {
 
 // Seção do cardápio (Pacotes → Cardápio do portal): quantas escolhas a
 // festa faz já vem calculada (ex.: pratos quentes pelo pacote).
+interface ParcelaPortal {
+  seq: number
+  label: string
+  vencimento: string
+  valor: number
+  aberto: number
+  status: 'paga' | 'atrasada' | 'vence_hoje' | 'parcial' | 'a_vencer'
+  dias_atraso: number
+  multa: number
+  juros: number
+  total_hoje: number
+  paga_em: string | null
+}
+
 interface SecaoCardapio {
   id: string
   nome: string
@@ -292,7 +313,9 @@ export function ClientPortal() {
       setEscolhas(p.cardapio?.escolhas ?? {})
       setMusica(p.musica)
       setPlaylist(p.playlist ?? '')
-      setValorComprovante(p.saldo > 0 ? String(p.saldo.toFixed(2)).replace('.', ',') : '')
+      const prox = p.cobranca?.modo === 'parcelas' ? (p.cobranca.cronograma?.parcelas ?? []).find((x) => Number(x.aberto) > 0) : undefined
+      const sugerido = prox ? Number(prox.total_hoje) : p.saldo
+      setValorComprovante(sugerido > 0 ? String(sugerido.toFixed(2)).replace('.', ',') : '')
     }
     setLoading(false)
   }
@@ -356,6 +379,8 @@ export function ClientPortal() {
   const d = data
   const x = derived
   const temPlaylist = d.playlist_habilitada ?? d.vila
+  const parcelas = d.cobranca?.modo === 'parcelas' ? d.cobranca.cronograma?.parcelas ?? [] : []
+  const proxParcela = parcelas.find((p) => Number(p.aberto) > 0)
   const idadeMinima = d.idade_minima ?? 5
   const isSub = !['inicio', 'cardapio', 'convidados', 'pagamento', 'mais'].includes(tab)
 
@@ -376,9 +401,19 @@ export function ClientPortal() {
       ? [{ titulo: 'Música da festa', tab: 'musica' as Tab, done: !!d.musica, detalhe: d.musica === 'equipe' ? 'Músicas sugeridas pela equipe' : d.musica === 'cliente' ? 'Playlist enviada' : 'Opcional', atrasado: false }]
       : []),
     {
-      titulo: 'Pagamento do saldo', tab: 'pagamento' as Tab, done: d.saldo <= 0.005,
-      detalhe: d.saldo <= 0.005 ? 'Tudo pago' : `${brl(d.saldo)} · até ${diaMes(d.prazo_pagamento)}`,
-      atrasado: d.saldo > 0.005 && x.pagamentoVencido,
+      ...(parcelas.length > 0
+        ? {
+            titulo: proxParcela ? `Pagamento: ${proxParcela.label.toLowerCase()}` : 'Pagamento', tab: 'pagamento' as Tab, done: !proxParcela,
+            detalhe: !proxParcela ? 'Tudo pago'
+              : proxParcela.status === 'atrasada' ? `${brl(Number(proxParcela.total_hoje))} hoje · venceu em ${diaMes(proxParcela.vencimento)}`
+              : `${brl(Number(proxParcela.aberto))} · vence em ${diaMes(proxParcela.vencimento)}`,
+            atrasado: proxParcela?.status === 'atrasada',
+          }
+        : {
+            titulo: 'Pagamento do saldo', tab: 'pagamento' as Tab, done: d.saldo <= 0.005,
+            detalhe: d.saldo <= 0.005 ? 'Tudo pago' : `${brl(d.saldo)} · até ${diaMes(d.prazo_pagamento)}`,
+            atrasado: d.saldo > 0.005 && x.pagamentoVencido,
+          }),
     },
     { titulo: 'Contrato', tab: 'contrato' as Tab, done: !!d.contrato, detalhe: d.contrato ? `Gerado em ${dataBr(d.contrato.gerado_em)}` : 'A equipe vai disponibilizar', atrasado: false },
   ]
@@ -853,8 +888,8 @@ export function ClientPortal() {
                 <div>
                   <p className="text-xs" style={{ color: C.muted }}>Saldo a pagar</p>
                   <p className="font-display font-semibold text-3xl">{brl(d.saldo)}</p>
-                  <p className="text-xs mt-0.5" style={{ color: d.saldo > 0.005 && x.pagamentoVencido ? '#B23A3A' : C.muted }}>
-                    {d.saldo <= 0.005 ? 'Tudo pago. Obrigado!' : x.pagamentoVencido ? `Prazo encerrado (até ${antesDaFesta(d.data, d.prazo_pagamento)}). Fale com a equipe.` : `Quitar até ${diaMes(d.prazo_pagamento)}, ${antesDaFesta(d.data, d.prazo_pagamento)}.`}
+                  <p className="text-xs mt-0.5" style={{ color: d.saldo > 0.005 && (parcelas.length ? proxParcela?.status === 'atrasada' : x.pagamentoVencido) ? '#B23A3A' : C.muted }}>
+                    {d.saldo <= 0.005 ? 'Tudo pago. Obrigado!' : parcelas.length ? `Em ${parcelas.length} ${parcelas.length === 1 ? 'parcela' : 'parcelas'} — veja abaixo.` : x.pagamentoVencido ? `Prazo encerrado (até ${antesDaFesta(d.data, d.prazo_pagamento)}). Fale com a equipe.` : `Quitar até ${diaMes(d.prazo_pagamento)}, ${antesDaFesta(d.data, d.prazo_pagamento)}.`}
                   </p>
                 </div>
                 <div className="h-1 rounded-full overflow-hidden" style={{ background: C.borda }}>
@@ -865,6 +900,47 @@ export function ClientPortal() {
                   <div><p style={{ color: C.muted }}>Pago</p><p className="font-medium">{brl(d.pago)}</p></div>
                 </div>
               </section>
+
+              {parcelas.length > 0 && (
+                <>
+                  {proxParcela?.status === 'atrasada' && (
+                    <div role="alert" className="rounded-xl px-3 py-2.5 text-[13px]" style={{ background: '#F8E5E5', color: '#B23A3A' }}>
+                      <b>A {proxParcela.label.toLowerCase()} venceu em {diaMes(proxParcela.vencimento)}.</b>{' '}
+                      {Number(proxParcela.multa) + Number(proxParcela.juros) > 0
+                        ? <>Valor para pagamento hoje: <b>{brl(Number(proxParcela.total_hoje))}</b> (parcela {brl(Number(proxParcela.aberto))} + multa {brl(Number(proxParcela.multa))} + juros {brl(Number(proxParcela.juros))}, conforme o contrato).</>
+                        : <>Valor: <b>{brl(Number(proxParcela.aberto))}</b>.</>}
+                      {' '}Se já pagou, envie o comprovante abaixo.
+                    </div>
+                  )}
+                  <section className={`${card} p-4`} style={{ borderColor: C.borda }}>
+                    {secaoTitulo('Suas parcelas')}
+                    {parcelas.map((p) => {
+                      const ok = p.status === 'paga'
+                      const atr = p.status === 'atrasada'
+                      return (
+                        <div key={p.seq} className="flex gap-3 items-start py-2.5" style={{ borderBottom: `1px solid ${C.linha}` }}>
+                          <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                            style={ok ? { background: '#1F7A5C', color: '#fff' } : atr ? { background: '#B23A3A', color: '#fff' } : { border: `1.5px solid ${C.borda3}` }}>
+                            {ok ? <Check className="w-3.5 h-3.5" /> : atr ? '!' : ''}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{p.label}</p>
+                            <p className="text-xs" style={{ color: atr ? '#B23A3A' : C.muted, fontWeight: atr ? 600 : 400 }}>
+                              {ok ? (p.paga_em ? `Paga em ${diaMes(p.paga_em)}` : 'Paga')
+                                : atr ? `Venceu em ${diaMes(p.vencimento)}${Number(p.multa) + Number(p.juros) > 0 ? ' · com multa e juros' : ''}`
+                                : p.status === 'parcial' ? `Paga em parte · falta ${brl(Number(p.aberto))} até ${diaMes(p.vencimento)}`
+                                : p.status === 'vence_hoje' ? 'Vence hoje' : `Vence em ${diaMes(p.vencimento)}`}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold tabular-nums" style={{ color: atr ? '#B23A3A' : C.texto }}>
+                            {brl(atr ? Number(p.total_hoje) : Number(p.valor))}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </section>
+                </>
+              )}
 
               {d.saldo > 0.005 && (
                 <section className={`${card} p-4 space-y-3`} style={{ borderColor: C.borda }}>

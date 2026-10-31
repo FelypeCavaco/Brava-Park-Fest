@@ -13,6 +13,8 @@ export const MESSAGE_TEMPLATES = {
   reativacao: 'Olá, {{cliente}}! Faz um tempinho que vocês fizeram uma festa aqui com a gente. Já pensaram em comemorar o próximo aniversário conosco? Temos condições especiais para quem já é cliente!',
   lista_convidados: 'Olá, {{cliente}}! Este é o portal da sua festa na {{empresa}}: por ele você escolhe o cardápio, envia a lista de convidados, acompanha os pagamentos e fala com a equipe. É só abrir: {{link}}',
   vaga_disponivel: 'Olá, {{cliente}}! Surgiu uma vaga disponível na unidade {{unidade}} pertinho da data que você tinha interesse ({{data}}). Quer aproveitar? É só responder aqui!',
+  lembrete_parcela:
+    'Olá, {{cliente}}! Passando para lembrar da {{parcela}} da {{festa}}, de {{valor}}, {{vencimento}}.{{encargos}}{{pix}}{{link}}\nQualquer dúvida, é só chamar!',
   pedidos:
     'Olá, {{cliente}}!\n\nSua festa está chegando e já estamos a todo vapor por aqui para deixar tudo perfeito para o(a) {{aniversariante}}!\n\nPara a gente caprichar no cardápio do dia {{data}}, preciso que você escolha:\n\n- Os pratos da festa\n- O sabor do bolo\n\nVou te enviar o cardápio logo em seguida, com todas as opções. Depois é só me responder por aqui mesmo, assim:\nPratos: ...\nBolo: ...\n\nUm abraço,\nEquipe {{empresa}}',
   // Fica editável de verdade pela tela (tabela message_templates) — isto
@@ -38,6 +40,7 @@ export const MESSAGE_TEMPLATE_LABEL: Record<MessageTemplateKey, string> = {
   reativacao: 'Contato de reativação',
   lista_convidados: 'Enviar portal do cliente',
   vaga_disponivel: 'Avisar vaga disponível',
+  lembrete_parcela: 'Lembrete de parcela',
   pedidos: 'Pedidos',
   confirmar_fornecedores: 'Confirmar com fornecedores',
 }

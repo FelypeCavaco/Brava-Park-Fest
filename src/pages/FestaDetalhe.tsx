@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { InstallmentsCard } from '../components/InstallmentsCard'
 import { useLegacyMenuFields } from '../lib/menuSections'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { subDays, parseISO, isPast, format } from 'date-fns'
@@ -62,6 +63,7 @@ interface FestaDetalhada {
   unitId: string
   unidadeNome: string
   playlistHabilitada: boolean
+  unidadePix: string | null
   unidadeWhatsappGroupLink: string | null
   googleReviewLink: string | null
   cliente: string
@@ -654,7 +656,7 @@ export function FestaDetalhe() {
     setLoading(true)
     const { data, error } = await supabase
       .from('reservations')
-      .select('*, client:clients(name, phone), unit:units(name, staff_whatsapp_group_link, google_review_link, playlist_enabled), package:packages(name)')
+      .select('*, client:clients(name, phone), unit:units(name, staff_whatsapp_group_link, google_review_link, playlist_enabled, pix_key), package:packages(name)')
       .eq('id', id)
       .maybeSingle()
 
@@ -669,6 +671,7 @@ export function FestaDetalhe() {
       unitId: data.unit_id,
       unidadeNome: data.unit?.name ?? '',
       playlistHabilitada: !!data.unit?.playlist_enabled,
+      unidadePix: data.unit?.pix_key ?? null,
       unidadeWhatsappGroupLink: data.unit?.staff_whatsapp_group_link ?? null,
       googleReviewLink: data.unit?.google_review_link ?? null,
       cliente: data.client?.name ?? '—',
@@ -3019,6 +3022,16 @@ export function FestaDetalhe() {
               </ul>
             </Card>
           )}
+          <InstallmentsCard
+            reservationId={id!}
+            cliente={festa.cliente}
+            telefone={festa.clientPhone}
+            crianca={festa.childName}
+            pix={festa.unidadePix}
+            linkPortal={guestListUrl() || null}
+            podeLancar={can('action:festa.pagamentos')}
+            onChanged={() => { loadPayments(); loadFesta() }}
+          />
           <Card title="Pagamentos recebidos">
             <p className="text-xs text-muted mb-3">
               Sem parcelas fixas: registre aqui cada valor conforme o cliente for pagando, na forma e data que for. O

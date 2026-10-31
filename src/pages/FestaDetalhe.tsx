@@ -365,7 +365,9 @@ export function FestaDetalhe() {
   const [nfeStatus, setNfeStatus] = useState<InvoiceStatus>('nao_emitida')
   const [nfeNumber, setNfeNumber] = useState('')
 
-  const [documents, setDocuments] = useState<{ id: string; name: string; date: string; storagePath: string }[]>([])
+  // bucket: 'festa-documentos' (enviados pela equipe/contrato) ou 'portal-comprovantes'
+  // (comprovante aceito do portal — o arquivo é o próprio comprovante).
+  const [documents, setDocuments] = useState<{ id: string; name: string; date: string; storagePath: string; bucket: string; receiptId: string | null }[]>([])
   const [uploadingDoc, setUploadingDoc] = useState(false)
 
   const [unitPackages, setUnitPackages] = useState<PackageOption[]>([])
@@ -1314,6 +1316,8 @@ export function FestaDetalhe() {
         name: d.file_name,
         date: new Date(d.uploaded_at).toLocaleDateString('pt-BR'),
         storagePath: d.storage_path,
+        bucket: d.bucket ?? 'festa-documentos',
+        receiptId: d.receipt_id ?? null,
       })),
     )
   }
@@ -1344,11 +1348,11 @@ export function FestaDetalhe() {
       return
     }
 
-    setDocuments((prev) => [{ id: data.id, name: data.file_name, date: new Date(data.uploaded_at).toLocaleDateString('pt-BR'), storagePath: data.storage_path }, ...prev])
+    setDocuments((prev) => [{ id: data.id, name: data.file_name, date: new Date(data.uploaded_at).toLocaleDateString('pt-BR'), storagePath: data.storage_path, bucket: 'festa-documentos', receiptId: null }, ...prev])
   }
 
-  async function handleViewDoc(doc: { storagePath: string }) {
-    const { data, error } = await supabase.storage.from('festa-documentos').createSignedUrl(doc.storagePath, 60)
+  async function handleViewDoc(doc: { storagePath: string; bucket?: string }) {
+    const { data, error } = await supabase.storage.from(doc.bucket ?? 'festa-documentos').createSignedUrl(doc.storagePath, 60)
     if (error || !data) {
       setError('Não foi possível abrir o arquivo.')
       return
@@ -1361,18 +1365,25 @@ export function FestaDetalhe() {
     if (!fullDoc) return
     setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
     // O arquivo em si (Storage) só é apagado de verdade depois da janela de
-    // desfazer — apagar o arquivo na hora junto com a linha impediria de
-    // restaurar de verdade (não temos como reenviar os bytes no "Desfazer").
-    setTimeout(() => {
-      supabase.storage.from('festa-documentos').remove([doc.storagePath])
-    }, 6000)
+    // desfazer, e só se o documento não foi restaurado. Comprovante do portal
+    // nunca é apagado daqui: tirar da lista não mexe no comprovante nem no
+    // pagamento.
+    if (fullDoc.bucket === 'festa-documentos') {
+      setTimeout(async () => {
+        const { data: aindaExiste } = await supabase.from('reservation_documents').select('id').eq('id', doc.id).maybeSingle()
+        if (!aindaExiste) supabase.storage.from('festa-documentos').remove([doc.storagePath])
+      }, 6500)
+    }
     scheduleDelete({
       label: `Arquivo "${fullDoc.name}" removido`,
       commit: async () => {
         await supabase.from('reservation_documents').delete().eq('id', doc.id)
       },
       undo: async () => {
-        await supabase.from('reservation_documents').insert({ id: doc.id, reservation_id: id, file_name: fullDoc.name, storage_path: doc.storagePath })
+        await supabase.from('reservation_documents').insert({
+          id: doc.id, reservation_id: id, file_name: fullDoc.name, storage_path: doc.storagePath,
+          ...(fullDoc.bucket !== 'festa-documentos' ? { bucket: fullDoc.bucket, receipt_id: fullDoc.receiptId } : {}),
+        })
         setDocuments((prev) => [fullDoc, ...prev])
       },
     })
@@ -1451,7 +1462,7 @@ export function FestaDetalhe() {
       setError(friendlyDbError(rpcError.message))
       return
     }
-    await Promise.all([loadPortal(), loadPayments(), loadFesta(), loadAuditHistory()])
+    await Promise.all([loadPortal(), loadPayments(), loadFesta(), loadAuditHistory(), loadDocuments()])
   }
 
   async function rejectReceipt() {

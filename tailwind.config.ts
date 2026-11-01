@@ -5,20 +5,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#241B33',
-        paper: '#F5F2FA',
+        // Cores da marca vêm de variáveis (src/index.css): a Brava usa as
+        // dela e o banco dos clientes (Festou) troca por html[data-brand].
+        ink: 'rgb(var(--c-ink) / <alpha-value>)',
+        paper: 'rgb(var(--c-paper) / <alpha-value>)',
         surface: '#FFFFFF',
-        line: '#E2DBEE',
-        muted: '#6E6880',
+        line: 'rgb(var(--c-line) / <alpha-value>)',
+        muted: 'rgb(var(--c-muted) / <alpha-value>)',
         purple: {
-          DEFAULT: '#6D28D9',
-          dark: '#4C1D95',
-          light: '#EEE6FB',
+          DEFAULT: 'rgb(var(--c-purple) / <alpha-value>)',
+          dark: 'rgb(var(--c-purple-dark) / <alpha-value>)',
+          light: 'rgb(var(--c-purple-light) / <alpha-value>)',
         },
         green: {
-          DEFAULT: '#7CB92E',
-          dark: '#4F7A16',
-          light: '#EDF6DD',
+          DEFAULT: 'rgb(var(--c-green) / <alpha-value>)',
+          dark: 'rgb(var(--c-green-dark) / <alpha-value>)',
+          light: 'rgb(var(--c-green-light) / <alpha-value>)',
         },
         orange: {
           DEFAULT: '#F2900C',
@@ -38,8 +40,8 @@ export default {
         },
       },
       fontFamily: {
-        display: ['"Space Grotesk"', 'sans-serif'],
-        sans: ['Inter', 'sans-serif'],
+        display: ['var(--font-display)', 'sans-serif'],
+        sans: ['var(--font-sans)', 'sans-serif'],
       },
       borderRadius: {
         card: '10px',

@@ -23,9 +23,9 @@ export const MESSAGE_TEMPLATES = {
     'Olá Pessoal, tudo certo?\n\nPassando para lembrar que a entrega de hoje do BOLO, DOCINHOS, SALGADINHOS E PRATOS QUENTE está programada para as {{horario_entrega}}\n\nTEMA: {{tema}}\n\n{{aniversariante_idade}}\n\nOBS: {{observacao}}',
 } as const
 
-// TODO: trocar pelo link real de avaliação do Google Meu Negócio da casa de
-// festas (Google Business Profile > Compartilhar perfil > link de avaliação).
-export const GOOGLE_REVIEW_LINK = 'https://g.page/r/SEU-LINK-DE-AVALIACAO/review'
+// O link de avaliação do Google fica em cada unidade (Configurações →
+// Unidades). Sem ele, os pedidos de avaliação saem sem a parte do Google.
+export const SEM_LINK_AVALIACAO = 'Esta unidade ainda não tem o link de avaliação do Google: cadastre em Configurações → Unidades. A mensagem vai sem esse link.'
 
 export type MessageTemplateKey = keyof typeof MESSAGE_TEMPLATES
 

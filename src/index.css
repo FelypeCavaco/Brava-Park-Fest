@@ -4,6 +4,42 @@
 
 :root {
   color-scheme: light;
+  /* Brava Park Fest (padrão) — canais RGB, para o Tailwind aplicar opacidade */
+  --c-ink: 36 27 51;
+  --c-paper: 245 242 250;
+  --c-line: 226 219 238;
+  --c-muted: 110 104 128;
+  --c-purple: 109 40 217;
+  --c-purple-dark: 76 29 149;
+  --c-purple-light: 238 230 251;
+  --c-green: 124 185 46;
+  --c-green-dark: 79 122 22;
+  --c-green-light: 237 246 221;
+  --font-display: "Space Grotesk";
+  --font-sans: Inter;
+}
+
+/* Festou: o sistema no banco dos clientes (cores e letra da logo) */
+html[data-brand='festou'] {
+  --c-ink: 42 26 78;
+  --c-paper: 244 238 250;
+  --c-line: 226 214 241;
+  --c-muted: 109 94 140;
+  --c-purple: 89 35 155;
+  --c-purple-dark: 48 26 91;
+  --c-purple-light: 240 232 250;
+  --c-green: 79 171 124;
+  --c-green-dark: 46 125 87;
+  --c-green-light: 228 244 234;
+  --font-display: Nunito;
+  --font-sans: Nunito;
+}
+html[data-brand='festou'] .bg-brand-mesh {
+  background: radial-gradient(circle at 15% 20%, rgba(79, 171, 124, 0.35), transparent 40%),
+    radial-gradient(circle at 85% 15%, rgba(140, 90, 210, 0.35), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(89, 35, 155, 0.6), transparent 55%),
+    linear-gradient(120deg, #2a1a4e, #59239b, #3b1870, #2a1a4e);
+  background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%;
 }
 
 html,

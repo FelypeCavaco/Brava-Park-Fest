@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button'
 import { Can } from '../components/Can'
 import { ClientQuickCreateModal } from '../components/ClientQuickCreateModal'
 import { supabase } from '../lib/supabaseClient'
-import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, GOOGLE_REVIEW_LINK } from '../lib/whatsapp'
+import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, SEM_LINK_AVALIACAO } from '../lib/whatsapp'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
 import { PAYMENT_METHOD_LABEL, type Client, type PaymentMethod } from '../types'
@@ -105,8 +105,21 @@ export function Clients() {
     openWhatsApp(client.phone, message)
   }
 
-  function askReview(client: Client) {
-    const message = buildMessage(MESSAGE_TEMPLATES.pedir_avaliacao, { cliente: client.name, link: GOOGLE_REVIEW_LINK })
+  // Link de avaliação da unidade da última festa do cliente.
+  async function askReview(client: Client) {
+    const { data } = await supabase
+      .from('reservations')
+      .select('event_date, unit:units(google_review_link)')
+      .eq('client_id', client.id)
+      .order('event_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const link = ((data as { unit?: { google_review_link: string | null } | null } | null)?.unit?.google_review_link ?? '').trim()
+    let message = buildMessage(MESSAGE_TEMPLATES.pedir_avaliacao, { cliente: client.name, link })
+    if (!link) {
+      message = message.replace(/\s*Se puder, deixe também uma avaliação no Google, é rapidinho:\s*$/, '')
+      if (!window.confirm(`${SEM_LINK_AVALIACAO}\n\nEnviar mesmo assim?`)) return
+    }
     openWhatsApp(client.phone, message)
   }
 

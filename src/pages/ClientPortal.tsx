@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabaseClient'
 import { brl, parseDecimal, friendlyDbError } from '../lib/format'
 import { downloadPdf } from '../lib/pdfExport'
 import { openWhatsApp } from '../lib/whatsapp'
+import { useCompany } from '../lib/CompanyContext'
 import theo from '../assets/theo-vermelho.png'
 
 // Portal do cliente: link sem login (o token da festa). Tudo o que o cliente
@@ -70,6 +71,33 @@ const PADRAO: Paleta = {
   heroTexto2: '#E6DCF8',
   heroDivisor: '#7C3AED',
   estrelaVazia: '#D3CAE3',
+}
+// Festou (banco dos clientes): o visual padrão nas cores da logo.
+const FESTOU: Paleta = {
+  azul: '#59239B',
+  marinho: '#301A5B',
+  vermelho: '#4FAB7C',
+  amarelo: '#F0E8FA',
+  amareloTexto: '#301A5B',
+  fundo: '#F4EEFA',
+  borda: '#E2D6F1',
+  linha: '#EEE6F7',
+  texto: '#2A1A4E',
+  muted: '#6D5E8C',
+  muted2: '#7B6D96',
+  muted3: '#A69BBD',
+  texto2: '#43356A',
+  sel: '#F0E8FA',
+  navSel: '#F0E8FA',
+  campo: '#DCD0EC',
+  borda3: '#C8B8E0',
+  botaoBorda: '#D3C2EE',
+  tracejado: '#AD94DA',
+  heroTexto: '#F0E8FA',
+  heroFraco: '#DCCBF3',
+  heroTexto2: '#E8DCF8',
+  heroDivisor: '#7440B8',
+  estrelaVazia: '#D6CBE6',
 }
 // Definida a cada abertura do portal, conforme o tema da empresa da festa
 // (uma festa por página, então dá para ser uma variável do arquivo).
@@ -172,12 +200,12 @@ interface ItemRoteiro {
   destaque?: boolean
 }
 
-type Tab = 'inicio' | 'cardapio' | 'convidados' | 'pagamento' | 'mais' | 'musica' | 'historico' | 'contrato' | 'programacao' | 'regras' | 'chegar' | 'equipe' | 'avaliacao'
+type Tab = 'inicio' | 'cardapio' | 'convidados' | 'pagamento' | 'mais' | 'musica' | 'historico' | 'contrato' | 'programacao' | 'regras' | 'chegar' | 'equipe' | 'avaliacao' | 'privacidade'
 
 const TITULOS: Record<Tab, string> = {
   inicio: 'Minha festa', cardapio: 'Cardápio', convidados: 'Lista de convidados', pagamento: 'Pagamento', mais: 'Mais',
   musica: 'Música da festa', historico: 'Histórico de alterações', contrato: 'Contrato', programacao: 'Programação sugerida',
-  regras: 'Regras da casa', chegar: 'Como chegar', equipe: 'Falar com a equipe', avaliacao: 'Avaliar a festa',
+  regras: 'Regras da casa', chegar: 'Como chegar', equipe: 'Falar com a equipe', avaliacao: 'Avaliar a festa', privacidade: 'Seus dados e privacidade',
 }
 
 const FORMA: Record<string, string> = {
@@ -229,6 +257,7 @@ function escapeHtml(s: string) {
 
 export function ClientPortal() {
   const { token } = useParams()
+  const { brand } = useCompany()
   const [data, setData] = useState<PortalData | null>(null)
   const [guests, setGuests] = useState<{ id: string; name: string; arrived: boolean }[]>([])
   const [loading, setLoading] = useState(true)
@@ -359,7 +388,10 @@ export function ClientPortal() {
     }
   }, [data])
 
-  C = data?.empresa?.tema === 'mario' ? MARIO : PADRAO
+  // No computador de desenvolvimento, ?marca=festou mostra o visual do Festou com dados da Brava.
+  const festou = brand.platformManaged || (import.meta.env.DEV && new URLSearchParams(window.location.search).get('marca') === 'festou')
+  if (festou && import.meta.env.DEV) document.documentElement.dataset.brand = 'festou'
+  C = data?.empresa?.tema === 'mario' ? MARIO : festou ? FESTOU : PADRAO
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: C.fundo, color: C.muted }}>Carregando...</div>
@@ -431,6 +463,7 @@ export function ClientPortal() {
     { titulo: 'Como chegar', detalhe: 'Endereço e rota', tab: 'chegar' },
     { titulo: 'Falar com a equipe', detalhe: 'Conversar pelo WhatsApp', tab: 'equipe' },
     { titulo: 'Avaliar a festa', detalhe: d.avaliou ? 'Avaliação enviada' : d.festa_terminou ? 'Disponível agora' : 'Libera ao fim da festa', tab: 'avaliacao' },
+    { titulo: 'Seus dados e privacidade', detalhe: 'Como usamos as suas informações', tab: 'privacidade' },
   ]
 
   // ---------- ações ----------
@@ -1112,6 +1145,31 @@ export function ClientPortal() {
                 </a>
               )}
             </>
+          )}
+
+          {/* ===== PRIVACIDADE (LGPD) ===== */}
+          {tab === 'privacidade' && (
+            <section className={`${card} p-5 space-y-4 text-sm leading-relaxed`} style={{ borderColor: C.borda }}>
+              {([
+                ['Quem cuida dos seus dados', `${d.empresa?.nome ?? 'A casa de festas'} é a responsável pelos dados desta festa. O sistema usado pela casa apenas guarda e organiza essas informações para ela, sem usá-las para nenhum outro fim.`],
+                ['Quais dados', 'Seu nome, telefone e dados de contato; os dados da festa (data, pacote, cardápio, pagamentos e comprovantes); o nome e a idade do aniversariante; e os nomes da lista de convidados.'],
+                ['Para que usamos', 'Para organizar e realizar a festa, cumprir o contrato, controlar os pagamentos, conferir a entrada dos convidados e pedir sua opinião depois da festa.'],
+                ['Dados da criança', 'O nome e a idade do aniversariante são usados só para preparar a festa (decoração, bolo, parabéns), com a sua autorização como responsável.'],
+                ['Lista de convidados', 'Os nomes servem só para a equipe conferir a entrada no dia da festa.'],
+                ['Compartilhamento e segurança', 'Seus dados não são vendidos nem usados para propaganda de outras empresas. Ficam em servidores protegidos, com acesso só da equipe da casa.'],
+                ['Por quanto tempo', 'Enquanto durar a relação com a casa e pelo tempo que a lei exigir, como no caso dos registros de pagamento.'],
+                ['Seus direitos', 'Você pode pedir para ver, corrigir ou apagar seus dados a qualquer momento, falando com a equipe.'],
+              ] as const).map(([t, x]) => (
+                <div key={t}>
+                  <p className="font-semibold">{t}</p>
+                  <p style={{ color: C.muted }}>{x}</p>
+                </div>
+              ))}
+              <button onClick={() => chamarNoWhatsApp('Quero falar sobre os meus dados.')} className="w-full h-11 rounded-xl font-semibold" style={{ border: `1.5px solid ${C.botaoBorda}`, color: C.azul }}>
+                Falar com a equipe sobre meus dados
+              </button>
+              <p className="text-xs" style={{ color: C.muted2 }}>Lei Geral de Proteção de Dados (Lei nº 13.709/2018).</p>
+            </section>
           )}
 
           {/* ===== FALAR COM A EQUIPE (só WhatsApp) ===== */}

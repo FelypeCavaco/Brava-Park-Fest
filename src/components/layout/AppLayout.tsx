@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useCompany } from '../../lib/CompanyContext'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
+import { PageLoading } from '../../lib/lazyPage'
 import { GlobalSearch } from './GlobalSearch'
 import { QuickActionsBar } from './QuickActionsBar'
 import { useUnit } from '../../lib/UnitContext'
@@ -52,7 +53,9 @@ export function AppLayout() {
             {profile?.role?.isAdmin && (!brand.platformManaged || isPlatformAdmin) && <Settings />}
           </div>
         ) : (
-          <Outlet />
+          <Suspense fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
         )}
       </main>
     </div>

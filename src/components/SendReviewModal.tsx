@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 import { Button } from './ui/Button'
 import { supabase } from '../lib/supabaseClient'
 import { getOrCreateReviewToken, reviewFormUrl } from '../lib/reviewLinks'
-import { GOOGLE_REVIEW_LINK } from '../lib/whatsapp'
+import { SEM_LINK_AVALIACAO } from '../lib/whatsapp'
 
 interface SendReviewModalProps {
   reservationId: string
@@ -21,7 +21,7 @@ interface SendReviewModalProps {
 // navegadores — aqui a pessoa vê a mensagem final e escolhe copiar/abrir.
 export function SendReviewModal({ reservationId, clienteNome, phone, unitName, googleReviewLink, onClose, onSent }: SendReviewModalProps) {
   const currentUserName = useCurrentUserName()
-  const [includeLink, setIncludeLink] = useState(true)
+  const [includeLink, setIncludeLink] = useState(!!googleReviewLink)
   const [includeForm, setIncludeForm] = useState(true)
   const [formUrl, setFormUrl] = useState<string | null>(null)
   const [loadingToken, setLoadingToken] = useState(true)
@@ -44,8 +44,8 @@ export function SendReviewModal({ reservationId, clienteNome, phone, unitName, g
     if (includeForm && formUrl) {
       msg += `\n\nPode nos contar como foi, respondendo esse formulariozinho rápido? ${formUrl}`
     }
-    if (includeLink) {
-      msg += `\n\nSe puder, deixe também uma avaliação no Google, é rapidinho: ${googleReviewLink || GOOGLE_REVIEW_LINK}`
+    if (includeLink && googleReviewLink) {
+      msg += `\n\nSe puder, deixe também uma avaliação no Google, é rapidinho: ${googleReviewLink}`
     }
     return msg
   }, [clienteNome, includeForm, includeLink, formUrl, googleReviewLink])
@@ -84,9 +84,10 @@ export function SendReviewModal({ reservationId, clienteNome, phone, unitName, g
 
         <div className="space-y-2 mb-4">
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={includeLink} onChange={(e) => setIncludeLink(e.target.checked)} />
+            <input type="checkbox" checked={includeLink && !!googleReviewLink} disabled={!googleReviewLink} onChange={(e) => setIncludeLink(e.target.checked)} />
             Link de avaliação do Google
           </label>
+          {!googleReviewLink && <p className="text-xs text-amber bg-amber-light rounded-lg px-3 py-2">{SEM_LINK_AVALIACAO}</p>}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

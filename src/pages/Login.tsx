@@ -62,8 +62,15 @@ export function Login() {
 
       <div className="relative w-full max-w-sm animate-card-in">
         <div className="flex flex-col items-center gap-3 justify-center mb-8">
-          <BrandLogo className="w-24 h-24 rounded-full shadow-2xl shadow-purple/50 ring-4 ring-white/10 animate-logo-drift text-3xl" />
-          <span className="font-display text-2xl text-white font-semibold tracking-tight">{brand.name || 'Gestão de festas'}</span>
+          {brand.platformManaged ? (
+            // Banco dos clientes: a logo do Festou (quem ainda não entrou não tem empresa)
+            <img src="/marca/festou-branco.png" alt={brand.name || 'Festou'} className="w-60 max-w-full drop-shadow-xl animate-logo-drift" draggable={false} />
+          ) : (
+            <>
+              <BrandLogo className="w-24 h-24 rounded-full shadow-2xl shadow-purple/50 ring-4 ring-white/10 animate-logo-drift text-3xl" />
+              <span className="font-display text-2xl text-white font-semibold tracking-tight">{brand.name || 'Gestão de festas'}</span>
+            </>
+          )}
           {brand.tagline && <span className="text-xs text-shimmer font-medium uppercase tracking-[0.2em]">{brand.tagline}</span>}
         </div>
 

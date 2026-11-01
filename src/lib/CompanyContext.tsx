@@ -94,6 +94,18 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     window.location.assign('/plataforma')
   }, [])
 
+  // Banco dos clientes: cores e letra do Festou (a Brava fica como é).
+  useEffect(() => {
+    if (brandLoading) return
+    if (brand.platformManaged) document.documentElement.dataset.brand = 'festou'
+    else delete document.documentElement.dataset.brand
+    try {
+      localStorage.setItem('marca', brand.platformManaged ? 'festou' : 'brava')
+    } catch {
+      // sem armazenamento: só não lembra para a próxima visita
+    }
+  }, [brand.platformManaged, brandLoading])
+
   useEffect(() => {
     if (brand.name) document.title = brand.name
     setEmpresaMensagens(brand.name)

@@ -1,39 +1,41 @@
+import { Suspense } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { lazyPage, PageLoading } from './lib/lazyPage'
 import { AppLayout } from './components/layout/AppLayout'
 import { RequireAuth } from './components/layout/RequireAuth'
 import { Login } from './pages/Login'
-import { ClientPortal } from './pages/ClientPortal'
-import { ReviewPublic } from './pages/ReviewPublic'
-import { Dashboard } from './pages/Dashboard'
-import { DailyReminders } from './pages/DailyReminders'
-import { Reservations } from './pages/Reservations'
-import { FestaDetalhe } from './pages/FestaDetalhe'
-import { Clients } from './pages/Clients'
-import { Reactivation } from './pages/Reactivation'
-import { Agenda } from './pages/Agenda'
-import { Settings } from './pages/Settings'
-import { Platform } from './pages/Platform'
-import { Packages } from './pages/Packages'
-import { Contracts } from './pages/Contracts'
-import { Payments } from './pages/Payments'
-import { Finance } from './pages/Finance'
-import { FestaFixedCosts } from './pages/FestaFixedCosts'
-import { MonthlyResult } from './pages/MonthlyResult'
-import { Profitability } from './pages/Profitability'
-import { Inventory } from './pages/Inventory'
-import { Schedules } from './pages/Schedules'
-import { BirthdayReport } from './pages/BirthdayReport'
-import { Suppliers } from './pages/Suppliers'
-import { Reports } from './pages/Reports'
-import { Users } from './pages/Users'
-import { Proposals } from './pages/Proposals'
-import { Feedback } from './pages/Feedback'
-import { Marketing } from './pages/Marketing'
-import { Funnel } from './pages/Funnel'
-import { Settlements } from './pages/Settlements'
-import { Commissions } from './pages/Commissions'
-import { MarketingHub } from './pages/MarketingHub'
-import { ConsumptionAverages } from './pages/ConsumptionAverages'
+const ClientPortal = lazyPage(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })))
+const ReviewPublic = lazyPage(() => import('./pages/ReviewPublic').then((m) => ({ default: m.ReviewPublic })))
+const Dashboard = lazyPage(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const DailyReminders = lazyPage(() => import('./pages/DailyReminders').then((m) => ({ default: m.DailyReminders })))
+const Reservations = lazyPage(() => import('./pages/Reservations').then((m) => ({ default: m.Reservations })))
+const FestaDetalhe = lazyPage(() => import('./pages/FestaDetalhe').then((m) => ({ default: m.FestaDetalhe })))
+const Clients = lazyPage(() => import('./pages/Clients').then((m) => ({ default: m.Clients })))
+const Reactivation = lazyPage(() => import('./pages/Reactivation').then((m) => ({ default: m.Reactivation })))
+const Agenda = lazyPage(() => import('./pages/Agenda').then((m) => ({ default: m.Agenda })))
+const Settings = lazyPage(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
+const Platform = lazyPage(() => import('./pages/Platform').then((m) => ({ default: m.Platform })))
+const Packages = lazyPage(() => import('./pages/Packages').then((m) => ({ default: m.Packages })))
+const Contracts = lazyPage(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
+const Payments = lazyPage(() => import('./pages/Payments').then((m) => ({ default: m.Payments })))
+const Finance = lazyPage(() => import('./pages/Finance').then((m) => ({ default: m.Finance })))
+const FestaFixedCosts = lazyPage(() => import('./pages/FestaFixedCosts').then((m) => ({ default: m.FestaFixedCosts })))
+const MonthlyResult = lazyPage(() => import('./pages/MonthlyResult').then((m) => ({ default: m.MonthlyResult })))
+const Profitability = lazyPage(() => import('./pages/Profitability').then((m) => ({ default: m.Profitability })))
+const Inventory = lazyPage(() => import('./pages/Inventory').then((m) => ({ default: m.Inventory })))
+const Schedules = lazyPage(() => import('./pages/Schedules').then((m) => ({ default: m.Schedules })))
+const BirthdayReport = lazyPage(() => import('./pages/BirthdayReport').then((m) => ({ default: m.BirthdayReport })))
+const Suppliers = lazyPage(() => import('./pages/Suppliers').then((m) => ({ default: m.Suppliers })))
+const Reports = lazyPage(() => import('./pages/Reports').then((m) => ({ default: m.Reports })))
+const Users = lazyPage(() => import('./pages/Users').then((m) => ({ default: m.Users })))
+const Proposals = lazyPage(() => import('./pages/Proposals').then((m) => ({ default: m.Proposals })))
+const Feedback = lazyPage(() => import('./pages/Feedback').then((m) => ({ default: m.Feedback })))
+const Marketing = lazyPage(() => import('./pages/Marketing').then((m) => ({ default: m.Marketing })))
+const Funnel = lazyPage(() => import('./pages/Funnel').then((m) => ({ default: m.Funnel })))
+const Settlements = lazyPage(() => import('./pages/Settlements').then((m) => ({ default: m.Settlements })))
+const Commissions = lazyPage(() => import('./pages/Commissions').then((m) => ({ default: m.Commissions })))
+const MarketingHub = lazyPage(() => import('./pages/MarketingHub').then((m) => ({ default: m.MarketingHub })))
+const ConsumptionAverages = lazyPage(() => import('./pages/ConsumptionAverages').then((m) => ({ default: m.ConsumptionAverages })))
 
 function RedirectToPortal() {
   const { token } = useParams()
@@ -42,6 +44,7 @@ function RedirectToPortal() {
 
 export default function App() {
   return (
+    <Suspense fallback={<PageLoading />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/portal/:token" element={<ClientPortal />} />
@@ -84,5 +87,6 @@ export default function App() {
         </Route>
       </Route>
     </Routes>
+    </Suspense>
   )
 }

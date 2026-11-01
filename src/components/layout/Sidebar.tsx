@@ -32,6 +32,7 @@ import {
   LogOut,
   X,
   Building2,
+  Download,
 } from 'lucide-react'
 import { useUnit, UNITS, allUnitsLabel } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
@@ -124,6 +125,7 @@ const groups: Group[] = [
       { to: '/configuracoes', label: 'Empresa e unidades', icon: Building2 },
       { to: '/plataforma', label: 'Plataforma (empresas)', icon: Building2 },
       { to: '/usuarios', label: 'Usuários e permissões', icon: UserCog },
+      { to: '/exportar-dados', label: 'Exportar dados', icon: Download },
     ],
   },
 ]

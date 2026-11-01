@@ -7,6 +7,12 @@ import { supabase } from '../lib/supabaseClient'
 import { useCompany } from '../lib/CompanyContext'
 import { friendlyDbError } from '../lib/format'
 import { MODULOS } from '../lib/modules'
+import { brl } from '../lib/format'
+import { CompanyBilling, situacaoMensalidade } from '../components/platform/CompanyBilling'
+import { CompanySetup } from '../components/platform/CompanySetup'
+import { CompanyContract } from '../components/platform/CompanyContract'
+import { ContractorSettings } from '../components/platform/ContractorSettings'
+import { progressoImplantacao, type ItensImplantacao, type Mensalidade } from '../components/platform/platformTypes'
 
 // Painel do administrador geral: casas de festa que usam o sistema. Só quem
 // está na lista de administradores gerais vê (no banco dos clientes).
@@ -91,6 +97,9 @@ export function Platform() {
   const [confirmaNome, setConfirmaNome] = useState('')
   const [excluindo, setExcluindo] = useState(false)
   const [excluida, setExcluida] = useState<string | null>(null)
+  const [mensalidades, setMensalidades] = useState<Record<string, Mensalidade>>({})
+  const [implantacao, setImplantacao] = useState<Record<string, ItensImplantacao>>({})
+  const [aba, setAba] = useState<'geral' | 'mensalidade' | 'implantacao' | 'contrato'>('geral')
 
   async function load() {
     setLoading(true)
@@ -99,10 +108,26 @@ export function Platform() {
     ])
     setLoading(false)
     setCopias((cop ?? []) as CopiaExcluida[]) // vazio antes da migração 076
+    await carregarExtras()
     if (err) return setError(friendlyDbError(err.message))
     setEmpresas((data ?? []) as Empresa[])
     const c = ((cfg ?? []) as { name: string; tagline: string | null; logo_url: string | null }[])[0]
     if (c) setProduto({ name: c.name, tagline: c.tagline ?? '', logo_url: c.logo_url ?? '' })
+  }
+
+  // Mensalidades e implantação (migração 077; antes dela ficam vazias).
+  async function carregarExtras() {
+    const [{ data: men }, { data: imp }] = await Promise.all([supabase.rpc('platform_billing_list'), supabase.rpc('platform_setup_status')])
+    setMensalidades(Object.fromEntries(((men ?? []) as Mensalidade[]).map((m) => [m.company_id, { ...m, valor_em_aberto: Number(m.valor_em_aberto), mensalidade: m.mensalidade === null ? null : Number(m.mensalidade) }])))
+    setImplantacao(Object.fromEntries(((imp ?? []) as { company_id: string; itens: ItensImplantacao }[]).map((i) => [i.company_id, i.itens])))
+  }
+
+  async function suspender(c: Empresa) {
+    if (!window.confirm(`Suspender o acesso de "${c.name}"? Ninguém da empresa consegue entrar até você liberar de novo. Os dados ficam guardados.`)) return
+    const { error: err } = await supabase.rpc('platform_update_company', { p_company: c.id, p_name: c.name, p_active: false, p_disabled_modules: c.disabled_modules })
+    if (err) return setError(friendlyDbError(err.message))
+    setEditando((ed) => (ed && ed.id === c.id ? { ...ed, active: false } : ed))
+    await load()
   }
 
   useEffect(() => {
@@ -187,8 +212,11 @@ export function Platform() {
 
   const ativas = empresas.filter((c) => c.active)
   const paradas = ativas.filter((c) => (diasSemUso(c.ultima_atividade) ?? 9999) >= SEM_USO_ALERTA)
-  const resumo = [
+  const atrasadas = ativas.filter((c) => mensalidades[c.id]?.situacao === 'atrasada')
+  const resumo: { rotulo: string; valor: number | string; alerta: boolean }[] = [
     { rotulo: 'Empresas ativas', valor: ativas.length, alerta: false },
+    { rotulo: 'Receita mensal (mensalidades)', valor: brl(ativas.reduce((t, c) => t + (Number(mensalidades[c.id]?.mensalidade) || 0), 0)), alerta: false },
+    { rotulo: 'Mensalidades atrasadas', valor: atrasadas.length ? `${atrasadas.length} · ${brl(atrasadas.reduce((t, c) => t + mensalidades[c.id].valor_em_aberto, 0))}` : 0, alerta: atrasadas.length > 0 },
     { rotulo: 'Suspensas', valor: empresas.length - ativas.length, alerta: empresas.length - ativas.length > 0 },
     { rotulo: 'Festas novas (30 dias)', valor: empresas.reduce((t, c) => t + c.festas_30d, 0), alerta: false },
     { rotulo: `Sem uso há ${SEM_USO_ALERTA}+ dias`, valor: paradas.length, alerta: paradas.length > 0 },
@@ -241,7 +269,7 @@ export function Platform() {
       )}
 
       {!loading && empresas.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {resumo.map((r) => (
             <div key={r.rotulo} className={`rounded-card border px-4 py-3 bg-surface ${r.alerta ? 'border-amber/50' : 'border-line'}`}>
               <p className="text-xs text-muted">{r.rotulo}</p>
@@ -263,6 +291,8 @@ export function Platform() {
                 <tr className="text-left text-xs text-muted border-b border-line">
                   <th className="pb-3 font-medium">Empresa</th>
                   <th className="pb-3 font-medium">Situação</th>
+                  <th className="pb-3 font-medium">Mensalidade</th>
+                  <th className="pb-3 font-medium">Implantação</th>
                   <th className="pb-3 font-medium text-right">Usuários</th>
                   <th className="pb-3 font-medium text-right">Unidades</th>
                   <th className="pb-3 font-medium text-right">Festas</th>
@@ -282,6 +312,8 @@ export function Platform() {
                       )}
                     </td>
                     <td className="py-3">{c.active ? <Badge tone="teal">Ativa</Badge> : <Badge tone="danger">Suspensa</Badge>}</td>
+                    <td className="py-3">{(() => { const s = situacaoMensalidade(mensalidades[c.id]); return <Badge tone={s.tom}>{s.texto}</Badge> })()}</td>
+                    <td className="py-3 text-muted tabular-nums">{(() => { const pr = progressoImplantacao(implantacao[c.id]); return pr ? `${pr.feitos}/${pr.total}` : '—' })()}</td>
                     <td className="py-3 text-right tabular-nums">{c.usuarios}</td>
                     <td className="py-3 text-right tabular-nums">{c.unidades}</td>
                     <td className="py-3 text-right tabular-nums">{c.festas}</td>
@@ -304,7 +336,7 @@ export function Platform() {
                         <Button className="text-xs px-3 py-1.5" disabled={abrindo !== null} onClick={() => abrir(c)}>
                           <LogIn className="w-3.5 h-3.5" /> {abrindo === c.id ? 'Abrindo...' : brand.companyId === c.id ? 'Aberta' : 'Abrir'}
                         </Button>
-                        <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setEditando({ ...c, disabled_modules: [...c.disabled_modules] })}>Gerenciar</Button>
+                        <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => { setAba('geral'); setEditando({ ...c, disabled_modules: [...c.disabled_modules] }) }}>Gerenciar</Button>
                       </span>
                     </td>
                   </tr>
@@ -334,6 +366,8 @@ export function Platform() {
           </div>
         </Card>
       )}
+
+      <ContractorSettings />
 
       <Card title="Produto (tela de login)">
         <form onSubmit={salvarProduto} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
@@ -400,6 +434,18 @@ export function Platform() {
               <button onClick={() => { setEditando(null); setConfirmaNome('') }} className="text-muted hover:text-ink" aria-label="Fechar"><X className="w-5 h-5" /></button>
             </div>
             {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5 mb-3">{error}</div>}
+            <div className="flex gap-1 border-b border-line mb-4 -mt-1 overflow-x-auto">
+              {([['geral', 'Geral'], ['mensalidade', 'Mensalidade'], ['implantacao', 'Implantação'], ['contrato', 'Contrato']] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setAba(k)} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${aba === k ? 'border-purple text-purple font-semibold' : 'border-transparent text-muted'}`}>{l}</button>
+              ))}
+            </div>
+            {aba === 'mensalidade' && (
+              <CompanyBilling key={editando.id} empresaId={editando.id} ativa={!!empresas.find((c) => c.id === editando.id)?.active} m={mensalidades[editando.id]}
+                onChanged={carregarExtras} onSuspender={() => { const c = empresas.find((x) => x.id === editando.id); if (c) suspender(c) }} />
+            )}
+            {aba === 'implantacao' && <CompanySetup empresaId={editando.id} itens={implantacao[editando.id]} onChanged={carregarExtras} />}
+            {aba === 'contrato' && <CompanyContract empresaId={editando.id} />}
+            {aba === 'geral' && (<>
             <form onSubmit={salvarEmpresa} className="space-y-4">
               <div>
                 <label className="block text-xs text-muted mb-1">Nome da empresa</label>
@@ -448,6 +494,7 @@ export function Platform() {
                 </div>
               )}
             </div>
+            </>)}
           </div>
         </div>
       )}

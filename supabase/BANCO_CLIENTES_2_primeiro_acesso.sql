@@ -34,7 +34,7 @@ begin
 
   insert into platform_admins (user_id) values (v_user);
   perform platform_create_company('Festa Feliz (demonstração)', null, null, null);
-  insert into platform_settings (name, tagline) values ('Gestão de Festas', 'Sistema para casas de festa')
+  insert into platform_settings (name, tagline) values ('Festou', 'Sistema para casas de festa')
   on conflict (unica) do nothing;
 end $$;
 

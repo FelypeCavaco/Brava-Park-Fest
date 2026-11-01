@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
 import { supabase } from '../../lib/supabaseClient'
 import { useCompany } from '../../lib/CompanyContext'
+import { ChangePasswordScreen } from './ChangePasswordScreen'
 
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()
@@ -30,6 +31,9 @@ export function RequireAuth() {
   if (!session || deactivated || suspensa) {
     return <Navigate to="/login" state={{ from: location, deactivated, suspensa }} replace />
   }
+
+  // Senha provisória: troca antes de qualquer outra tela.
+  if (profile?.mustChangePassword) return <ChangePasswordScreen nome={profile.name} />
 
   // Administrador geral sem empresa aberta: tudo leva ao painel da plataforma.
   if (isPlatformAdmin && !brand.companyId && location.pathname !== '/plataforma') {

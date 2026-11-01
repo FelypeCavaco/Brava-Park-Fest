@@ -27,6 +27,7 @@ const Schedules = lazyPage(() => import('./pages/Schedules').then((m) => ({ defa
 const BirthdayReport = lazyPage(() => import('./pages/BirthdayReport').then((m) => ({ default: m.BirthdayReport })))
 const Suppliers = lazyPage(() => import('./pages/Suppliers').then((m) => ({ default: m.Suppliers })))
 const Reports = lazyPage(() => import('./pages/Reports').then((m) => ({ default: m.Reports })))
+const ExportData = lazyPage(() => import('./pages/ExportData').then((m) => ({ default: m.ExportData })))
 const Users = lazyPage(() => import('./pages/Users').then((m) => ({ default: m.Users })))
 const Proposals = lazyPage(() => import('./pages/Proposals').then((m) => ({ default: m.Proposals })))
 const Feedback = lazyPage(() => import('./pages/Feedback').then((m) => ({ default: m.Feedback })))
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="/fornecedores" element={<Suppliers />} />
           <Route path="/relatorios" element={<Reports />} />
           <Route path="/usuarios" element={<Users />} />
+          <Route path="/exportar-dados" element={<ExportData />} />
           <Route path="/configuracoes" element={<Settings />} />
           <Route path="/plataforma" element={<Platform />} />
           <Route path="/marketing" element={<MarketingHub />} />

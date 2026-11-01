@@ -9,6 +9,7 @@ interface Profile {
   role: Role | null
   name: string
   active: boolean
+  mustChangePassword?: boolean
 }
 
 interface AuthContextValue {
@@ -64,18 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     setProfileLoading(true)
-    supabase
-      .from('user_profiles')
-      .select('name, active, role:roles(id, name, is_admin)')
-      .eq('id', userId)
-      .maybeSingle()
-      .then(({ data }) => {
+    const buscar = (campos: string) => supabase.from('user_profiles').select(campos).eq('id', userId).maybeSingle()
+    // must_change_password só existe depois da migração 077: sem ela, busca sem.
+    buscar('name, active, must_change_password, role:roles(id, name, is_admin)')
+      .then((r) => (r.error ? buscar('name, active, role:roles(id, name, is_admin)') : r))
+      .then(({ data: linha }) => {
+        const data = linha as any
         const roleRow = data?.role as any
         setProfile(
           data
             ? {
                 name: data.name,
                 active: data.active,
+                mustChangePassword: data.must_change_password === true,
                 role: roleRow ? { id: roleRow.id, name: roleRow.name, isAdmin: roleRow.is_admin } : null,
               }
             : null,

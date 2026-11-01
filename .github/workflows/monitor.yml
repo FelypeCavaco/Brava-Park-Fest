@@ -1,0 +1,32 @@
+# Monitor gratuito: a cada 30 minutos confere se os dois sites e os dois
+# bancos respondem. Se algo não responder, o GitHub manda um e-mail avisando
+# que o "Monitor" falhou (Configurações do GitHub → Notifications → Actions).
+# De quebra, a consulta ao banco conta como uso e evita que o projeto gratuito
+# do Supabase seja pausado por falta de atividade.
+# As chaves abaixo são as públicas (as mesmas que já vão dentro dos sites).
+name: Monitor
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Site da Brava
+        run: curl -fsS --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null https://brava-park-fest.brava-park-fest.workers.dev/login
+      - name: Site do Festou (clientes)
+        run: curl -fsS --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null https://gestao-festas.brava-park-fest.workers.dev/login
+      - name: Banco da Brava
+        run: >
+          curl -fsS --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null -X POST
+          https://ecebsmodxochfuujhqnk.supabase.co/rest/v1/rpc/public_company_brand
+          -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZWJzbW9keG9jaGZ1dWpocW5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MTk0NjUsImV4cCI6MjEwNDM5NTQ2NX0.RK9gwMW_fHnBW8G20C2puBHuRk6s08rWet3k8oVOuxY" -H "Content-Type: application/json" -d '{}'
+      - name: Banco dos clientes
+        run: >
+          curl -fsS --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null -X POST
+          https://cadbylnuopirgalscduj.supabase.co/rest/v1/rpc/public_company_brand
+          -H "apikey: sb_publishable_fyOxalO1whjKDACwgBxQUQ_NVvHYAoJ" -H "Content-Type: application/json" -d '{}'

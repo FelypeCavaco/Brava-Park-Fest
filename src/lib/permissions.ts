@@ -14,7 +14,7 @@ export function canAccessRoute(role: Role | null, can: (key: string) => boolean,
     return regra ? can(regra.key) : true
   }
   if (!role) return true // perfil ainda não criado (fluxo inicial) — não restringe, pra dar pra criar o próprio perfil
-  if (pathname === '/usuarios' || pathname === '/configuracoes') return false
+  if (pathname === '/usuarios' || pathname === '/configuracoes' || pathname === '/exportar-dados') return false
   const rule = PAGE_PERMISSION_BY_PATH.find((r) => r.test(pathname))
   if (!rule) return true
   return can(rule.key)

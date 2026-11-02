@@ -164,7 +164,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
         </div>
       )}
 
-      {m?.cadastrada && m.asaas !== undefined && m.asaas !== null && (
+      {m && m.asaas !== undefined && m.asaas !== null && (
         <div className="rounded-lg border border-line px-4 py-3 space-y-3">
           <div className="flex items-center gap-2">
             <Zap className={`w-4 h-4 ${m.asaas ? 'text-teal' : 'text-muted'}`} />
@@ -183,7 +183,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
             <div>
               <label className="block text-xs text-muted mb-1">Tolerância antes de suspender</label>
               <div className="flex items-center gap-2">
-                <input type="number" min={0} max={60} value={tolerancia} onChange={(e) => setTolerancia(e.target.value)} className="w-20 border border-line rounded-lg px-3 py-2 text-sm" aria-label="Dias de tolerância" />
+                <input type="number" min={0} max={60} value={tolerancia} disabled={!m.cadastrada} onChange={(e) => setTolerancia(e.target.value)} className="w-20 border border-line rounded-lg px-3 py-2 text-sm" aria-label="Dias de tolerância" />
                 <span className="text-sm text-muted">dias</span>
                 <button type="button" onClick={salvarTolerancia} className="text-xs font-medium text-purple">Salvar</button>
               </div>
@@ -195,10 +195,10 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
                 <button type="button" onClick={cancelarAsaas} disabled={busy} className="text-xs text-muted hover:text-danger">Cancelar assinatura</button>
               </>
             ) : (
-              <Button type="button" onClick={ligarAsaas} disabled={busy || !(Number(m.mensalidade) > 0)}><Zap className="w-4 h-4" /> {busy ? 'Ligando...' : 'Ligar cobrança no Asaas'}</Button>
+              <Button type="button" onClick={ligarAsaas} disabled={busy || !m.cadastrada || !(Number(m.mensalidade) > 0)}><Zap className="w-4 h-4" /> {busy ? 'Ligando...' : 'Ligar cobrança no Asaas'}</Button>
             )}
           </div>
-          {!m.asaas && <p className="text-[11px] text-muted">Precisa do CNPJ (ou CPF) na primeira unidade da casa e de um e-mail de administrador.</p>}
+          {!m.asaas && <p className="text-[11px] text-muted">{m.cadastrada ? 'Precisa do CNPJ (ou CPF) na primeira unidade da casa e de um e-mail de administrador.' : 'Primeiro preencha e salve a mensalidade aqui embaixo; depois é só clicar em Ligar.'}</p>}
         </div>
       )}
 

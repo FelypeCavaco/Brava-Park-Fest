@@ -307,7 +307,6 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           <LogOut className="w-4 h-4" strokeWidth={1.75} />
           Sair
         </button>
-        <p className="px-3 pt-2 text-xs text-white/40">v0.1 — em construção</p>
       </div>
       </aside>
     </>

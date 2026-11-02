@@ -547,7 +547,7 @@ export function Reservations() {
     return eachDayOfInterval({ start: gridStart, end: gridEnd })
   }, [currentMonth])
 
-  const monthLabel = format(currentMonth, 'MMMM \'de\' yyyy', { locale: ptBR })
+  const monthLabel = format(currentMonth, 'MMMM \'de\' yyyy', { locale: ptBR }).replace(/^./, (c) => c.toUpperCase())
 
   return (
     <div className="space-y-6">
@@ -610,7 +610,7 @@ export function Reservations() {
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <p className="font-display font-semibold capitalize">{monthLabel}</p>
+                <p className="font-display font-semibold">{monthLabel}</p>
                 <button
                   onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
                   className="p-1.5 rounded-lg border border-line hover:bg-paper transition-colors"
@@ -1178,6 +1178,9 @@ export function Reservations() {
                 </p>
               </div>
 
+              {error && (
+                <div role="alert" className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>
+              )}
               <Button type="submit" className="w-full justify-center mt-2" disabled={saving || clients.length === 0}>
                 {saving ? 'Salvando...' : 'Salvar reserva'}
               </Button>

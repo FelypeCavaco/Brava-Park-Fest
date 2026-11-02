@@ -57,7 +57,7 @@ function dataCurta(iso: string) {
   return format(parseISO(iso), 'dd/MM/yyyy')
 }
 export function nomeMes(monthValue: string) {
-  return format(parseISO(`${monthValue}-01`), "MMMM 'de' yyyy", { locale: ptBR })
+  return format(parseISO(`${monthValue}-01`), "MMMM 'de' yyyy", { locale: ptBR }).replace(/^./, (c) => c.toUpperCase())
 }
 function unidadeNome(unitId: string, unitDbIds: Record<string, { unitId: string }>) {
   const slug = Object.keys(unitDbIds).find((s) => unitDbIds[s]?.unitId === unitId)
@@ -159,8 +159,8 @@ function MonthPicker({ month, onChange }: { month: string; onChange: (m: string)
   return (
     <label className="text-sm flex items-center gap-2">
       <span className="text-muted">Mês</span>
-      <select value={month} onChange={(e) => onChange(e.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-sm capitalize">
-        {opcoes.map((m) => <option key={m} value={m} className="capitalize">{nomeMes(m)}</option>)}
+      <select value={month} onChange={(e) => onChange(e.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-sm">
+        {opcoes.map((m) => <option key={m} value={m}>{nomeMes(m)}</option>)}
       </select>
     </label>
   )
@@ -627,7 +627,7 @@ export function PonteView({ month, onMonthChange, unitId, unitDbIds, mostrarUnid
               <tbody>
                 {porMes.map(([mes, festas]) => (
                   <Fragment key={mes}>
-                    <tr className="bg-paper/60"><td colSpan={mostrarUnidade ? 7 : 6} className="py-1.5 px-1 text-xs font-semibold capitalize">
+                    <tr className="bg-paper/60"><td colSpan={mostrarUnidade ? 7 : 6} className="py-1.5 px-1 text-xs font-semibold">
                       {nomeMes(mes)} · recebido {brl(festas.reduce((s, f) => s + n(f.recebido), 0))}
                     </td></tr>
                     {festas.map((f) => (

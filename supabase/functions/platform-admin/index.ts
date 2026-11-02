@@ -90,6 +90,22 @@ Deno.serve(async (req) => {
       const cpfCnpj = (dados.cnpj ?? '').replace(/\D/g, '')
       if (cpfCnpj.length !== 14 && cpfCnpj.length !== 11) return jsonResponse({ error: 'Cadastre o CNPJ (ou CPF) da casa na primeira unidade (Configurações → Unidades).' }, 400)
       if (!(Number(dados.mensalidade) > 0)) return jsonResponse({ error: 'A mensalidade precisa ser maior que zero.' }, 400)
+      // Teste grátis longo: o banco só lista vencimentos até um mês à frente.
+      // Calcula o primeiro vencimento a partir do início da cobrança.
+      if (!dados.proximo_vencimento) {
+        const { data: bi } = await admin.from('platform_billing').select('inicio, dia_vencimento').eq('company_id', companyId).maybeSingle()
+        if (bi?.inicio && bi?.dia_vencimento) {
+          const hoje = new Date().toISOString().slice(0, 10)
+          const base = bi.inicio > hoje ? bi.inicio : hoje
+          const [a, m] = base.split('-').map(Number)
+          let venc = `${a}-${String(m).padStart(2, '0')}-${String(bi.dia_vencimento).padStart(2, '0')}`
+          if (venc < base) {
+            const prox = new Date(Date.UTC(a, m, Number(bi.dia_vencimento)))
+            venc = prox.toISOString().slice(0, 10)
+          }
+          dados.proximo_vencimento = venc
+        }
+      }
       if (!dados.proximo_vencimento) return jsonResponse({ error: 'Não há próximo vencimento: confira o início e o dia de vencimento.' }, 400)
       const fone = (dados.whatsapp ?? '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '')
       const cliente = {

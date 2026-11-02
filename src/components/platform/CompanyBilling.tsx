@@ -13,6 +13,12 @@ const mesBr = (iso: string) => {
   const [a, m] = iso.split('-')
   return `${['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(m) - 1]}/${a}`
 }
+// Soma dias a uma data AAAA-MM-DD (sem fuso: meio-dia evita virar o dia).
+const somaDias = (iso: string, dias: number) => {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
 // Chama a função de servidor do painel; erro de regra volta no corpo (400).
@@ -32,6 +38,7 @@ async function chamarServidor(body: Record<string, unknown>): Promise<{ data: Re
 
 export function situacaoMensalidade(m: Mensalidade | undefined): { texto: string; tom: 'teal' | 'amber' | 'danger' | 'neutral' } {
   if (m?.bloqueada) return { texto: 'Bloqueada (pagamento)', tom: 'danger' }
+  if (m?.cadastrada && m.inicio && m.inicio > todayIso()) return { texto: `Em teste até ${dataBr(somaDias(m.inicio, -1)).slice(0, 5)}`, tom: 'teal' }
   if (!m || m.situacao === 'sem_cadastro') return { texto: 'Sem mensalidade', tom: 'neutral' }
   if (m.situacao === 'sem_cobranca') return { texto: 'Sem cobrança', tom: 'neutral' }
   if (m.situacao === 'atrasada') return { texto: `Atrasada ${m.dias_atraso} ${m.dias_atraso === 1 ? 'dia' : 'dias'}`, tom: 'danger' }
@@ -59,6 +66,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [tolerancia, setTolerancia] = useState(String(m?.tolerancia_dias ?? 7))
+  const [diasTeste, setDiasTeste] = useState('')
 
   async function carregarHistorico() {
     const { data } = await supabase.rpc('platform_billing_history', { p_company: empresaId })
@@ -216,9 +224,31 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
           <input type="number" min={1} max={28} value={f.dia} onChange={(e) => setF({ ...f, dia: e.target.value })} className={inp} />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Início da cobrança</label>
-          <input type="date" value={f.inicio} onChange={(e) => setF({ ...f, inicio: e.target.value })} className={inp} />
+          <label className="block text-xs text-muted mb-1">Dias de teste grátis</label>
+          <input
+            type="number"
+            min={0}
+            max={365}
+            value={diasTeste}
+            placeholder="0"
+            onChange={(e) => {
+              setDiasTeste(e.target.value)
+              const n = Number(e.target.value)
+              // o teste começa hoje: a cobrança começa no dia seguinte ao fim do teste
+              if (Number.isFinite(n) && n >= 0) setF({ ...f, inicio: somaDias(todayIso(), n) })
+            }}
+            className={inp}
+          />
         </div>
+        <div>
+          <label className="block text-xs text-muted mb-1">Início da cobrança</label>
+          <input type="date" value={f.inicio} onChange={(e) => { setDiasTeste(''); setF({ ...f, inicio: e.target.value }) }} className={inp} />
+        </div>
+        {f.inicio > todayIso() && (
+          <p className="col-span-2 text-xs bg-teal-light text-teal rounded-lg px-3 py-2">
+            Teste grátis até {dataBr(somaDias(f.inicio, -1))}. Nenhuma cobrança antes disso; a primeira fatura vence no primeiro dia {f.dia || '?'} a partir de {dataBr(f.inicio)}.
+          </p>
+        )}
         <div>
           <label className="block text-xs text-muted mb-1">Taxa de implantação (R$)</label>
           <input value={f.implantacao} onChange={(e) => setF({ ...f, implantacao: e.target.value })} inputMode="decimal" className={inp} />

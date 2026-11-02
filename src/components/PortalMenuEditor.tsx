@@ -11,7 +11,8 @@ import { UNITS, useUnit } from '../lib/UnitContext'
 // Cardápio que o cliente escolhe no portal, montado em seções (ex.: "Pratos
 // quentes", "Massa do bolo", "Sabores de suco"). Cada seção diz quantas
 // escolhas a festa faz e pode valer para todas as unidades ou só uma.
-// Ocultar tira do portal sem apagar escolhas já feitas.
+// Ocultar tira do portal sem apagar escolhas já feitas. Cada opção pode valer
+// para todos os pacotes ou só para alguns (migração 078).
 
 type Modo = 'uma' | 'varias' | 'pacote'
 
@@ -34,6 +35,14 @@ interface Opcao {
   section_id: string
   name: string
   sort: number
+  active: boolean
+  package_ids?: string[] | null
+}
+
+interface Pacote {
+  id: string
+  name: string
+  unit_id: string | null
   active: boolean
 }
 
@@ -62,19 +71,28 @@ export function PortalMenuEditor() {
   const [form, setForm] = useState<Rascunho | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [semMigracao, setSemMigracao] = useState(false)
+  const [pacotes, setPacotes] = useState<Pacote[]>([])
+  const [porPacote, setPorPacote] = useState(true) // false antes da migração 078
+  const [escolhendo, setEscolhendo] = useState<{ opcao: Opcao; secao: Secao; marcados: string[] } | null>(null)
 
   useEffect(() => {
     load()
   }, [])
 
   async function load() {
-    const [{ data: s, error: e1 }, { data: o }] = await Promise.all([
+    const opcoesQuery = (campos: string) => supabase.from('portal_menu_options').select(campos).not('section_id', 'is', null).order('sort').order('name')
+    const [{ data: s, error: e1 }, oComPacote, { data: pk }] = await Promise.all([
       supabase.from('menu_sections').select('*').order('sort').order('created_at'),
-      supabase.from('portal_menu_options').select('id, section_id, name, sort, active').not('section_id', 'is', null).order('sort').order('name'),
+      opcoesQuery('id, section_id, name, sort, active, package_ids'),
+      supabase.from('packages').select('id, name, unit_id, active').order('name'),
     ])
     if (e1) return setSemMigracao(true)
+    // Antes da migração 078 não existe package_ids: carrega sem.
+    const o = oComPacote.error ? await opcoesQuery('id, section_id, name, sort, active') : oComPacote
+    setPorPacote(!oComPacote.error)
     setSecoes((s ?? []) as Secao[])
-    setOpcoes((o ?? []) as Opcao[])
+    setOpcoes(((o.data ?? []) as unknown) as Opcao[])
+    setPacotes((pk ?? []) as Pacote[])
   }
 
   const unitName = (id: string | null) => (id ? UNITS.find((u) => unitDbIds[u.id]?.unitId === id)?.name ?? '—' : 'Todas as unidades')
@@ -144,6 +162,32 @@ export function PortalMenuEditor() {
     setOpcoes((prev) => prev.map((x) => (x.id === o.id ? { ...x, active: !o.active } : x)))
   }
 
+  // Pacotes que podem ter a opção: os da unidade da seção (ou todos, se a
+  // seção vale para todas as unidades).
+  const pacotesDaSecao = (sc: Secao) => pacotes.filter((pk) => !sc.unit_id || !pk.unit_id || pk.unit_id === sc.unit_id)
+
+  function rotuloPacotes(o: Opcao) {
+    const ids = o.package_ids ?? []
+    if (ids.length === 0) return 'Todos os pacotes'
+    const nomes = ids.map((id) => pacotes.find((pk) => pk.id === id)?.name).filter(Boolean) as string[]
+    if (nomes.length === 0) return 'Pacote excluído'
+    return nomes.length === 1 ? `Só ${nomes[0]}` : `${nomes.length} pacotes`
+  }
+
+  async function salvarPacotes() {
+    if (!escolhendo) return
+    const todos = pacotesDaSecao(escolhendo.secao).filter((pk) => pk.active).map((pk) => pk.id)
+    const marcados = escolhendo.marcados
+    if (marcados.length === 0) return setError('Marque pelo menos um pacote, ou escolha "Todos os pacotes".')
+    // marcou todos os pacotes ativos = vale para todos (inclusive os que forem criados depois)
+    const valor = todos.every((id) => marcados.includes(id)) ? null : marcados
+    const { error: err } = await supabase.from('portal_menu_options').update({ package_ids: valor }).eq('id', escolhendo.opcao.id)
+    if (err) return setError(friendlyDbError(err.message))
+    setOpcoes((prev) => prev.map((x) => (x.id === escolhendo.opcao.id ? { ...x, package_ids: valor } : x)))
+    setEscolhendo(null)
+    setError(null)
+  }
+
   async function removeOpcao(o: Opcao) {
     const { error: err } = await supabase.from('portal_menu_options').delete().eq('id', o.id)
     if (err) return setError(friendlyDbError(err.message))
@@ -197,6 +241,17 @@ export function PortalMenuEditor() {
                   {lista.map((o) => (
                     <li key={o.id} className={`flex items-center gap-2 px-3 py-1.5 text-sm ${o.active ? '' : 'text-muted line-through'}`}>
                       <span className="flex-1">{o.name}</span>
+                      {porPacote && (
+                        <Can permission="action:pacotes.criar_editar">
+                          <button
+                            onClick={() => { setError(null); setEscolhendo({ opcao: o, secao: sc, marcados: o.package_ids?.length ? [...o.package_ids] : pacotesDaSecao(sc).filter((pk) => pk.active).map((pk) => pk.id) }) }}
+                            className={`text-[11px] rounded-full px-2 py-0.5 whitespace-nowrap ${o.package_ids?.length ? 'bg-purple-light text-purple-dark font-medium' : 'text-muted hover:text-purple'}`}
+                            title="Em quais pacotes esta opção aparece"
+                          >
+                            {rotuloPacotes(o)}
+                          </button>
+                        </Can>
+                      )}
                       <Can permission="action:pacotes.criar_editar">
                         <button onClick={() => toggleOpcao(o)} className="text-muted hover:text-purple" aria-label={o.active ? `Ocultar ${o.name} do portal` : `Mostrar ${o.name} no portal`}>
                           {o.active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
@@ -219,6 +274,46 @@ export function PortalMenuEditor() {
             )
           })}
         </div>
+      )}
+
+      {escolhendo && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setEscolhendo(null)} />
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-display font-semibold">{escolhendo.opcao.name}</h2>
+              <button onClick={() => setEscolhendo(null)} className="text-muted hover:text-ink" aria-label="Fechar"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-muted mb-4">Em quais pacotes esta opção aparece para o cliente escolher no portal?</p>
+            {error && <p className="text-sm text-danger mb-3">{error}</p>}
+            {(() => {
+              const lista = pacotesDaSecao(escolhendo.secao).filter((pk) => pk.active)
+              const todos = lista.length > 0 && lista.every((pk) => escolhendo.marcados.includes(pk.id))
+              return (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer bg-paper rounded-lg px-3 py-2">
+                    <input type="checkbox" checked={todos} onChange={(e) => setEscolhendo({ ...escolhendo, marcados: e.target.checked ? lista.map((pk) => pk.id) : [] })} />
+                    Todos os pacotes
+                  </label>
+                  {lista.map((pk) => (
+                    <label key={pk.id} className="flex items-center gap-2 text-sm cursor-pointer px-3 py-1">
+                      <input
+                        type="checkbox"
+                        checked={escolhendo.marcados.includes(pk.id)}
+                        onChange={(e) => setEscolhendo({ ...escolhendo, marcados: e.target.checked ? [...escolhendo.marcados, pk.id] : escolhendo.marcados.filter((id) => id !== pk.id) })}
+                      />
+                      {pk.name}
+                    </label>
+                  ))}
+                  {lista.length === 0 && <p className="text-sm text-muted">Nenhum pacote cadastrado para esta unidade.</p>}
+                  <p className="text-[11px] text-muted pt-1">Com "Todos os pacotes", a opção também vale para os pacotes que você criar depois.</p>
+                  <Button onClick={salvarPacotes} className="w-full justify-center mt-2">Salvar</Button>
+                </div>
+              )
+            })()}
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* Janela aberta no corpo da página: dentro do quadro (que tem animação) ela ficaria presa nele. */}

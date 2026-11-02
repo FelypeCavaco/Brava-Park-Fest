@@ -21,6 +21,8 @@
 //   à escolha do cliente), deixa os avisos do Asaas (por e-mail) em 5 dias
 //   antes e no dia do vencimento, e guarda o link da fatura em aberto.
 // Ação "asaas_cancel": { company_id } — cancela a assinatura no Asaas.
+// Ação "asaas_implantacao": { company_id, vencimento } — cobrança única da taxa
+//   de implantação (migração 080). "asaas_implantacao_cancel": cancela essa cobrança.
 //
 // Segredos (Supabase > Edge Functions > Secrets): ASAAS_API_KEY e ASAAS_ENV
 // ("sandbox" para testes, "producao" para valer).
@@ -164,6 +166,46 @@ Deno.serve(async (req) => {
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : 'Falha ao falar com o Asaas.' }, 400)
       }
+    }
+
+    // Taxa de implantação: cobrança única no Asaas (migração 080).
+    if (body.action === 'asaas_implantacao') {
+      const companyId = String(body.company_id ?? '')
+      const vencimento = String(body.vencimento ?? '')
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return jsonResponse({ error: 'Escolha a data de vencimento da implantação.' }, 400)
+      const { data: b } = await admin.from('platform_billing')
+        .select('asaas_customer_id, implantacao, implantacao_payment_id, implantacao_status').eq('company_id', companyId).maybeSingle()
+      if (!b?.asaas_customer_id) return jsonResponse({ error: 'Ligue antes a cobrança no Asaas (botão "Ligar cobrança no Asaas").' }, 400)
+      if (!(Number(b.implantacao) > 0)) return jsonResponse({ error: 'Preencha e salve a taxa de implantação na mensalidade.' }, 400)
+      if (b.implantacao_payment_id && (b.implantacao_status === 'pendente' || b.implantacao_status === 'vencida' || b.implantacao_status === 'paga')) {
+        return jsonResponse({ error: b.implantacao_status === 'paga' ? 'A implantação já foi paga.' : 'Já existe uma cobrança de implantação em aberto. Cancele antes de gerar outra.' }, 400)
+      }
+      try {
+        const cobranca = await asaas('POST', '/payments', {
+          customer: b.asaas_customer_id, billingType: 'UNDEFINED', value: Number(b.implantacao), dueDate: vencimento,
+          description: 'Taxa de implantação Festou', externalReference: `implantacao:${companyId}`,
+        })
+        const { error: iErr } = await admin.rpc('platform_asaas_implantacao', {
+          p_company: companyId, p_payment: cobranca.id, p_link: cobranca.invoiceUrl ?? null, p_vencimento: cobranca.dueDate ?? vencimento, p_status: 'pendente',
+        })
+        if (iErr) return jsonResponse({ error: iErr.message.replace(/^[A-Z_]+: /, '') }, 400)
+        return jsonResponse({ link: cobranca.invoiceUrl ?? null, vencimento: cobranca.dueDate ?? vencimento }, 200)
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : 'Falha ao falar com o Asaas.' }, 400)
+      }
+    }
+
+    if (body.action === 'asaas_implantacao_cancel') {
+      const companyId = String(body.company_id ?? '')
+      const { data: b } = await admin.from('platform_billing').select('implantacao_payment_id, implantacao_status').eq('company_id', companyId).maybeSingle()
+      if (!b?.implantacao_payment_id || b.implantacao_status === 'paga') return jsonResponse({ error: 'Não há cobrança de implantação em aberto.' }, 400)
+      try {
+        await asaas('DELETE', `/payments/${b.implantacao_payment_id}`)
+      } catch (e) {
+        if (!/404|not.?found|não encontrad/i.test(e instanceof Error ? e.message : '')) return jsonResponse({ error: e instanceof Error ? e.message : 'Falha ao cancelar no Asaas.' }, 400)
+      }
+      await admin.rpc('platform_asaas_implantacao', { p_company: companyId, p_payment: b.implantacao_payment_id, p_link: null, p_vencimento: null, p_status: 'cancelada' })
+      return jsonResponse({ ok: true }, 200)
     }
 
     if (body.action === 'asaas_cancel') {

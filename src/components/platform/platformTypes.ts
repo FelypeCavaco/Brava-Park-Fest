@@ -23,6 +23,11 @@ export interface Mensalidade {
   asaas?: boolean | null
   link_pagamento?: string | null
   bloqueada?: boolean | null
+  // migração 080 (implantação no Asaas)
+  implantacao_status?: 'pendente' | 'vencida' | 'paga' | 'cancelada' | 'estornada' | null
+  implantacao_link?: string | null
+  implantacao_vencimento?: string | null
+  implantacao_paga_em?: string | null
 }
 
 export type ItensImplantacao = Record<string, boolean | Record<string, boolean>>

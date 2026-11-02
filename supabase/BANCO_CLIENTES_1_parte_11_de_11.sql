@@ -147,6 +147,195 @@ grant execute on all functions in schema public to app_definer;
 select fix_definer_owners();
 
 -- =========================================================
+-- ASAAS: TAXA DE IMPLANTAÇÃO E CORREÇÃO DOS PAGAMENTOS AVULSOS
+--
+-- SÓ PARA O BANCO DOS CLIENTES (depois da 079). Não rode na Brava.
+--
+-- 1) Correção: só conta como mensalidade o pagamento que vem da ASSINATURA
+--    mensal da empresa. Qualquer outra cobrança do mesmo cliente no Asaas
+--    (implantação, serviço extra) não marca mês como pago nem mexe no
+--    bloqueio.
+-- 2) Taxa de implantação: cobrança única no Asaas, criada pelo painel. O
+--    sistema guarda o link, o vencimento e quando foi paga. Não bloqueia o
+--    acesso se atrasar.
+--
+-- Roda numa transação.
+-- =========================================================
+
+
+alter table platform_billing add column if not exists implantacao_payment_id text;
+
+alter table platform_billing add column if not exists implantacao_link text;
+
+alter table platform_billing add column if not exists implantacao_vencimento date;
+
+alter table platform_billing add column if not exists implantacao_paga_em date;
+
+alter table platform_billing add column if not exists implantacao_status text
+  check (implantacao_status is null or implantacao_status in ('pendente', 'vencida', 'paga', 'cancelada', 'estornada'));
+
+-- Cobrança da implantação criada no Asaas (chamada pela função de servidor).
+create or replace function platform_asaas_implantacao(p_company uuid, p_payment text, p_link text, p_vencimento date, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update platform_billing set implantacao_payment_id = p_payment, implantacao_link = p_link,
+         implantacao_vencimento = p_vencimento, implantacao_status = p_status,
+         implantacao_paga_em = case when p_status = 'paga' then implantacao_paga_em else null end
+  where company_id = p_company;
+  if not found then raise exception 'Cadastre antes a mensalidade da empresa.'; end if;
+end;
+$$;
+
+revoke all on function platform_asaas_implantacao(uuid, text, text, date, text) from public, anon, authenticated;
+
+grant execute on function platform_asaas_implantacao(uuid, text, text, date, text) to service_role;
+
+-- Evento do Asaas: mensalidade só da assinatura; implantação à parte; o resto ignorado.
+create or replace function platform_asaas_event(p_event jsonb) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id text := p_event ->> 'id';
+  v_evento text := p_event ->> 'event';
+  pg jsonb := p_event -> 'payment';
+  b platform_billing%rowtype;
+  v_comp date;
+  v_res text;
+begin
+  if v_id is null or v_evento is null then return 'ignorado: sem id'; end if;
+  if exists (select 1 from platform_asaas_events where id = v_id) then return 'repetido'; end if;
+  if pg is null then
+    insert into platform_asaas_events (id, evento, resultado) values (v_id, v_evento, 'sem cobrança');
+    return 'sem cobrança';
+  end if;
+
+  select * into b from platform_billing x
+  where (pg ->> 'subscription' is not null and x.asaas_subscription_id = pg ->> 'subscription')
+     or (x.implantacao_payment_id = pg ->> 'id')
+     or (x.asaas_customer_id = pg ->> 'customer')
+  order by (x.asaas_subscription_id = pg ->> 'subscription') desc nulls last, (x.implantacao_payment_id = pg ->> 'id') desc nulls last
+  limit 1;
+  if not found then
+    insert into platform_asaas_events (id, evento, payment_id, resultado) values (v_id, v_evento, pg ->> 'id', 'empresa não encontrada');
+    return 'empresa não encontrada';
+  end if;
+
+  if b.implantacao_payment_id is not null and b.implantacao_payment_id = pg ->> 'id' then
+    -- ---------- taxa de implantação ----------
+    if v_evento in ('PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH') then
+      update platform_billing set implantacao_status = 'paga', implantacao_link = null,
+             implantacao_paga_em = coalesce((pg ->> 'paymentDate')::date, (pg ->> 'clientPaymentDate')::date, today_brazil())
+      where company_id = b.company_id;
+      v_res := 'implantação paga';
+    elsif v_evento = 'PAYMENT_OVERDUE' then
+      update platform_billing set implantacao_status = 'vencida' where company_id = b.company_id and implantacao_status <> 'paga';
+      v_res := 'implantação vencida';
+    elsif v_evento in ('PAYMENT_REFUNDED', 'PAYMENT_RECEIVED_IN_CASH_UNDONE', 'PAYMENT_CHARGEBACK_REQUESTED') then
+      update platform_billing set implantacao_status = 'estornada', implantacao_paga_em = null where company_id = b.company_id;
+      v_res := 'implantação estornada';
+    elsif v_evento = 'PAYMENT_DELETED' then
+      update platform_billing set implantacao_status = 'cancelada', implantacao_link = null where company_id = b.company_id and implantacao_status <> 'paga';
+      v_res := 'implantação cancelada';
+    elsif v_evento in ('PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_RESTORED') then
+      update platform_billing set implantacao_link = coalesce(pg ->> 'invoiceUrl', implantacao_link),
+             implantacao_vencimento = coalesce((pg ->> 'dueDate')::date, implantacao_vencimento),
+             implantacao_status = case when implantacao_status in ('paga') then implantacao_status else 'pendente' end
+      where company_id = b.company_id;
+      v_res := 'implantação atualizada';
+    else
+      v_res := 'ignorado';
+    end if;
+
+  elsif pg ->> 'subscription' is null or b.asaas_subscription_id is null or pg ->> 'subscription' <> b.asaas_subscription_id then
+    -- ---------- cobrança avulsa: não é mensalidade ----------
+    v_res := 'avulsa (não conta como mensalidade)';
+
+  else
+    -- ---------- mensalidade (assinatura) ----------
+    v_comp := date_trunc('month', (pg ->> 'dueDate')::date)::date;
+    if v_evento in ('PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH') then
+      if exists (select 1 from platform_billing_payments where asaas_payment_id = pg ->> 'id') then
+        v_res := 'pagamento já registrado';
+      elsif exists (select 1 from platform_billing_payments where company_id = b.company_id and competencia = v_comp) then
+        v_res := 'mês já estava pago';
+      else
+        insert into platform_billing_payments (company_id, competencia, valor, pago_em, forma, asaas_payment_id)
+        values (b.company_id, v_comp, coalesce((pg ->> 'value')::numeric, 0.01),
+                coalesce((pg ->> 'paymentDate')::date, (pg ->> 'clientPaymentDate')::date, today_brazil()),
+                'Asaas' || coalesce(' · ' || lower(pg ->> 'billingType'), ''), pg ->> 'id');
+        v_res := 'pago ' || to_char(v_comp, 'MM/YYYY');
+      end if;
+      update platform_billing set link_pagamento = null, link_vencimento = null
+      where company_id = b.company_id and link_vencimento = (pg ->> 'dueDate')::date;
+    elsif v_evento in ('PAYMENT_REFUNDED', 'PAYMENT_DELETED', 'PAYMENT_RECEIVED_IN_CASH_UNDONE', 'PAYMENT_CHARGEBACK_REQUESTED') then
+      delete from platform_billing_payments where asaas_payment_id = pg ->> 'id';
+      v_res := case when found then 'pagamento desfeito' else 'nada a desfazer' end;
+    elsif v_evento in ('PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_OVERDUE', 'PAYMENT_RESTORED') then
+      update platform_billing set link_pagamento = pg ->> 'invoiceUrl', link_vencimento = (pg ->> 'dueDate')::date
+      where company_id = b.company_id and pg ->> 'invoiceUrl' is not null
+        and (link_vencimento is null or link_vencimento >= (pg ->> 'dueDate')::date
+             or not exists (select 1 from platform_billing_dues(b.company_id) d where not d.pago and d.vencimento = link_vencimento));
+      v_res := 'link atualizado';
+    else
+      v_res := 'ignorado';
+    end if;
+  end if;
+
+  insert into platform_asaas_events (id, evento, payment_id, resultado) values (v_id, v_evento, pg ->> 'id', v_res);
+  perform platform_apply_billing_blocks();
+  return v_res;
+end;
+$$;
+
+revoke all on function platform_asaas_event(jsonb) from public, anon, authenticated;
+
+grant execute on function platform_asaas_event(jsonb) to service_role;
+
+-- Lista do painel com a implantação.
+drop function if exists platform_billing_list();
+
+create or replace function platform_billing_list()
+returns table (company_id uuid, cadastrada boolean, plano text, mensalidade numeric, dia_vencimento int, inicio date,
+               implantacao numeric, unidade_adicional numeric, unidades_incluidas int, usuarios_incluidos int, observacao text,
+               proximo_vencimento date, meses_em_aberto int, valor_em_aberto numeric, dias_atraso int, situacao text, ultimo_pagamento date,
+               tolerancia_dias int, asaas boolean, link_pagamento text, bloqueada boolean,
+               implantacao_status text, implantacao_link text, implantacao_vencimento date, implantacao_paga_em date)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_platform_admin(auth.uid()) then raise exception 'Só o administrador geral.'; end if;
+  return query
+  select c.id, b.company_id is not null, b.plano, b.mensalidade, b.dia_vencimento, b.inicio,
+         b.implantacao, b.unidade_adicional, b.unidades_incluidas, b.usuarios_incluidos, b.observacao,
+         x.prox, coalesce(x.abertos, 0), coalesce(x.abertos, 0) * coalesce(b.mensalidade, 0), coalesce(x.atraso, 0),
+         case when b.company_id is null then 'sem_cadastro'
+              when b.mensalidade = 0 then 'sem_cobranca'
+              when coalesce(x.atraso, 0) > 0 then 'atrasada'
+              when x.prox = today_brazil() then 'vence_hoje'
+              when x.prox <= today_brazil() + 5 then 'vence_logo'
+              else 'em_dia' end,
+         (select max(p.pago_em) from platform_billing_payments p where p.company_id = c.id),
+         b.tolerancia_dias, b.asaas_subscription_id is not null, b.link_pagamento, c.billing_blocked,
+         b.implantacao_status, b.implantacao_link, b.implantacao_vencimento, b.implantacao_paga_em
+  from companies c
+  left join platform_billing b on b.company_id = c.id
+  left join lateral (
+    select min(d.vencimento) filter (where not d.pago) prox,
+           count(*) filter (where not d.pago and d.vencimento <= today_brazil())::int abertos,
+           coalesce(today_brazil() - min(d.vencimento) filter (where not d.pago and d.vencimento < today_brazil()), 0)::int atraso
+    from platform_billing_dues(c.id) d
+  ) x on b.company_id is not null
+  order by c.created_at;
+end;
+$$;
+
+revoke all on function platform_billing_list() from public, anon;
+
+grant execute on function platform_billing_list() to authenticated;
+
+grant execute on all functions in schema public to app_definer;
+
+select fix_definer_owners();
+
+-- =========================================================
 -- LIMPEZA: nenhum dado da Brava (nem de ninguém) fica no banco novo.
 -- =========================================================
 do $$

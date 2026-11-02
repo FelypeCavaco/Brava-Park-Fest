@@ -67,6 +67,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
   const [busy, setBusy] = useState(false)
   const [tolerancia, setTolerancia] = useState(String(m?.tolerancia_dias ?? 7))
   const [diasTeste, setDiasTeste] = useState('')
+  const [vencImplantacao, setVencImplantacao] = useState(somaDias(todayIso(), 3))
 
   async function carregarHistorico() {
     const { data } = await supabase.rpc('platform_billing_history', { p_company: empresaId })
@@ -123,6 +124,25 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
     const amb = r.data?.ambiente === 'producao' ? '' : ' (ambiente de testes do Asaas)'
     const avisos = r.data?.avisos && r.data.avisos !== 'ok' ? ` Atenção: os avisos de vencimento não foram ajustados (${r.data.avisos}).` : ''
     setMsg({ ok: true, texto: `Cobrança automática ligada no Asaas${amb}. Cada mês o cliente recebe a fatura e paga por Pix, boleto ou cartão.${avisos}` })
+    await onChanged()
+  }
+
+  async function cobrarImplantacao() {
+    setBusy(true)
+    const r = await chamarServidor({ action: 'asaas_implantacao', company_id: empresaId, vencimento: vencImplantacao })
+    setBusy(false)
+    if (r.erro) return setMsg({ ok: false, texto: r.erro })
+    setMsg({ ok: true, texto: `Cobrança da implantação criada no Asaas, com vencimento em ${dataBr(String(r.data?.vencimento ?? vencImplantacao))}. O cliente recebe por e-mail.` })
+    await onChanged()
+  }
+
+  async function cancelarImplantacao() {
+    if (!window.confirm('Cancelar a cobrança da implantação no Asaas?')) return
+    setBusy(true)
+    const r = await chamarServidor({ action: 'asaas_implantacao_cancel', company_id: empresaId })
+    setBusy(false)
+    if (r.erro) return setMsg({ ok: false, texto: r.erro })
+    setMsg({ ok: true, texto: 'Cobrança da implantação cancelada.' })
     await onChanged()
   }
 
@@ -206,6 +226,34 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
               <Button type="button" onClick={ligarAsaas} disabled={busy || !m.cadastrada || !(Number(m.mensalidade) > 0)}><Zap className="w-4 h-4" /> {busy ? 'Ligando...' : 'Ligar cobrança no Asaas'}</Button>
             )}
           </div>
+          {m.asaas && m.implantacao_status !== undefined && Number(m.implantacao) > 0 && (
+            <div className="border-t border-line pt-3 space-y-2">
+              <p className="text-sm font-semibold">Taxa de implantação · {brl(Number(m.implantacao))}</p>
+              {m.implantacao_status === 'paga' ? (
+                <p className="text-xs text-teal font-medium">Paga em {dataBr(m.implantacao_paga_em ?? null)}.</p>
+              ) : m.implantacao_status === 'pendente' || m.implantacao_status === 'vencida' ? (
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className={m.implantacao_status === 'vencida' ? 'text-danger font-medium' : 'text-muted'}>
+                    {m.implantacao_status === 'vencida' ? 'Vencida' : 'Aguardando pagamento'} · vence {dataBr(m.implantacao_vencimento ?? null)}
+                  </span>
+                  {m.implantacao_link && <a href={m.implantacao_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-purple"><ExternalLink className="w-3.5 h-3.5" /> Link da cobrança</a>}
+                  <button type="button" onClick={cancelarImplantacao} disabled={busy} className="text-muted hover:text-danger">Cancelar cobrança</button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Vencimento</label>
+                    <input type="date" value={vencImplantacao} min={todayIso()} onChange={(e) => setVencImplantacao(e.target.value)} className="border border-line rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <Button type="button" variant="secondary" onClick={cobrarImplantacao} disabled={busy}>Cobrar implantação no Asaas</Button>
+                  {(m.implantacao_status === 'cancelada' || m.implantacao_status === 'estornada') && (
+                    <span className="text-xs text-muted">A cobrança anterior foi {m.implantacao_status}.</span>
+                  )}
+                </div>
+              )}
+              <p className="text-[11px] text-muted">Cobrança única, paga por Pix, boleto ou cartão. Não suspende o acesso se atrasar.</p>
+            </div>
+          )}
           {!m.asaas && <p className="text-[11px] text-muted">{m.cadastrada ? 'Precisa do CNPJ (ou CPF) na primeira unidade da casa e de um e-mail de administrador.' : 'Primeiro preencha e salve a mensalidade aqui embaixo; depois é só clicar em Ligar.'}</p>}
         </div>
       )}

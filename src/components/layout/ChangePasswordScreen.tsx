@@ -29,6 +29,7 @@ export function ChangePasswordScreen({ nome }: { nome: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-brand-mesh px-4">
       <form onSubmit={salvar} className="w-full max-w-sm bg-surface rounded-card p-6 space-y-4 shadow-2xl">
+        {document.documentElement.dataset.brand === 'festou' && <img src="/marca/festou.png" alt="Festou" className="h-9 w-auto mx-auto mb-2" draggable={false} />}
         <div className="flex items-center gap-3">
           <span className="w-10 h-10 rounded-full bg-purple-light text-purple flex items-center justify-center shrink-0"><KeyRound className="w-5 h-5" /></span>
           <div>

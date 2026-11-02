@@ -196,7 +196,11 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         <BrandLogo className="w-11 h-11 rounded-full shadow-lg shadow-purple/40 hover:animate-logo-drift shrink-0 text-sm" />
         <div className="flex-1">
           <p className="font-display font-semibold leading-tight">{brand.name}</p>
-          <p className="text-xs text-white/50">Gestão de festas</p>
+          {brand.platformManaged ? (
+            <img src="/marca/festou-branco.png" alt="Festou" className="h-4 w-auto mt-1 opacity-80" draggable={false} />
+          ) : (
+            <p className="text-xs text-white/50">Gestão de festas</p>
+          )}
         </div>
         <button onClick={onClose} className="md:hidden text-white/60 hover:text-white" aria-label="Fechar menu">
           <X className="w-5 h-5" />

@@ -231,6 +231,7 @@ export function Platform() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
+          <img src="/marca/festou.png" alt="Festou" className="h-8 w-auto mb-2" draggable={false} />
           <h1 className="text-2xl font-semibold">Painel da plataforma</h1>
           <p className="text-sm text-muted mt-1">
             Casas de festa que usam o sistema. Aqui aparecem só os números gerais; para trabalhar dentro de uma empresa, clique em <strong>Abrir</strong>.

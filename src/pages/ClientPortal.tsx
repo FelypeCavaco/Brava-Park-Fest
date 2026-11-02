@@ -1227,6 +1227,11 @@ export function ClientPortal() {
               )}
             </>
           )}
+          {festou && d.empresa?.tema !== 'mario' && (
+            <p className="pt-6 pb-2 flex items-center justify-center gap-1.5 text-[11px]" style={{ color: C.muted3 }}>
+              feito com <img src="/marca/festou.png" alt="Festou" className="h-3.5 w-auto opacity-70" draggable={false} />
+            </p>
+          )}
         </main>
       </div>
 

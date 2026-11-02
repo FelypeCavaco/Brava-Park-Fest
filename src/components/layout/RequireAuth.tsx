@@ -23,7 +23,12 @@ export function RequireAuth() {
   if (loading || (session && profileLoading) || (needsPermissions && permissionsLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper">
-        <p className="text-sm text-muted">Carregando...</p>
+        <div className="flex flex-col items-center gap-3">
+          {(brand.platformManaged || document.documentElement.dataset.brand === 'festou') && (
+            <img src="/marca/festou.png" alt="Festou" className="w-36 animate-pulse" draggable={false} />
+          )}
+          <p className="text-sm text-muted">Carregando...</p>
+        </div>
       </div>
     )
   }

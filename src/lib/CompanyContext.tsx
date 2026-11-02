@@ -99,6 +99,16 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     if (brandLoading) return
     if (brand.platformManaged) document.documentElement.dataset.brand = 'festou'
     else delete document.documentElement.dataset.brand
+    if (brand.platformManaged) {
+      let icone = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+      if (!icone) {
+        icone = document.createElement('link')
+        icone.rel = 'icon'
+        document.head.appendChild(icone)
+      }
+      icone.type = 'image/svg+xml'
+      icone.href = '/marca/festou-icone.svg'
+    }
     try {
       localStorage.setItem('marca', brand.platformManaged ? 'festou' : 'brava')
     } catch {

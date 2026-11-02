@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Ban, Undo2 } from 'lucide-react'
+import { Ban, Undo2, Zap, ExternalLink } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabaseClient'
 import { brl, friendlyDbError, parseDecimal, todayIso } from '../../lib/format'
@@ -15,7 +15,23 @@ const mesBr = (iso: string) => {
 }
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
+// Chama a função de servidor do painel; erro de regra volta no corpo (400).
+async function chamarServidor(body: Record<string, unknown>): Promise<{ data: Record<string, unknown> | null; erro: string | null }> {
+  const { data, error } = await supabase.functions.invoke('platform-admin', { body })
+  let erro: string | null = (data as { error?: string } | null)?.error ?? null
+  if (error && !erro) {
+    try {
+      erro = (await (error as { context?: Response }).context?.json())?.error ?? null
+    } catch {
+      // sem corpo legível
+    }
+    erro = erro ?? 'Não foi possível falar com o servidor. Confira se a função "platform-admin" foi atualizada no Supabase.'
+  }
+  return { data: erro ? null : (data as Record<string, unknown>), erro }
+}
+
 export function situacaoMensalidade(m: Mensalidade | undefined): { texto: string; tom: 'teal' | 'amber' | 'danger' | 'neutral' } {
+  if (m?.bloqueada) return { texto: 'Bloqueada (pagamento)', tom: 'danger' }
   if (!m || m.situacao === 'sem_cadastro') return { texto: 'Sem mensalidade', tom: 'neutral' }
   if (m.situacao === 'sem_cobranca') return { texto: 'Sem cobrança', tom: 'neutral' }
   if (m.situacao === 'atrasada') return { texto: `Atrasada ${m.dias_atraso} ${m.dias_atraso === 1 ? 'dia' : 'dias'}`, tom: 'danger' }
@@ -42,6 +58,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
   const [historico, setHistorico] = useState<{ id: string; competencia: string; valor: number; pago_em: string; forma: string | null }[]>([])
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [tolerancia, setTolerancia] = useState(String(m?.tolerancia_dias ?? 7))
 
   async function carregarHistorico() {
     const { data } = await supabase.rpc('platform_billing_history', { p_company: empresaId })
@@ -66,8 +83,16 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
     })
     setBusy(false)
     if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
-    setMsg({ ok: true, texto: 'Mensalidade salva.' })
     if (!pag.valor) setPag({ ...pag, valor: f.mensalidade })
+    // ligada ao Asaas: leva o valor novo para a assinatura também
+    if (m?.asaas) {
+      setBusy(true)
+      const r = await chamarServidor({ action: 'asaas_sync', company_id: empresaId })
+      setBusy(false)
+      setMsg(r.erro ? { ok: false, texto: `Mensalidade salva aqui, mas o Asaas não atualizou: ${r.erro}` } : { ok: true, texto: 'Mensalidade salva e atualizada no Asaas.' })
+    } else {
+      setMsg({ ok: true, texto: 'Mensalidade salva.' })
+    }
     await onChanged()
   }
 
@@ -80,6 +105,35 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
     if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
     setMsg({ ok: true, texto: `Pagamento de ${mesBr(String(data))} registrado.` })
     await Promise.all([carregarHistorico(), onChanged()])
+  }
+
+  async function ligarAsaas() {
+    setBusy(true)
+    const r = await chamarServidor({ action: 'asaas_sync', company_id: empresaId })
+    setBusy(false)
+    if (r.erro) return setMsg({ ok: false, texto: r.erro })
+    const amb = r.data?.ambiente === 'producao' ? '' : ' (ambiente de testes do Asaas)'
+    const avisos = r.data?.avisos && r.data.avisos !== 'ok' ? ` Atenção: os avisos de vencimento não foram ajustados (${r.data.avisos}).` : ''
+    setMsg({ ok: true, texto: `Cobrança automática ligada no Asaas${amb}. Cada mês o cliente recebe a fatura e paga por Pix, boleto ou cartão.${avisos}` })
+    await onChanged()
+  }
+
+  async function cancelarAsaas() {
+    if (!window.confirm('Cancelar a assinatura no Asaas? As próximas faturas deixam de ser geradas e o bloqueio automático desta empresa para. Os pagamentos já registrados continuam.')) return
+    setBusy(true)
+    const r = await chamarServidor({ action: 'asaas_cancel', company_id: empresaId })
+    setBusy(false)
+    if (r.erro) return setMsg({ ok: false, texto: r.erro })
+    setMsg({ ok: true, texto: 'Assinatura cancelada no Asaas.' })
+    await onChanged()
+  }
+
+  async function salvarTolerancia() {
+    const dias = Number(tolerancia)
+    const { error } = await supabase.rpc('platform_billing_set_tolerance', { p_company: empresaId, p_dias: dias })
+    if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
+    setMsg({ ok: true, texto: `Tolerância de ${dias} dias salva.` })
+    await onChanged()
   }
 
   async function desfazer(id: string) {
@@ -107,6 +161,44 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
           {m.situacao === 'atrasada' && ativa && (
             <button type="button" onClick={onSuspender} className="mt-2 text-xs font-medium text-danger inline-flex items-center gap-1"><Ban className="w-3.5 h-3.5" /> Suspender o acesso agora</button>
           )}
+        </div>
+      )}
+
+      {m?.cadastrada && m.asaas !== undefined && m.asaas !== null && (
+        <div className="rounded-lg border border-line px-4 py-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Zap className={`w-4 h-4 ${m.asaas ? 'text-teal' : 'text-muted'}`} />
+            <p className="text-sm font-semibold flex-1">Cobrança automática (Asaas)</p>
+            <span className={`text-xs font-medium ${m.asaas ? 'text-teal' : 'text-muted'}`}>{m.asaas ? 'Ligada' : 'Desligada'}</span>
+          </div>
+          <p className="text-xs text-muted">
+            {m.asaas
+              ? 'O Asaas gera a fatura todo mês e avisa o cliente 5 dias antes e no dia do vencimento. Pagou, o mês fica pago aqui sozinho. Vencida além da tolerância, o acesso é suspenso até pagar.'
+              : 'Liga a assinatura mensal no Asaas: o cliente paga por Pix, boleto ou cartão, o pagamento entra sozinho e, se atrasar além da tolerância, o acesso é suspenso até pagar.'}
+          </p>
+          {m.asaas && m.link_pagamento && (
+            <a href={m.link_pagamento} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-purple"><ExternalLink className="w-3.5 h-3.5" /> Fatura em aberto</a>
+          )}
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-muted mb-1">Tolerância antes de suspender</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={60} value={tolerancia} onChange={(e) => setTolerancia(e.target.value)} className="w-20 border border-line rounded-lg px-3 py-2 text-sm" aria-label="Dias de tolerância" />
+                <span className="text-sm text-muted">dias</span>
+                <button type="button" onClick={salvarTolerancia} className="text-xs font-medium text-purple">Salvar</button>
+              </div>
+            </div>
+            <div className="flex-1" />
+            {m.asaas ? (
+              <>
+                <Button type="button" variant="secondary" onClick={ligarAsaas} disabled={busy}>Atualizar no Asaas</Button>
+                <button type="button" onClick={cancelarAsaas} disabled={busy} className="text-xs text-muted hover:text-danger">Cancelar assinatura</button>
+              </>
+            ) : (
+              <Button type="button" onClick={ligarAsaas} disabled={busy || !(Number(m.mensalidade) > 0)}><Zap className="w-4 h-4" /> {busy ? 'Ligando...' : 'Ligar cobrança no Asaas'}</Button>
+            )}
+          </div>
+          {!m.asaas && <p className="text-[11px] text-muted">Precisa do CNPJ (ou CPF) na primeira unidade da casa e de um e-mail de administrador.</p>}
         </div>
       )}
 

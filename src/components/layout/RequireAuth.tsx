@@ -5,11 +5,12 @@ import { canAccessRoute } from '../../lib/permissions'
 import { supabase } from '../../lib/supabaseClient'
 import { useCompany } from '../../lib/CompanyContext'
 import { ChangePasswordScreen } from './ChangePasswordScreen'
+import { BillingBlockedScreen } from './BillingNotice'
 
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()
   const location = useLocation()
-  const { brand, brandLoading, isPlatformAdmin } = useCompany()
+  const { brand, brandLoading, isPlatformAdmin, billing } = useCompany()
   // Empresa suspensa pelo administrador geral: sai e mostra o aviso no login.
   const suspensa = !!session && !brandLoading && brand.active === false
 
@@ -36,6 +37,9 @@ export function RequireAuth() {
   if (!session || deactivated || suspensa) {
     return <Navigate to="/login" state={{ from: location, deactivated, suspensa }} replace />
   }
+
+  // Mensalidade do sistema vencida além da tolerância: tela de pagamento.
+  if (billing?.bloqueada && !isPlatformAdmin) return <BillingBlockedScreen billing={billing} />
 
   // Senha provisória: troca antes de qualquer outra tela.
   if (profile?.mustChangePassword) return <ChangePasswordScreen nome={profile.name} />

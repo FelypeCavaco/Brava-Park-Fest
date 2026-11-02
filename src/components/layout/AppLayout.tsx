@@ -9,13 +9,14 @@ import { QuickActionsBar } from './QuickActionsBar'
 import { useUnit } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
 import { Settings } from '../../pages/Settings'
+import { BillingBanner } from './BillingNotice'
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const { units } = useUnit()
   const { profile } = useAuth()
-  const { brand, isPlatformAdmin } = useCompany()
+  const { brand, isPlatformAdmin, billing } = useCompany()
   const foraDaEmpresa = isPlatformAdmin && !brand.companyId
   // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
   // menos uma, então só mostra o cadastro de unidades até criar a primeira.
@@ -41,6 +42,7 @@ export function AppLayout() {
             </>
           )}
         </div>
+        {billing && profile?.role?.isAdmin && !isPlatformAdmin && <BillingBanner billing={billing} />}
         {semUnidade ? (
           <div className="space-y-4">
             <div className="bg-amber-light text-ink text-sm rounded-lg px-4 py-3">

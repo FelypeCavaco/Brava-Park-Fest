@@ -18,6 +18,11 @@ export interface Mensalidade {
   dias_atraso: number
   situacao: 'sem_cadastro' | 'sem_cobranca' | 'atrasada' | 'vence_hoje' | 'vence_logo' | 'em_dia'
   ultimo_pagamento: string | null
+  // migração 079 (Asaas)
+  tolerancia_dias?: number | null
+  asaas?: boolean | null
+  link_pagamento?: string | null
+  bloqueada?: boolean | null
 }
 
 export type ItensImplantacao = Record<string, boolean | Record<string, boolean>>

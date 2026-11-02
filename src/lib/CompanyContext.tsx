@@ -24,6 +24,18 @@ export interface CompanyBrand {
   platformManaged: boolean
 }
 
+// Mensalidade do sistema cobrada pelo Asaas (migração 079), da empresa de
+// quem está logado. null = sem cobrança automática ou nada a avisar.
+export interface BillingStatus {
+  bloqueada: boolean
+  vencimento: string
+  dias_atraso: number
+  dias_para_bloqueio: number
+  valor: number
+  link: string | null
+  aviso: 'vence_logo' | 'vence_hoje' | 'atrasada' | null
+}
+
 // Enquanto carrega (frações de segundo) mostra só o nome neutro do sistema.
 const NEUTRO: CompanyBrand = { name: '', logoUrl: null, tagline: null, teamWhatsapp: null, mascotEnabled: false, portalTheme: 'padrao', disabledModules: [], active: true, companyId: null, platformManaged: false }
 
@@ -36,14 +48,16 @@ interface CompanyContextValue {
   // Administrador geral: abrir uma casa de festas / voltar ao painel.
   enterCompany: (id: string) => Promise<string | null>
   leaveCompany: () => Promise<void>
+  billing: BillingStatus | null
 }
 
-const CompanyContext = createContext<CompanyContextValue>({ brand: NEUTRO, brandLoading: true, reloadBrand: async () => {}, isPlatformAdmin: false, enterCompany: async () => null, leaveCompany: async () => {} })
+const CompanyContext = createContext<CompanyContextValue>({ brand: NEUTRO, brandLoading: true, reloadBrand: async () => {}, isPlatformAdmin: false, enterCompany: async () => null, leaveCompany: async () => {}, billing: null })
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const [brand, setBrand] = useState<CompanyBrand>(NEUTRO)
   const [brandLoading, setBrandLoading] = useState(true)
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  const [billing, setBilling] = useState<BillingStatus | null>(null)
 
   const reloadBrand = useCallback(async () => {
     const [{ data }, { data: sessao }] = await Promise.all([supabase.rpc('public_company_brand'), supabase.auth.getSession()])
@@ -63,10 +77,16 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       })
     }
     if (sessao.session) {
-      const { data: adm } = await supabase.rpc('is_platform_admin')
+      const [{ data: adm }, cob] = await Promise.all([
+        supabase.rpc('is_platform_admin'),
+        // só existe no banco dos clientes depois da 079; sem ela, nada a avisar
+        row?.platform_managed ? supabase.rpc('platform_company_billing_status') : Promise.resolve({ data: null, error: null }),
+      ])
       setIsPlatformAdmin(adm === true)
+      setBilling(!cob.error && cob.data ? (cob.data as BillingStatus) : null)
     } else {
       setIsPlatformAdmin(false)
+      setBilling(null)
     }
     setBrandLoading(false)
   }, [])
@@ -121,7 +141,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     setEmpresaMensagens(brand.name)
   }, [brand.name])
 
-  return <CompanyContext.Provider value={{ brand, brandLoading, reloadBrand, isPlatformAdmin, enterCompany, leaveCompany }}>{children}</CompanyContext.Provider>
+  return <CompanyContext.Provider value={{ brand, brandLoading, reloadBrand, isPlatformAdmin, enterCompany, leaveCompany, billing }}>{children}</CompanyContext.Provider>
 }
 
 export function useCompany() {

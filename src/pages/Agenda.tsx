@@ -298,18 +298,18 @@ export function Agenda() {
                       <button
                         key={dia}
                         onClick={() => setDiaSel(dia)}
-                        className={`min-h-[56px] sm:min-h-[92px] p-1 text-left align-top flex flex-col gap-0.5 ${sel ? 'bg-purple-light' : 'bg-surface hover:bg-paper'} ${foraDoMes ? 'opacity-45' : ''}`}
+                        className={`min-h-[56px] sm:min-h-[92px] p-1 text-left align-top flex flex-col gap-0.5 ${sel ? 'bg-surface ring-2 ring-inset ring-purple' : 'bg-surface hover:bg-paper'} ${foraDoMes ? 'opacity-45' : ''}`}
                       >
                         <span className={`text-xs w-6 h-6 flex items-center justify-center rounded-full ${dia === hoje ? 'bg-purple text-white font-semibold' : ''}`}>{Number(dia.slice(8, 10))}</span>
                         {/* Celular: bolinhas; telas maiores: o título */}
                         <span className="flex flex-wrap gap-0.5 sm:hidden">
                           {evs.slice(0, 4).map((e) => (
-                            <span key={e.key} className={`w-1.5 h-1.5 rounded-full ${e.tipo === 'visita' ? 'bg-teal' : e.feitoPor ? 'bg-muted' : 'bg-purple'}`} />
+                            <span key={e.key} className={`w-1.5 h-1.5 rounded-full ${e.feitoPor ? 'bg-muted' : e.tipo === 'visita' ? 'bg-teal' : 'bg-purple'}`} />
                           ))}
                         </span>
                         <span className="hidden sm:flex flex-col gap-0.5 w-full">
                           {evs.slice(0, 3).map((e) => (
-                            <span key={e.key} className={`truncate text-[11px] rounded px-1 py-0.5 ${e.tipo === 'visita' ? 'bg-teal-light text-teal' : 'bg-purple-light text-purple-dark'} ${e.feitoPor ? 'line-through opacity-60' : ''}`}>
+                            <span key={e.key} className={`truncate text-[11px] rounded px-1 py-0.5 ${e.feitoPor ? 'bg-line text-muted line-through' : e.tipo === 'visita' ? 'bg-teal text-white' : 'bg-purple text-white'}`}>
                               {e.hora && <strong className="font-semibold">{e.hora} </strong>}{e.tipo === 'visita' ? e.titulo.replace('Visita: ', 'Visita ') : e.titulo}
                             </span>
                           ))}

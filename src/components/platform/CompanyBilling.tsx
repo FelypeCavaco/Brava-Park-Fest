@@ -173,7 +173,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
           </div>
           <p className="text-xs text-muted">
             {m.asaas
-              ? 'O Asaas gera a fatura todo mês e avisa o cliente 5 dias antes e no dia do vencimento. Pagou, o mês fica pago aqui sozinho. Vencida além da tolerância, o acesso é suspenso até pagar.'
+              ? 'O Asaas gera a fatura todo mês e avisa o cliente por e-mail 5 dias antes e no dia do vencimento. Pagou, o mês fica pago aqui sozinho. Vencida além da tolerância, o acesso é suspenso até pagar.'
               : 'Liga a assinatura mensal no Asaas: o cliente paga por Pix, boleto ou cartão, o pagamento entra sozinho e, se atrasar além da tolerância, o acesso é suspenso até pagar.'}
           </p>
           {m.asaas && m.link_pagamento && (

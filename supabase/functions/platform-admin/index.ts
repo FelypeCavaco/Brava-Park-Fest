@@ -18,8 +18,8 @@
 //
 // Ação "asaas_sync": { company_id } (migração 079) — cria ou atualiza no Asaas
 //   o cliente (a casa de festas) e a assinatura mensal (Pix, boleto ou cartão,
-//   à escolha do cliente), deixa os avisos do Asaas em 5 dias antes e no dia
-//   do vencimento, e guarda o link da fatura em aberto.
+//   à escolha do cliente), deixa os avisos do Asaas (por e-mail) em 5 dias
+//   antes e no dia do vencimento, e guarda o link da fatura em aberto.
 // Ação "asaas_cancel": { company_id } — cancela a assinatura no Asaas.
 //
 // Segredos (Supabase > Edge Functions > Secrets): ASAAS_API_KEY e ASAAS_ENV
@@ -101,16 +101,22 @@ Deno.serve(async (req) => {
         if (customerId) await asaas('PUT', `/customers/${customerId}`, cliente)
         else customerId = (await asaas('POST', '/customers', cliente)).id as string
 
-        // Avisos do Asaas: 5 dias antes e no dia do vencimento, por e-mail e SMS.
+        // Avisos do Asaas: 5 dias antes e no dia do vencimento, por e-mail.
         let avisos = 'ok'
         try {
           const lista = (await asaas('GET', `/customers/${customerId}/notifications`)).data as { id: string; event: string; scheduleOffset: number }[]
           const venc = lista.filter((n) => n.event === 'PAYMENT_DUEDATE_WARNING')
-          const canais = { enabled: true, emailEnabledForCustomer: true, smsEnabledForCustomer: true }
+          // por enquanto só e-mail (SMS pode ter custo no Asaas)
+          const canais = { enabled: true, emailEnabledForCustomer: true, smsEnabledForCustomer: false, whatsappEnabledForCustomer: false, phoneCallEnabledForCustomer: false }
           const noDia = venc.find((n) => n.scheduleOffset === 0)
           const antes = venc.find((n) => n.scheduleOffset !== 0)
           if (noDia) await asaas('PUT', `/notifications/${noDia.id}`, canais)
           if (antes) await asaas('PUT', `/notifications/${antes.id}`, { ...canais, scheduleOffset: 5 })
+          // os demais avisos do Asaas (fatura criada, vencida...) também sem SMS, WhatsApp ou ligação
+          for (const n of lista) {
+            if (n.id === noDia?.id || n.id === antes?.id) continue
+            await asaas('PUT', `/notifications/${n.id}`, { smsEnabledForCustomer: false, whatsappEnabledForCustomer: false, phoneCallEnabledForCustomer: false })
+          }
         } catch (e) {
           avisos = e instanceof Error ? e.message : 'falhou'
         }

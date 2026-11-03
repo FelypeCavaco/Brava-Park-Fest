@@ -393,6 +393,7 @@ export function FestaDetalhe() {
   const [festaExtras, setFestaExtras] = useState<FestaExtraItem[]>([])
   const [novoExtraId, setNovoExtraId] = useState('')
   const [novoExtraQtd, setNovoExtraQtd] = useState('1')
+  const [novoExtraCortesia, setNovoExtraCortesia] = useState(false)
   // Cadastro rápido de item extra que ainda não está no catálogo.
   const [extraRapido, setExtraRapido] = useState<{ name: string; price: string; saving: boolean; error: string | null } | null>(null)
 
@@ -1803,17 +1804,19 @@ export function FestaDetalhe() {
     const extra = extraCatalog.find((x) => x.id === novoExtraId)
     const qtd = Number(novoExtraQtd)
     if (!extra || !qtd) return
+    const preco = novoExtraCortesia ? 0 : extra.price
     const { data, error } = await supabase
       .from('reservation_extra_items')
-      .insert({ reservation_id: id, extra_item_id: extra.id, quantity: qtd, price_snapshot: extra.price })
+      .insert({ reservation_id: id, extra_item_id: extra.id, quantity: qtd, price_snapshot: preco })
       .select()
       .single()
     if (error) {
       setError('Não foi possível adicionar o item extra.')
       return
     }
-    setFestaExtras((prev) => [...prev, { id: data.id, extraItemId: extra.id, name: extra.name, quantity: qtd, priceSnapshot: extra.price }])
+    setFestaExtras((prev) => [...prev, { id: data.id, extraItemId: extra.id, name: extra.name, quantity: qtd, priceSnapshot: preco }])
     setNovoExtraQtd('1')
+    setNovoExtraCortesia(false)
   }
 
   function handleRemoveExtraFesta(rowId: string) {
@@ -3102,8 +3105,8 @@ export function FestaDetalhe() {
                 {festaExtras.map((e) => (
                   <tr key={e.id}>
                     <td className="py-2">{e.name}</td>
-                    <td className="py-2 text-muted">{e.quantity}x {currency(e.priceSnapshot)}</td>
-                    <td className="py-2 font-medium">{currency(e.quantity * e.priceSnapshot)}</td>
+                    <td className="py-2 text-muted">{e.priceSnapshot === 0 ? `+${e.quantity} · cortesia` : `${e.quantity}x ${currency(e.priceSnapshot)}`}</td>
+                    <td className="py-2 font-medium">{e.priceSnapshot === 0 ? 'sem custo' : currency(e.quantity * e.priceSnapshot)}</td>
                     <td className="py-2 text-right">
                       <Can permission="action:festa.itens_extras">
                         <button onClick={() => handleRemoveExtraFesta(e.id)} className="text-muted hover:text-danger">
@@ -3129,6 +3132,12 @@ export function FestaDetalhe() {
                   </select>
                   <input type="number" min={1} value={novoExtraQtd} onChange={(e) => setNovoExtraQtd(e.target.value)} className="w-20 border border-line rounded-lg px-3 py-1.5 text-sm" />
                   <Button type="submit" className="text-xs px-3 py-1.5" disabled={!novoExtraId}><Plus className="w-3.5 h-3.5" /> Adicionar</Button>
+                  {(festa.courtesyGuests ?? 0) > 0 && (
+                    <label className="w-full flex items-center gap-2 text-xs text-purple-dark bg-purple-light rounded-lg px-3 py-2 cursor-pointer">
+                      <input type="checkbox" checked={novoExtraCortesia} onChange={(e) => setNovoExtraCortesia(e.target.checked)} />
+                      Consumo a mais da cortesia ({festa.courtesyGuests} convidados): sai sem custo, o pacote não muda
+                    </label>
+                  )}
                 </form>
               ) : (
                 <p className="text-xs text-muted">Nenhum item extra cadastrado ainda.</p>

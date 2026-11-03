@@ -23,6 +23,7 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
   const [name, setName] = useState(initialClient?.name ?? '')
   const [phone, setPhone] = useState(initialClient?.phone ?? '')
   const [email, setEmail] = useState(initialClient?.email ?? '')
+  const [birthday, setBirthday] = useState(initialClient?.birthday ?? '')
   const [childName, setChildName] = useState(initialClient?.child_name ?? '')
   const [childBirthday, setChildBirthday] = useState(initialClient?.child_birthday ?? '')
   const [consent, setConsent] = useState(isEditing)
@@ -79,6 +80,7 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
       !confirmarEmBranco([
         { label: 'Telefone', valor: phone },
         { label: 'E-mail', valor: email },
+        { label: 'Data de nascimento do responsável', valor: birthday },
         { label: 'CPF', valor: cpf },
         { label: 'Rua', valor: street },
         { label: 'Número', valor: addressNumber },
@@ -96,6 +98,7 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
+      birthday: birthday || null,
       child_name: childName.trim() || null,
       child_birthday: childBirthday || null,
       cpf: cpf.trim() || null,
@@ -166,6 +169,17 @@ export function ClientQuickCreateModal({ onClose, onCreated, initialClient }: Cl
               className="w-full border border-line rounded-lg px-3 py-2 text-sm"
               placeholder="cliente@email.com"
             />
+          </div>
+          <div>
+            <label className="block text-xs text-muted mb-1">Data de nascimento do responsável</label>
+            <input
+              type="date"
+              value={birthday}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setBirthday(e.target.value)}
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+            />
+            <p className="text-[11px] text-muted mt-1">Usada no Marketing (idade de quem fecha as festas).</p>
           </div>
           <div>
             <label className="block text-xs text-muted mb-1">Como conheceu a gente? *</label>

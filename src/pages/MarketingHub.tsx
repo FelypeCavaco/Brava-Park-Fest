@@ -29,6 +29,7 @@ interface Festa {
   canceladaEm: string | null; motivoCancelamento: string | null; devolvido: number
   extras: { nome: string; valor: number }[]; consumo: number
   clienteId: string | null; cliente: string; origem: string | null; bairro: string | null; cidade: string | null
+  idadeResponsavel: number | null // idade do responsável no dia da festa (data de nascimento do cadastro)
 }
 interface Cliente { id: string; name: string; source: string | null; created_at: string; child_name: string | null; child_birthday: string | null; referred_by: string | null }
 interface Visita { unit_id: string; scheduled_at: string; result: string | null; no_advance_reason: string | null; client_name: string }
@@ -104,7 +105,7 @@ export function MarketingHub() {
       const [r, c, v, p] = await Promise.all([
         supabase
           .from('reservations')
-          .select('id, unit_id, event_date, start_time, created_at, status, event_type, guest_count, child_age, total_value, final_value, theme, cancelled_at, cancellation_reason, refund_amount, package:packages(name), client:clients(id, name, source, neighborhood, city), payments(amount, payment_date), reservation_extra_items(quantity, price_snapshot, extra_item:extra_items(name)), reservation_consumption(quantity, unit_price)'),
+          .select('id, unit_id, event_date, start_time, created_at, status, event_type, guest_count, child_age, total_value, final_value, theme, cancelled_at, cancellation_reason, refund_amount, package:packages(name), client:clients(id, name, source, neighborhood, city, birthday), payments(amount, payment_date), reservation_extra_items(quantity, price_snapshot, extra_item:extra_items(name)), reservation_consumption(quantity, unit_price)'),
         supabase.from('clients').select('id, name, source, created_at, child_name, child_birthday, referred_by'),
         supabase.from('visits').select('unit_id, scheduled_at, result, no_advance_reason, client_name'),
         supabase.from('proposals').select('unit_id, status, decline_reason, created_at, client_name, total_value'),
@@ -115,7 +116,7 @@ export function MarketingHub() {
         setSemExtras(true)
         const r2 = await supabase
           .from('reservations')
-          .select('id, unit_id, event_date, start_time, created_at, status, event_type, guest_count, child_age, total_value, final_value, theme, cancelled_at, cancellation_reason, refund_amount, package:packages(name), client:clients(id, name, source, neighborhood, city), payments(amount, payment_date)')
+          .select('id, unit_id, event_date, start_time, created_at, status, event_type, guest_count, child_age, total_value, final_value, theme, cancelled_at, cancellation_reason, refund_amount, package:packages(name), client:clients(id, name, source, neighborhood, city, birthday), payments(amount, payment_date)')
         dados = r2.data as any[] | null
       }
       setFestas(
@@ -138,6 +139,14 @@ export function MarketingHub() {
             extras, consumo,
             clienteId: x.client?.id ?? null, cliente: x.client?.name ?? '—', origem: x.client?.source ?? null,
             bairro: x.client?.neighborhood ?? null, cidade: x.client?.city ?? null,
+            idadeResponsavel: (() => {
+              const nasc = x.client?.birthday as string | null | undefined
+              if (!nasc) return null
+              const [an, mn, dn] = nasc.split('-').map(Number)
+              const [ae, me, de] = String(x.event_date).split('-').map(Number)
+              const idade = ae - an - (me < mn || (me === mn && de < dn) ? 1 : 0)
+              return idade >= 14 && idade <= 100 ? idade : null
+            })(),
           } as Festa
         }),
       )
@@ -529,6 +538,15 @@ export function MarketingHub() {
                     .map(([l, a, b]) => { const n = noPeriodo.filter((f) => f.idade != null && f.idade >= a && f.idade <= b).length; return [l, String(n), `${pct(n, noPeriodo.length)}%`] })
                     .concat([['Sem idade informada', String(noPeriodo.filter((f) => f.idade == null).length), '']])}
                 />
+              </Card>
+              <Card title="Idade do responsável (quem fechou a festa)">
+                <Tabela
+                  cab={['Faixa', 'Festas', '%']}
+                  linhas={([['Até 24 anos', 0, 24], ['25 a 29 anos', 25, 29], ['30 a 34 anos', 30, 34], ['35 a 39 anos', 35, 39], ['40 a 44 anos', 40, 44], ['45 anos ou mais', 45, 200]] as [string, number, number][])
+                    .map(([l, a, b]) => { const n = noPeriodo.filter((f) => f.idadeResponsavel != null && f.idadeResponsavel >= a && f.idadeResponsavel <= b).length; return [l, String(n), `${pct(n, noPeriodo.length)}%`] })
+                    .concat([['Sem data de nascimento no cadastro', String(noPeriodo.filter((f) => f.idadeResponsavel == null).length), '']])}
+                />
+                <p className="text-[11px] text-muted mt-2">Idade no dia da festa, pela data de nascimento do responsável no cadastro do cliente.</p>
               </Card>
               <Card title="Convidados">
                 <p className="text-sm">Média de <strong>{noPeriodo.length ? Math.round(noPeriodo.reduce((s, f) => s + f.convidados, 0) / noPeriodo.length) : 0} convidados</strong> por festa no período.</p>

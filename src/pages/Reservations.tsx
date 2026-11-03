@@ -1,4 +1,5 @@
 import { confirmarEmBranco } from '../lib/confirmBlank'
+import { CourtesyExtras, type ItemCortesia } from '../components/CourtesyExtras'
 import { useLegacyMenuFields } from '../lib/menuSections'
 import { useAuth, useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
@@ -162,6 +163,7 @@ export function Reservations() {
   const [formDescontoTipo, setFormDescontoTipo] = useState<DiscountType | ''>('')
   const [formDescontoValor, setFormDescontoValor] = useState('')
   const [formCortesia, setFormCortesia] = useState('')
+  const [formCortesiaExtras, setFormCortesiaExtras] = useState<ItemCortesia[]>([])
   const [outrosAniversariantes, setOutrosAniversariantes] = useState<{ name: string; age: string }[]>([])
 
   useEffect(() => {
@@ -350,6 +352,7 @@ export function Reservations() {
   }
 
   function resetForm() {
+    setFormCortesiaExtras([])
     setFormClienteId('')
     setFormCadastradaPor(session?.user?.id ?? '')
     setFormStatus('orcamento')
@@ -488,6 +491,13 @@ export function Reservations() {
     if (error) {
       setError(`Não foi possível salvar a reserva. Detalhe: ${error.message}`)
       return
+    }
+
+    // consumo a mais liberado para os convidados de cortesia (sem custo)
+    if (novaReserva && Number(formCortesia) > 0 && formCortesiaExtras.length > 0) {
+      await supabase.from('reservation_extra_items').insert(
+        formCortesiaExtras.map((i) => ({ reservation_id: novaReserva.id, extra_item_id: i.extraId, quantity: i.qtd, price_snapshot: 0 })),
+      )
     }
 
     const kidsValidos = outrosAniversariantes.filter((k) => k.name.trim())
@@ -1176,6 +1186,7 @@ export function Reservations() {
                   Só preencha se houver alguma promoção dando convidados extras de graça — isso aparece
                   automaticamente no contrato quando gerado.
                 </p>
+                {Number(formCortesia) > 0 && <CourtesyExtras itens={formCortesiaExtras} onChange={setFormCortesiaExtras} />}
               </div>
 
               {error && (

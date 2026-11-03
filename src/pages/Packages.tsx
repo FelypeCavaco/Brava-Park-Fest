@@ -383,6 +383,20 @@ export function Packages() {
                     </p>
                   )}
                   <p className="text-xs text-muted mt-1">{p.hot_dish_count > 0 ? `${p.hot_dish_count} prato(s) quente(s) incluso(s)` : 'Sem pratos quentes inclusos'}</p>
+                  {(p.valid_from || p.valid_until) && (() => {
+                    const hoje = new Date().toISOString().slice(0, 10)
+                    const br = (d: string) => d.split('-').reverse().join('/')
+                    const encerrado = !!p.valid_until && p.valid_until < hoje
+                    const futuro = !!p.valid_from && p.valid_from > hoje
+                    const texto = p.valid_from && p.valid_until
+                      ? `Vale de ${br(p.valid_from)} a ${br(p.valid_until)}`
+                      : p.valid_from ? `A partir de ${br(p.valid_from)}` : `Vale até ${br(p.valid_until!)}`
+                    return (
+                      <span className={`inline-block mt-2 text-[11px] font-semibold rounded-full px-2 py-0.5 ${encerrado ? 'bg-line text-muted' : futuro ? 'bg-amber-light text-amber' : 'bg-teal-light text-teal'}`}>
+                        {encerrado ? `Encerrado · ${texto.toLowerCase()}` : futuro ? `Futuro · ${texto.toLowerCase()}` : texto}
+                      </span>
+                    )
+                  })()}
                   {p.weekday_price != null && p.weekend_price != null ? (
                     <p className="text-sm font-semibold mt-3">
                       Seg-qui: {currency(p.weekday_price)} <br /> Sex-dom: {currency(p.weekend_price)}

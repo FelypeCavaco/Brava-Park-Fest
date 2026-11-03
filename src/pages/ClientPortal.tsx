@@ -9,6 +9,8 @@ import { brl, parseDecimal, friendlyDbError } from '../lib/format'
 import { downloadPdf } from '../lib/pdfExport'
 import { openWhatsApp } from '../lib/whatsapp'
 import { useCompany } from '../lib/CompanyContext'
+import { gerarPixCopiaECola, cidadeDoEndereco } from '../lib/pixBrCode'
+import QRCode from 'qrcode'
 import theo from '../assets/theo-vermelho.png'
 
 // Portal do cliente: link sem login (o token da festa). Tudo o que o cliente
@@ -979,12 +981,18 @@ export function ClientPortal() {
                 <section className={`${card} p-4 space-y-3`} style={{ borderColor: C.borda }}>
                   <p className="font-semibold">Pagar com Pix</p>
                   {d.pix ? (
-                    <div className="flex items-center gap-2 rounded-xl pl-3 pr-1.5 py-1.5" style={{ border: `1px solid ${C.borda}` }}>
-                      <span className="flex-1 text-[13px] break-all" style={{ color: C.texto2 }}>{d.pix}</span>
-                      <button onClick={copiarPix} className="h-9 px-3 rounded-lg text-[13px] font-semibold bg-white flex items-center gap-1.5" style={{ border: `1px solid ${C.botaoBorda}`, color: C.azul }}>
-                        <Copy className="w-3.5 h-3.5" /> {copiado ? 'Copiado' : 'Copiar'}
-                      </button>
-                    </div>
+                    <PixPagamento
+                      chave={d.pix}
+                      nome={d.empresa?.nome ?? d.unidade}
+                      cidade={cidadeDoEndereco(d.endereco)}
+                      identificador={`${d.crianca ?? d.cliente_nome ?? ""}${d.data.slice(8, 10)}${d.data.slice(5, 7)}`}
+                      opcoes={[
+                        ...(proxParcela ? [{ label: proxParcela.label, valor: Number(proxParcela.status === "atrasada" ? proxParcela.total_hoje : proxParcela.aberto) }] : []),
+                        ...(!proxParcela || Math.abs(Number(proxParcela.aberto) - d.saldo) > 0.005 ? [{ label: "Saldo total", valor: d.saldo }] : []),
+                      ]}
+                      copiado={copiado}
+                      onCopiarChave={copiarPix}
+                    />
                   ) : (
                     <p className="text-sm" style={{ color: C.muted }}>Peça a chave Pix à equipe.</p>
                   )}
@@ -1248,6 +1256,91 @@ export function ClientPortal() {
           )
         })}
       </nav>
+    </div>
+  )
+}
+
+// Pix com o valor já preenchido: QR code para ler com a câmera do banco e o
+// mesmo código para "copia e cola" (quem abre o portal no próprio celular).
+function PixPagamento({ chave, nome, cidade, identificador, opcoes, copiado, onCopiarChave }: {
+  chave: string
+  nome: string
+  cidade: string
+  identificador: string
+  opcoes: { label: string; valor: number }[]
+  copiado: boolean
+  onCopiarChave: () => void
+}) {
+  const [escolha, setEscolha] = useState(0)
+  const [outro, setOutro] = useState('')
+  const [svg, setSvg] = useState('')
+  const [codigoCopiado, setCodigoCopiado] = useState(false)
+  const valor = escolha < opcoes.length ? opcoes[escolha].valor : parseDecimal(outro) ?? 0
+  const codigo = valor > 0 ? gerarPixCopiaECola({ chave, valor, nome, cidade, identificador }) : ''
+
+  useEffect(() => {
+    if (!codigo) return setSvg('')
+    let vivo = true
+    QRCode.toString(codigo, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#FFFFFF' } })
+      .then((s) => { if (vivo) setSvg(s) })
+      .catch(() => { if (vivo) setSvg('') })
+    return () => { vivo = false }
+  }, [codigo])
+
+  async function copiarCodigo() {
+    try {
+      await navigator.clipboard.writeText(codigo)
+      setCodigoCopiado(true)
+      setTimeout(() => setCodigoCopiado(false), 2000)
+    } catch {
+      // sem permissão de área de transferência: o código fica visível para copiar à mão
+    }
+  }
+
+  const chip = (ativo: boolean) => ({
+    background: ativo ? C.azul : '#fff', color: ativo ? '#fff' : C.azul, border: `1px solid ${ativo ? C.azul : C.botaoBorda}`,
+  })
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Quanto você vai pagar">
+        {opcoes.map((o, i) => (
+          <button key={o.label} type="button" role="radio" aria-checked={escolha === i} onClick={() => setEscolha(i)}
+            className="h-9 px-3 rounded-full text-[13px] font-semibold" style={chip(escolha === i)}>
+            {o.label} · {brl(o.valor)}
+          </button>
+        ))}
+        <button type="button" role="radio" aria-checked={escolha === opcoes.length} onClick={() => setEscolha(opcoes.length)}
+          className="h-9 px-3 rounded-full text-[13px] font-semibold" style={chip(escolha === opcoes.length)}>
+          Outro valor
+        </button>
+      </div>
+      {escolha === opcoes.length && (
+        <input value={outro} onChange={(e) => setOutro(e.target.value)} inputMode="decimal" placeholder="Quanto vai pagar (R$)" aria-label="Valor do Pix"
+          className="w-full h-11 rounded-xl px-3 text-sm bg-white" style={{ border: `1px solid ${C.campo}` }} />
+      )}
+
+      {codigo && (
+        <div className="flex flex-col items-center gap-3 rounded-xl p-3" style={{ border: `1px solid ${C.borda}` }}>
+          {svg
+            ? <div className="w-48 h-48" role="img" aria-label={`QR code do Pix de ${brl(valor)}`} dangerouslySetInnerHTML={{ __html: svg }} />
+            : <div className="w-48 h-48 rounded-lg" style={{ background: C.linha }} />}
+          <p className="text-[13px] text-center" style={{ color: C.texto2 }}>
+            Abra o app do seu banco, escolha <b>Pix → Ler QR code</b> e aponte para a imagem. O valor de <b>{brl(valor)}</b> já vem preenchido.
+          </p>
+          <button type="button" onClick={copiarCodigo} className="w-full h-11 rounded-xl text-white font-semibold flex items-center justify-center gap-2" style={{ background: C.azul }}>
+            <Copy className="w-4 h-4" /> {codigoCopiado ? 'Código copiado!' : 'Copiar código Pix (copia e cola)'}
+          </button>
+          <p className="text-xs text-center" style={{ color: C.muted }}>No celular: copie, abra o banco em <b>Pix → Pix copia e cola</b> e cole.</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 text-[13px]" style={{ color: C.muted }}>
+        <span className="flex-1 break-all">Ou use a chave: <span style={{ color: C.texto2 }}>{chave}</span></span>
+        <button type="button" onClick={onCopiarChave} className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-white flex items-center gap-1" style={{ border: `1px solid ${C.botaoBorda}`, color: C.azul }}>
+          <Copy className="w-3 h-3" /> {copiado ? 'Copiada' : 'Copiar chave'}
+        </button>
+      </div>
     </div>
   )
 }

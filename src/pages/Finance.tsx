@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FinanceBreakdown } from '../components/FinanceBreakdown'
 import { InstallmentsForecast } from '../components/InstallmentsForecast'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -888,6 +889,8 @@ export function Finance() {
           </div>
         )
       })}
+
+      <FinanceBreakdown unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
 
       {fluxoResumo && (
         <>

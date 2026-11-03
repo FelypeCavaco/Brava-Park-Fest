@@ -5,6 +5,7 @@ import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { PageLoading } from '../../lib/lazyPage'
 import { GlobalSearch } from './GlobalSearch'
+import { NotificationBell } from './NotificationBell'
 import { QuickActionsBar } from './QuickActionsBar'
 import { useUnit } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
@@ -39,6 +40,7 @@ export function AppLayout() {
             <>
               <QuickActionsBar className="flex-1 min-w-0" />
               <GlobalSearch />
+              <NotificationBell />
             </>
           )}
         </div>

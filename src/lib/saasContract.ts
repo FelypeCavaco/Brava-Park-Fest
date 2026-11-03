@@ -85,7 +85,7 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>3.1. Pela licença e pelos serviços, a CONTRATANTE pagará os valores do Anexo I: uma taxa única de implantação, se houver, e uma mensalidade.</p>
 <p>3.2. A mensalidade vence todo dia ${campo(p?.dia_vencimento)} de cada mês e é paga pela fatura enviada pela CONTRATADA (Pix, boleto ou cartão de crédito). A CONTRATANTE recebe a fatura por e-mail e é avisada 5 dias antes e no dia do vencimento.</p>
 <p>3.3. Os valores serão reajustados a cada 12 meses pela variação do IPCA (IBGE) do período, ou por outro índice oficial que o substitua.</p>
-<p>3.4. Em caso de atraso, incidem multa de 2% e juros de 1% ao mês, proporcionais aos dias de atraso.</p>
+<p>3.4. Não há cobrança de multa nem de juros por atraso. O atraso no pagamento leva à suspensão do acesso, conforme o item 3.5.</p>
 <p>3.5. Com mais de ${p?.tolerancia_dias ?? 7} dias de atraso, o acesso ao Sistema é suspenso automaticamente. Durante a suspensão, os dados ficam guardados, a tela de acesso mostra o link para pagamento, e o acesso volta sozinho assim que o pagamento é confirmado.</p>
 <p>3.6. Se a suspensão por falta de pagamento passar de 60 dias, a CONTRATADA poderá encerrar o contrato, seguindo o que diz a cláusula 8 sobre a devolução e a exclusão dos dados.</p>
 

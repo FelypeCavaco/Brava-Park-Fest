@@ -969,7 +969,7 @@ export function ClientPortal() {
                     <p className="text-sm" style={{ color: C.muted }}>Peça a chave Pix à equipe.</p>
                   )}
                   <p className="text-xs" style={{ color: C.muted }}>
-                    Pague pelo QR code ou pelo código copia e cola. A equipe confirma o Pix direto no extrato do banco e o pagamento aparece aqui em "Pagamentos registrados". Não é preciso enviar comprovante.
+                    Pague pelo QR code ou pelo código copia e cola. Assim que a equipe confirmar o Pix, o pagamento aparece aqui em "Pagamentos registrados". Não é preciso enviar comprovante.
                   </p>
                 </section>
               )}

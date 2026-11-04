@@ -34,8 +34,8 @@ export function termosHtml(f: Fornecedor): string {
 <p>1.2. Se algo nestes Termos for diferente do contrato assinado com a Casa, vale o contrato.</p>
 
 <h2>2. O que o Festou faz</h2>
-<p>2.1. O Festou ajuda a Casa a organizar agenda, clientes, festas, propostas, contratos, pagamentos, financeiro, estoque, equipe, relatórios e o portal das famílias, e a ler o extrato do banco.</p>
-<p>2.2. Algumas funções fazem sugestões ou lançamentos automáticos, como reconhecer um Pix no extrato, gerar um QR code de Pix ou calcular parcelas. Elas facilitam o trabalho, mas a Casa deve conferir o que é lançado. O Festou não é banco, não recebe nem guarda dinheiro da Casa ou das famílias.</p>
+<p>2.1. O Festou ajuda a Casa a organizar agenda, clientes, festas, propostas, contratos, pagamentos, financeiro, estoque, equipe, relatórios e o portal das famílias.</p>
+<p>2.2. Algumas funções fazem sugestões ou lançamentos automáticos, como gerar um QR code de Pix, calcular parcelas ou preparar lembretes de cobrança. Elas facilitam o trabalho, mas a Casa deve conferir o que é lançado. O Festou não é banco, não recebe nem guarda dinheiro da Casa ou das famílias.</p>
 
 <h2>3. Sua conta</h2>
 <p>3.1. Cada pessoa tem o seu próprio login. Não compartilhe a sua senha. Tudo o que for feito com o seu login é responsabilidade sua e da Casa.</p>
@@ -49,7 +49,6 @@ export function termosHtml(f: Fornecedor): string {
 
 <h2>5. Responsabilidade pelo conteúdo</h2>
 <p>5.1. A Casa responde pelo que cadastra e envia: contratos, preços, regras, cobranças, multas e juros, mensagens às famílias, chave Pix e taxas da maquininha. Cabe à Casa conferir se isso está correto e de acordo com a lei, em especial com o Código de Defesa do Consumidor.</p>
-<p>5.2. Antes de lançar o extrato do banco, confira cada movimento. O Festou mostra possíveis duplicados e vendas no cartão para ajudar, mas a decisão final é da Casa.</p>
 
 <h2>6. Pagamento, suspensão e cancelamento</h2>
 <p>6.1. Mensalidade, prazos, suspensão por atraso e cancelamento seguem o contrato da Casa. Durante uma suspensão, os dados continuam guardados.</p>
@@ -65,7 +64,7 @@ export function termosHtml(f: Fornecedor): string {
 
 <h2>9. Privacidade e proteção de dados (LGPD)</h2>
 <p><b>9.1. Quem é responsável pelos dados.</b> Os dados que a Casa cadastra sobre seus clientes, convidados, crianças e funcionários são controlados pela Casa, que decide como usá-los. O Festou é operador: trata esses dados só para fazer o sistema funcionar e conforme as instruções da Casa. Para os dados da sua própria conta (nome, e-mail, registros de acesso), o Festou é o controlador.</p>
-<p><b>9.2. Quais dados tratamos.</b> (a) Da sua conta: nome, e-mail, perfil de acesso e a data em que aceitou estes Termos. (b) Cadastrados pela Casa: dados de clientes e famílias (nome, telefone, e-mail, CPF, endereço, data de nascimento), das crianças aniversariantes (nome e idade), listas de convidados, festas, pagamentos, comprovantes, contratos, documentos, extratos bancários enviados, avaliações e dados da equipe. (c) Técnicos: endereço IP, navegador, data e hora de acesso e registros de alterações feitas no sistema.</p>
+<p><b>9.2. Quais dados tratamos.</b> (a) Da sua conta: nome, e-mail, perfil de acesso e a data em que aceitou estes Termos. (b) Cadastrados pela Casa: dados de clientes e famílias (nome, telefone, e-mail, CPF, endereço, data de nascimento), das crianças aniversariantes (nome e idade), listas de convidados, festas, pagamentos, comprovantes, contratos, documentos, avaliações e dados da equipe. (c) Técnicos: endereço IP, navegador, data e hora de acesso e registros de alterações feitas no sistema.</p>
 <p><b>9.3. Para que usamos.</b> Para oferecer o sistema e o suporte, manter a segurança, separar os dados de cada Casa, fazer cópias de segurança, cobrar a mensalidade da Casa e cumprir obrigações legais. Não vendemos dados, não usamos os dados da Casa para publicidade e não entramos em contato com os clientes da Casa.</p>
 <p><b>9.4. Com quem compartilhamos.</b> Só com os fornecedores necessários para o sistema funcionar: hospedagem do banco de dados e dos arquivos (Supabase), hospedagem do site (Cloudflare), cobrança da mensalidade da Casa (Asaas) e envio de e-mails do sistema. Esses fornecedores podem guardar dados em servidores fora do Brasil, com proteções compatíveis com a LGPD. Também podemos fornecer dados quando a lei ou uma ordem judicial exigir.</p>
 <p><b>9.5. Segurança.</b> Usamos login e senha, conexão criptografada, separação entre as casas, permissões por perfil, registro de alterações e cópias de segurança. Se houver um incidente de segurança que possa trazer risco, a Casa será avisada em até 48 horas depois que soubermos, para que ela possa avisar quem for preciso.</p>

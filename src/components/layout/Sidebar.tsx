@@ -3,7 +3,6 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabaseClient'
 import {
   LayoutDashboard,
-  Landmark,
   CalendarDays,
   CalendarClock,
   Users,
@@ -98,7 +97,6 @@ const groups: Group[] = [
     items: [
       { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/financeiro', label: 'Financeiro', icon: Banknote },
-      { to: '/extrato-banco', label: 'Extrato do banco', icon: Landmark },
       { to: '/despesas-fixas-festas', label: 'Despesa fixa das festas', icon: Repeat },
       { to: '/acertos-entre-unidades', label: 'Acertos entre unidades', icon: ArrowLeftRight },
       { to: '/comissoes', label: 'Comissões', icon: BadgePercent },

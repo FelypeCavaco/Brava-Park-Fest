@@ -117,7 +117,7 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>6.4. Usar o Sistema somente para a administração da sua casa de festas, de forma lícita, sem tentar acessar dados de outros clientes, copiar o Sistema ou repassar o acesso a terceiros.</p>
 <p>6.5. Responder pelo conteúdo que cadastra e envia aos seus clientes: contratos, preços, regras da casa, multa e juros de parcelas atrasadas e mensagens de WhatsApp. O Sistema é uma ferramenta, e cabe à CONTRATANTE conferir se esse conteúdo está de acordo com a lei, em especial com o Código de Defesa do Consumidor.</p>
 <p>6.6. Cumprir a Lei Geral de Proteção de Dados (LGPD) em relação aos dados dos seus clientes, convidados e funcionários, conforme a cláusula 8.</p>
-<p>6.7. Manter corretos no Sistema a chave Pix, as taxas da maquininha e os demais dados usados nas cobranças, e conferir os lançamentos feitos de forma automática ou sugerida pelo Sistema, como a leitura do extrato do banco, a confirmação de pagamentos e o cálculo de parcelas. O Sistema não recebe, não guarda e não movimenta dinheiro da CONTRATANTE ou dos seus clientes.</p>
+<p>6.7. Manter corretos no Sistema a chave Pix, as taxas da maquininha e os demais dados usados nas cobranças, e conferir os lançamentos feitos de forma automática ou sugerida pelo Sistema, como o cálculo de parcelas e os lembretes de cobrança. O Sistema não recebe, não guarda e não movimenta dinheiro da CONTRATANTE ou dos seus clientes.</p>
 <p>6.8. Enviar o link do portal de cada festa somente ao responsável pela festa.</p>
 
 <h2>Cláusula 7 — Propriedade</h2>

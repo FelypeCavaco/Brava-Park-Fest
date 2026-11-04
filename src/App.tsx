@@ -20,7 +20,6 @@ const Packages = lazyPage(() => import('./pages/Packages').then((m) => ({ defaul
 const Contracts = lazyPage(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
 const Payments = lazyPage(() => import('./pages/Payments').then((m) => ({ default: m.Payments })))
 const Finance = lazyPage(() => import('./pages/Finance').then((m) => ({ default: m.Finance })))
-const BankStatement = lazyPage(() => import('./pages/BankStatement').then((m) => ({ default: m.BankStatement })))
 const FestaFixedCosts = lazyPage(() => import('./pages/FestaFixedCosts').then((m) => ({ default: m.FestaFixedCosts })))
 const MonthlyResult = lazyPage(() => import('./pages/MonthlyResult').then((m) => ({ default: m.MonthlyResult })))
 const Profitability = lazyPage(() => import('./pages/Profitability').then((m) => ({ default: m.Profitability })))
@@ -73,7 +72,6 @@ export default function App() {
           <Route path="/pagamentos" element={<Payments />} />
           <Route path="/financeiro" element={<Finance />} />
           <Route path="/despesas-fixas-festas" element={<FestaFixedCosts />} />
-          <Route path="/extrato-banco" element={<BankStatement />} />
           <Route path="/resultado-do-mes" element={<MonthlyResult />} />
           <Route path="/lucro-por-festa" element={<Profitability />} />
           <Route path="/estoque" element={<Inventory />} />

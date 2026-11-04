@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabaseClient'
 import { useCompany } from '../../lib/CompanyContext'
 import { ChangePasswordScreen } from './ChangePasswordScreen'
 import { BillingBlockedScreen } from './BillingNotice'
+import { TermsAcceptScreen } from './TermsAcceptScreen'
+import { TERMOS_VERSAO } from '../../lib/termosUso'
 
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()
@@ -14,6 +16,19 @@ export function RequireAuth() {
   // Empresa suspensa pelo administrador geral: sai e mostra o aviso no login.
   const suspensa = !!session && !brandLoading && brand.active === false
 
+  // Termos de Uso: só para as casas clientes do Festou (a Brava não usa) e
+  // não para o administrador geral. Sem a migração 083, não bloqueia.
+  const pedeTermos = !!session && !brandLoading && brand.platformManaged && !isPlatformAdmin
+  const [termos, setTermos] = useState<'aceito' | 'antiga' | 'nunca' | null>(null)
+  useEffect(() => {
+    if (!pedeTermos) return
+    let vivo = true
+    supabase.rpc('platform_terms_status', { p_version: TERMOS_VERSAO }).then(({ data, error }) => {
+      if (vivo) setTermos(error ? 'aceito' : (data as 'aceito' | 'antiga' | 'nunca'))
+    })
+    return () => { vivo = false }
+  }, [pedeTermos, session?.user?.id])
+
   const deactivated = !!profile && !profile.active
   const needsPermissions = !!profile && !profile.role?.isAdmin
 
@@ -21,7 +36,7 @@ export function RequireAuth() {
     if (deactivated || suspensa) supabase.auth.signOut()
   }, [deactivated, suspensa])
 
-  if (loading || (session && profileLoading) || (needsPermissions && permissionsLoading)) {
+  if (loading || (session && profileLoading) || (needsPermissions && permissionsLoading) || (pedeTermos && termos === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper">
         <div className="flex flex-col items-center gap-3">
@@ -43,6 +58,11 @@ export function RequireAuth() {
 
   // Senha provisória: troca antes de qualquer outra tela.
   if (profile?.mustChangePassword) return <ChangePasswordScreen nome={profile.name} />
+
+  // Termos de Uso ainda não aceitos (ou versão nova): aceite antes de entrar.
+  if (pedeTermos && termos !== 'aceito') {
+    return <TermsAcceptScreen nome={profile?.name ?? ''} novaVersao={termos === 'antiga'} onAceito={() => setTermos('aceito')} />
+  }
 
   // Administrador geral sem empresa aberta: tudo leva ao painel da plataforma.
   if (isPlatformAdmin && !brand.companyId && location.pathname !== '/plataforma') {

@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError } from '../../lib/format'
 import { baixarContratoSaas, faltandoNoContrato, type DadosContratada, type DadosEmpresaContrato } from '../../lib/saasContract'
+import { TERMOS_DATA } from '../../lib/termosUso'
 
 // Gerenciar empresa → Contrato: gera o contrato do Festou em PDF, já
 // preenchido com os seus dados e os da casa.
@@ -12,6 +13,7 @@ export function CompanyContract({ empresaId }: { empresaId: string }) {
   const [e, setE] = useState<DadosEmpresaContrato | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [gerando, setGerando] = useState(false)
+  const [aceites, setAceites] = useState<{ user_name: string | null; user_email: string | null; version: string; accepted_at: string }[] | null>(null)
 
   useEffect(() => {
     Promise.all([supabase.rpc('platform_get_contract_settings'), supabase.rpc('platform_contract_data', { p_company: empresaId })]).then(([a, b]) => {
@@ -20,6 +22,10 @@ export function CompanyContract({ empresaId }: { empresaId: string }) {
       const d = b.data as DadosEmpresaContrato
       setE({ ...d, plano: d.plano ? { ...d.plano, mensalidade: Number(d.plano.mensalidade), implantacao: Number(d.plano.implantacao), unidade_adicional: Number(d.plano.unidade_adicional) } : null })
     })
+  }, [empresaId])
+
+  useEffect(() => {
+    supabase.rpc('platform_terms_list', { p_company: empresaId }).then(({ data, error }) => setAceites(error ? [] : (data ?? [])))
   }, [empresaId])
 
   if (erro) return <p className="text-sm text-danger">{erro}</p>
@@ -49,6 +55,23 @@ export function CompanyContract({ empresaId }: { empresaId: string }) {
       )}
       <Button onClick={gerar} disabled={gerando}><FileText className="w-4 h-4" /> {gerando ? 'Gerando...' : 'Baixar contrato (PDF)'}</Button>
       <p className="text-xs text-muted">Rascunho para revisão de um advogado antes do primeiro uso.</p>
+
+      <div className="pt-3 border-t border-line">
+        <p className="font-semibold">Termos de Uso aceitos</p>
+        <p className="text-xs text-muted mb-2">Cada pessoa da casa aceita os Termos (versão atual: {TERMOS_DATA}) antes de usar o sistema. <a href="/termos" target="_blank" rel="noreferrer" className="text-purple font-medium">Ver os Termos</a></p>
+        {aceites === null ? <p className="text-xs text-muted">Carregando...</p>
+          : aceites.length === 0 ? <p className="text-xs text-muted">Ninguém desta casa aceitou ainda.</p>
+          : (
+            <ul className="divide-y divide-line text-xs">
+              {aceites.map((a, i) => (
+                <li key={i} className="py-1.5 flex flex-wrap justify-between gap-2">
+                  <span>{a.user_name ?? '—'}{a.user_email ? ` · ${a.user_email}` : ''}</span>
+                  <span className="text-muted">versão {a.version.split('-').reverse().join('/')} · aceito em {new Date(a.accepted_at).toLocaleString('pt-BR')}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+      </div>
     </div>
   )
 }

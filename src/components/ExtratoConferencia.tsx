@@ -190,7 +190,7 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
     <Card title={`Confira um por um antes de lançar${unidade ? ` · ${unidade}` : ''}`}>
       <p className="text-sm">
         <b>{arquivo}</b> ({extrato.formato}): <b>{itens.length}</b> movimentos de {dia(extrato.inicio!)} a {dia(extrato.fim!)}.
-        {' '}Toque em um movimento para corrigir, escolher a categoria ou não lançar.
+        {' '}Use o <b>lápis</b> para corrigir ou escolher o que fazer e a <b>lixeira</b> para tirar da lista. Nada é lançado antes de você clicar em <b>Lançar</b>.
       </p>
       {extrato.formato !== 'OFX' && (
         <p className="text-xs text-muted mt-1">

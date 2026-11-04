@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, CreditCard, FileUp, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, CreditCard, FileUp, HelpCircle, Pencil, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { format, parseISO, subDays } from 'date-fns'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -202,6 +202,8 @@ export function BankStatement() {
           avisa e mostra com qual lançamento parece.
         </p>
       </div>
+
+      <ComoUsar />
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
       {notice && (
@@ -614,6 +616,59 @@ function ConferirCartao({ l, busy, onResolver }: {
             <Button variant="secondary" disabled={busy} onClick={() => onResolver(l, 'ignorar')}>Não lançar</Button>
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// Explicação curta de cada passo e botão (abre e fecha; fica aberta na primeira visita).
+function ComoUsar() {
+  const [aberto, setAberto] = useState(() => {
+    try { return localStorage.getItem('extrato_ajuda_vista') !== '1' } catch { return true }
+  })
+  function alternar() {
+    setAberto((a) => {
+      try { localStorage.setItem('extrato_ajuda_vista', '1') } catch { /* sem armazenamento: só não lembra */ }
+      return !a
+    })
+  }
+  const item = (icone: React.ReactNode, titulo: string, texto: React.ReactNode) => (
+    <li className="flex items-start gap-2.5">
+      <span className="mt-0.5 w-6 h-6 rounded-full bg-purple-light text-purple-dark flex items-center justify-center shrink-0">{icone}</span>
+      <span className="min-w-0"><b className="font-semibold">{titulo}</b> — {texto}</span>
+    </li>
+  )
+  return (
+    <div className="rounded-card border border-line bg-surface">
+      <button onClick={alternar} aria-expanded={aberto} className="w-full flex items-center gap-2 px-5 py-3 text-sm font-semibold text-left">
+        <HelpCircle className="w-4 h-4 text-purple" /> Como usar esta tela
+        <span className="ml-auto text-xs font-medium text-purple">{aberto ? 'Fechar' : 'Ver explicação'}</span>
+      </button>
+      {aberto && (
+        <div className="px-5 pb-5 grid gap-5 md:grid-cols-2 text-sm text-ink/90">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Passo a passo</p>
+            <ol className="space-y-2 list-decimal pl-5">
+              <li>No app ou site do banco, baixe o extrato (de preferência em <b>OFX</b>; planilha e PDF também servem).</li>
+              <li>Clique em <b>Enviar extrato</b> e escolha o arquivo.</li>
+              <li>Confira cada movimento na lista. Nada é lançado antes de você clicar em <b>Lançar</b>.</li>
+              <li>O que ficar pendente aparece em <b>Para resolver</b>, para decidir depois.</li>
+            </ol>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">O que cada botão faz</p>
+            <ul className="space-y-2">
+              {item(<Pencil className="w-3.5 h-3.5" />, 'Lápis', 'corrige data, valor, descrição e se é entrada ou saída, e escolhe o que fazer: festa, conta a pagar, despesa (com categoria, inclusive nova) ou outra receita.')}
+              {item(<Trash2 className="w-3.5 h-3.5" />, 'Lixeira', <>tira o movimento só desta vez. Se o mesmo arquivo for enviado de novo, ele volta. Apagou sem querer? Clique em <b>Desfazer</b>.</>)}
+              {item(<X className="w-3.5 h-3.5" />, 'Não lançar', 'o sistema guarda que você não quer este movimento (ex.: transferência entre contas suas). Ele nunca volta.')}
+              {item(<Sparkles className="w-3.5 h-3.5" />, 'Deixar o sistema decidir', 'lança o que ele reconheceu (Pix com o nome do cliente, conta a pagar com o mesmo valor, despesas que ele já aprendeu).')}
+              {item(<AlertTriangle className="w-3.5 h-3.5" />, 'Pode ser repetido', 'já existe um lançamento parecido. Escolha "é repetido" (não lança de novo) ou "não é" (lança).')}
+              {item(<CreditCard className="w-3.5 h-3.5" />, 'Venda no cartão', 'o banco deposita sem a taxa e às vezes parcelado. Marque se já foi lançado na festa, se é de festa e não foi lançado, ou se não é de festa.')}
+              {item(<Check className="w-3.5 h-3.5" />, 'Fazer igual da próxima vez', 'o sistema aprende: quando a mesma descrição aparecer, ele faz sozinho. As regras aprendidas ficam no fim da página e podem ser apagadas.')}
+              {item(<RotateCcw className="w-3.5 h-3.5" />, 'Desfazer', 'em algo já lançado, apaga o lançamento criado ou volta a conta para "em aberto".')}
+            </ul>
+          </div>
+        </div>
       )}
     </div>
   )

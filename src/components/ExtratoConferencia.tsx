@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Clock, CreditCard, Pencil, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Clock, CreditCard, Pencil, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { format, parseISO, subDays } from 'date-fns'
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
@@ -104,6 +104,8 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
   const [contas, setContas] = useState<{ id: string; label: string }[]>([])
   const [erro, setErro] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // apagados da conferência: não são enviados (dá para desfazer)
+  const [apagados, setApagados] = useState<Item[]>([])
   const categorias = useCategoriasDespesa()
 
   useEffect(() => {
@@ -132,6 +134,18 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
   const visiveis = itens.filter((x) => filtro === 'todos' || precisaAtencao(x))
   const naoLancar = itens.filter((x) => x.acao === 'ignorar' || previa?.[x.id]?.status === 'ja_enviado').length
 
+  function apagar(x: Item) {
+    setItens((xs) => xs.filter((i) => i.id !== x.id))
+    setApagados((a) => [...a, x])
+    if (aberto === x.id) setAberto(null)
+  }
+
+  function desfazerApagar() {
+    const ordem = new Map(extrato.movimentos.map((m, i) => [m.id, i]))
+    setItens((xs) => [...xs, ...apagados].sort((a, b) => (ordem.get(a.id) ?? 0) - (ordem.get(b.id) ?? 0)))
+    setApagados([])
+  }
+
   function proximo(id: string) {
     const i = visiveis.findIndex((x) => x.id === id)
     setAberto(visiveis[i + 1]?.id ?? null)
@@ -149,6 +163,7 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
 
   async function lancar() {
     setErro(null)
+    if (itens.length === 0) return setErro('Todos os movimentos foram apagados: não há nada para lançar.')
     const ruim = itens.find((x) => problema(x))
     if (ruim) { setFiltro('todos'); setAberto(ruim.id); return setErro(`${dia(ruim.data)} · ${ruim.descricao}: ${problema(ruim)}`) }
     const linhas = itens.map((x) => {
@@ -201,8 +216,9 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
           const isOpen = aberto === x.id
           return (
             <li key={x.id} className={`${ja || x.acao === 'ignorar' ? 'opacity-60' : ''}`}>
+              <div className="flex items-start">
               <button type="button" onClick={() => !ja && setAberto(isOpen ? null : x.id)} disabled={ja}
-                className="w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-paper/60">
+                className="flex-1 min-w-0 text-left pl-3 pr-1 py-2.5 flex items-start gap-3 hover:bg-paper/60">
                 <span className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${x.entrada ? 'bg-teal-light text-teal' : 'bg-danger-light text-danger'}`}>
                   {x.entrada ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
                 </span>
@@ -218,6 +234,11 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
                 </span>
                 {!ja && <Pencil className="w-3.5 h-3.5 text-muted mt-1 shrink-0" />}
               </button>
+              <button type="button" onClick={() => apagar(x)} title="Apagar este movimento (não será enviado)"
+                aria-label={`Apagar o movimento ${x.descricao}`} className="px-2.5 py-3 text-muted hover:text-danger shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </button>
+              </div>
 
               {p?.status === 'possivel_duplicado' && x.acao === 'auto' && !isOpen && (
                 <div className="px-3 pb-3 -mt-1 ml-10 flex flex-wrap gap-2">
@@ -354,11 +375,17 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
 
       {erro && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5 mt-3">{erro}</div>}
       <div className="flex flex-wrap items-center gap-3 mt-4">
-        <Button onClick={lancar} disabled={busy}>
+        <Button onClick={lancar} disabled={busy || itens.length === 0}>
           {busy ? 'Lançando...' : `Lançar ${itens.length - naoLancar} movimento${itens.length - naoLancar === 1 ? '' : 's'}`}
         </Button>
         <Button variant="ghost" onClick={onCancelar} disabled={busy}>Cancelar</Button>
         {naoLancar > 0 && <span className="text-xs text-muted">{naoLancar} não {naoLancar === 1 ? 'será lançado' : 'serão lançados'}</span>}
+        {apagados.length > 0 && (
+          <span className="text-xs text-muted inline-flex items-center gap-1">
+            {apagados.length} apagado{apagados.length > 1 ? 's' : ''} ·
+            <button onClick={desfazerApagar} className="text-purple font-medium inline-flex items-center gap-1"><RotateCcw className="w-3 h-3" /> Desfazer</button>
+          </span>
+        )}
       </div>
     </Card>
   )

@@ -76,6 +76,23 @@ export function lerValor(c: Celula): number | null {
 
 const ehSaldo = (desc: string) => /^saldo\b|saldo (do dia|anterior|final|inicial|disponivel|em conta|bloqueado)|^total\b/.test(sem(desc))
 
+// Linhas de resumo do PDF, que não são movimentos: totais do mês ("Setembro
+// 2026 ... Entradas: R$ 10.000,00 • Saídas: R$ 39.006,45"), o período do
+// extrato ("01/09/2026 a 30/09/2026") e cabeçalhos com totais.
+const MES_ANO = /\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+(de\s+)?\d{4}\b/
+function ehResumo(linha: string, desc: string): boolean {
+  const l = sem(linha)
+  const d = sem(desc).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/\bentradas?\b/.test(l) && /\bsaidas?\b/.test(l)) return true
+  if (/^(total|totais|resumo|periodo|extrato|movimentacoes|lancamentos)\b/.test(d)) return true
+  // só o rótulo de um total ("Entradas", "Saídas do mês"), sem descrição de movimento
+  if (/^(total de )?(entradas?|saidas?|creditos?|debitos?)( (do|no) (mes|periodo|dia))?$/.test(d)) return true
+  if (MES_ANO.test(l) && d.replace(MES_ANO, '').replace(/[^a-z]/g, '').length < 6) return true
+  // duas datas completas na linha = período ("01/09/2026 a 30/09/2026")
+  if ((linha.match(/\d{1,2}\/\d{1,2}\/\d{4}/g) ?? []).length >= 2) return true
+  return false
+}
+
 function comCodigos(lista: Omit<MovimentoExtrato, 'id'>[]): MovimentoExtrato[] {
   const vistos = new Map<string, number>()
   return lista.map((m) => {
@@ -214,7 +231,7 @@ export function lerLinhasPdf(linhas: string[]): MovimentoExtrato[] {
       .replace(/\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?|\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ')
       .replace(/\b\d{1,2}\s*(?:de\s+)?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\.?(?:\s*(?:de\s+)?\d{4})?/gi, ' ')
       .replace(/R\$/g, ' ').replace(/\s+/g, ' ').trim()
-    if (ehSaldo(desc) || /^saldo/i.test(l)) { textoSolto = []; continue }
+    if (ehSaldo(desc) || /^saldo/i.test(l) || ehResumo(l, desc)) { textoSolto = []; continue }
     if (valores.length === 0) {
       if (dataLinha && !desc) textoSolto = [] // título de um novo dia
       // linha de títulos da tabela ("Data Descrição Valor Saldo") não é descrição
@@ -231,7 +248,8 @@ export function lerLinhasPdf(linhas: string[]): MovimentoExtrato[] {
     // (só quando a linha do valor não tem data própria: com data, a descrição está nela)
     if ((!dataLinha || !desc) && textoSolto.length && textoSolto.length <= 2) desc = [...textoSolto, desc].join(' ').trim()
     textoSolto = []
-    if (!desc || ehSaldo(desc)) continue
+    // sem descrição de verdade (ex.: só "a"), não é um movimento
+    if (!desc || ehSaldo(desc) || sem(desc).replace(/[^a-z]/g, '').length < 3) continue
     // sem sinal no número: decide pelas palavras da linha
     if (valor > 0 && !/^[(+-]|[CD]$/.test(bruto.trim())) {
       const s = sem(desc)

@@ -67,7 +67,7 @@ export function InstallmentNotices() {
       vencimento: l.status === 'atrasada' ? `que venceu em ${dm(l.vencimento)}` : l.vencimento === hoje ? 'que vence hoje' : `que vence em ${dm(l.vencimento)}`,
       encargos: encargos > 0 ? `\nCom a multa e os juros previstos no contrato, o valor para pagamento hoje é ${brl(l.total_hoje)}.` : '',
       pix: pix[l.unit_id] ? `\nPode pagar pelo Pix (chave: ${pix[l.unit_id]})` : '',
-      link: link ? ` e enviar o comprovante pelo portal: ${link}` : '',
+      link: link ? `\n${pix[l.unit_id] ? 'Ou pague' : 'Pague'} pelo portal, com QR code ou copia e cola: ${link}` : '',
     }))
   }
 

@@ -66,7 +66,7 @@ export function InstallmentsCard({ reservationId, cliente, telefone, crianca, pi
       vencimento: p.status === 'atrasada' ? `que venceu em ${dm(p.vencimento)}` : p.status === 'vence_hoje' ? 'que vence hoje' : `que vence em ${dm(p.vencimento)}`,
       encargos: encargos > 0 ? `\nCom a multa e os juros previstos no contrato, o valor para pagamento hoje é ${brl(p.total_hoje)}.` : '',
       pix: pix ? `\nPode pagar pelo Pix (chave: ${pix})` : '',
-      link: linkPortal ? ` e enviar o comprovante pelo portal: ${linkPortal}` : '',
+      link: linkPortal ? `\n${pix ? 'Ou pague' : 'Pague'} pelo portal, com QR code ou copia e cola: ${linkPortal}` : '',
     })
     openWhatsApp(telefone, msg)
   }

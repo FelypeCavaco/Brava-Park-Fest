@@ -1547,6 +1547,20 @@ grant execute on function platform_terms_provider() to anon, authenticated;
 
 select fix_definer_owners();
 
+
+-- ===== 084: portal sem envio de comprovante =====
+create or replace function portal_submit_receipt(p_token uuid, p_amount numeric, p_path text) returns uuid
+language plpgsql security definer set search_path = public as $$
+begin
+  raise exception 'O envio de comprovante pelo portal foi desativado. Pague pelo Pix (QR code ou copia e cola): a equipe confirma pelo extrato do banco.';
+end;
+$$;
+
+-- arquivos novos de comprovante não podem mais ser enviados pelo portal
+drop policy if exists "portal_comprovantes_upload" on storage.objects;
+
+select fix_definer_owners();
+
 commit;
 
 notify pgrst, 'reload schema';

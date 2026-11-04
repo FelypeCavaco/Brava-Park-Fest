@@ -242,11 +242,26 @@ export function lerLinhasPdf(linhas: string[]): MovimentoExtrato[] {
   return comCodigos(lista)
 }
 
-async function lerPdf(arquivo: File): Promise<MovimentoExtrato[]> {
+// PDF protegido por senha (alguns bancos usam o CPF/CNPJ): a tela pede a senha.
+export class PdfComSenha extends Error {
+  senhaErrada: boolean
+  constructor(senhaErrada: boolean) {
+    super(senhaErrada ? 'Senha do PDF incorreta. Tente de novo.' : 'Este PDF tem senha. Digite a senha para abrir.')
+    this.senhaErrada = senhaErrada
+  }
+}
+
+async function lerPdf(arquivo: File, senha?: string): Promise<MovimentoExtrato[]> {
   const pdfjs = await import('pdfjs-dist')
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise
+  let doc
+  try {
+    doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()), ...(senha ? { password: senha } : {}) }).promise
+  } catch (e) {
+    if ((e as { name?: string })?.name === 'PasswordException') throw new PdfComSenha(!!senha)
+    throw new Error('Não foi possível abrir este PDF. Tente baixar o extrato em OFX ou planilha.')
+  }
   const linhas: string[] = []
   for (let p = 1; p <= doc.numPages; p++) {
     const conteudo = await (await doc.getPage(p)).getTextContent()
@@ -267,10 +282,10 @@ async function lerPdf(arquivo: File): Promise<MovimentoExtrato[]> {
 }
 
 // ---------- Entrada única ----------
-export async function lerExtrato(arquivo: File): Promise<ExtratoArquivo> {
+export async function lerExtrato(arquivo: File, senha?: string): Promise<ExtratoArquivo> {
   const nome = arquivo.name.toLowerCase()
   const ext = nome.slice(nome.lastIndexOf('.') + 1)
-  if (ext === 'pdf') return resumo(await lerPdf(arquivo), 'PDF')
+  if (ext === 'pdf') return resumo(await lerPdf(arquivo, senha), 'PDF')
   if (['xlsx', 'xls', 'ods'].includes(ext)) return resumo(await lerPlanilha(arquivo, null), 'planilha')
   const texto = decodificarExtrato(await arquivo.arrayBuffer())
   if (/<OFX>/i.test(texto)) return { ...lerOfx(texto), formato: 'OFX' }

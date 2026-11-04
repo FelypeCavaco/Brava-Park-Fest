@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/Badge'
 import { useUnit } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { brl, friendlyDbError } from '../lib/format'
-import { ACEITOS, lerExtrato, type ExtratoArquivo } from '../lib/extratoArquivo'
+import { ACEITOS, PdfComSenha, lerExtrato, type ExtratoArquivo } from '../lib/extratoArquivo'
 import { ExtratoConferencia, CategoriaCampo, categoriaFinal, useCategoriasDespesa } from '../components/ExtratoConferencia'
 
 // Extrato do banco: a pessoa envia o arquivo OFX e o sistema lança sozinho
@@ -62,6 +62,8 @@ export function BankStatement() {
   const [unidadeEnvio, setUnidadeEnvio] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
   const [previa, setPrevia] = useState<{ arquivo: string; extrato: ExtratoArquivo } | null>(null)
+  const [pedeSenha, setPedeSenha] = useState<{ file: File; erro: boolean } | null>(null)
+  const [senhaPdf, setSenhaPdf] = useState('')
 
   const unitIdBySlug = useMemo(() => Object.fromEntries(Object.entries(unitDbIds).map(([slug, v]) => [slug, v.unitId])), [unitDbIds])
   const unitNameById = useMemo(() => Object.fromEntries(units.map((u) => [unitIdBySlug[u.id], u.name])), [units, unitIdBySlug])
@@ -119,13 +121,15 @@ export function BankStatement() {
   useEffect(() => { load() }, [load])
 
   // 1) lê o arquivo e mostra o que encontrou, para a pessoa conferir antes de lançar
-  async function ler(file: File) {
+  async function ler(file: File, senha?: string) {
     setError(null); setNotice(null); setPrevia(null)
     setBusy(true)
     try {
-      setPrevia({ arquivo: file.name, extrato: await lerExtrato(file) })
+      setPrevia({ arquivo: file.name, extrato: await lerExtrato(file, senha) })
+      setPedeSenha(null); setSenhaPdf('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.')
+      if (e instanceof PdfComSenha) { setPedeSenha({ file, erro: e.senhaErrada }); setSenhaPdf('') }
+      else { setPedeSenha(null); setError(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.') }
     } finally {
       setBusy(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -228,6 +232,21 @@ export function BankStatement() {
           </p>
         </div>
       </Card>
+
+      {pedeSenha && (
+        <Card>
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (senhaPdf) ler(pedeSenha.file, senhaPdf) }}>
+            <p className="text-sm"><b>{pedeSenha.file.name}</b> tem senha. {pedeSenha.erro ? <span className="text-danger">Senha incorreta, tente de novo.</span> : 'Digite a senha do PDF para abrir.'}</p>
+            <p className="text-xs text-muted">Costuma ser parte do CPF ou do CNPJ do titular (veja no app do banco). A senha não fica guardada. Se preferir, baixe o extrato em OFX ou planilha, que não têm senha.</p>
+            <div className="flex flex-wrap gap-2">
+              <input type="password" value={senhaPdf} onChange={(e) => setSenhaPdf(e.target.value)} autoFocus aria-label="Senha do PDF"
+                className="h-10 rounded-lg border border-line bg-surface px-3 text-sm w-56" />
+              <Button type="submit" disabled={busy || !senhaPdf}>{busy ? 'Abrindo...' : 'Abrir'}</Button>
+              <Button type="button" variant="ghost" onClick={() => { setPedeSenha(null); setSenhaPdf('') }}>Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {previa && unitIdBySlug[unidadeEnvio] && (
         <ExtratoConferencia key={previa.arquivo + previa.extrato.movimentos.length} unitId={unitIdBySlug[unidadeEnvio]} arquivo={previa.arquivo} extrato={previa.extrato}

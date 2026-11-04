@@ -178,6 +178,7 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/pagamentos', key: 'page:pagamentos' },
   { test: (p) => p === '/financeiro', key: 'page:financeiro' },
   { test: (p) => p === '/despesas-fixas-festas', key: 'page:financeiro' },
+  { test: (p) => p === '/extrato-banco', key: 'page:financeiro' },
   { test: (p) => p === '/resultado-do-mes', key: 'page:resultado_do_mes' },
   { test: (p) => p === '/lucro-por-festa', key: 'page:lucro_por_festa' },
   { test: (p) => p === '/relatorios', key: 'page:relatorios' },

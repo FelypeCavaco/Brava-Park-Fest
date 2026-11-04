@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, FileUp, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, CreditCard, FileUp, RotateCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { format, parseISO, subDays } from 'date-fns'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -15,7 +15,7 @@ import { ExtratoConferencia, CategoriaCampo, categoriaFinal, useCategoriasDespes
 // (a classificar e possíveis duplicados), o que já foi feito (com desfazer)
 // e as regras que o sistema aprendeu.
 
-type Status = 'a_classificar' | 'possivel_duplicado' | 'lancado' | 'conciliado' | 'ignorado'
+type Status = 'a_classificar' | 'possivel_duplicado' | 'cartao' | 'lancado' | 'conciliado' | 'ignorado'
 
 interface Linha {
   id: string
@@ -30,7 +30,7 @@ interface Linha {
   dup_expense_id: string | null
   dup_income_id: string | null
   dup_line_id: string | null
-  suggestions: { reservation_id?: string; expense_id?: string; label: string }[]
+  suggestions: { reservation_id?: string; expense_id?: string; payment_id?: string; bate?: boolean; label: string }[]
   decided_by_name: string | null
 }
 
@@ -134,7 +134,7 @@ export function BankStatement() {
 
   // 2) confirmado: envia e o sistema lança
   // 2) conferido e lançado na conferência (ExtratoConferencia): mostra o resumo
-  async function lancado(r: { total: number; novas: number; lancadas: number; duplicados: number; a_classificar: number; ignoradas: number }) {
+  async function lancado(r: { total: number; novas: number; lancadas: number; duplicados: number; cartao?: number; a_classificar: number; ignoradas: number }) {
     if (!previa) return
     const { extrato } = previa
     setPrevia(null)
@@ -143,7 +143,7 @@ export function BankStatement() {
       r.novas === 0
         ? `Nenhum movimento novo: os ${r.total} deste arquivo já tinham sido enviados.`
         : `${r.novas} movimentos novos (${dia(extrato.inicio!)} a ${dia(extrato.fim!)}): ${r.lancadas} lançados sozinhos, `
-          + `${r.duplicados} possíveis duplicados e ${r.a_classificar} para classificar${r.ignoradas ? `, ${r.ignoradas} não lançados ou ignorados` : ''}.`
+          + `${r.duplicados} possíveis duplicados${r.cartao ? `, ${r.cartao} vendas no cartão para conferir` : ''} e ${r.a_classificar} para classificar${r.ignoradas ? `, ${r.ignoradas} não lançados ou ignorados` : ''}.`
           + (repetidos ? ` ${repetidos} já tinham sido enviados antes e não entraram de novo.` : ''),
     )
     setFiltro('pendentes')
@@ -175,10 +175,10 @@ export function BankStatement() {
     await load()
   }
 
-  const pendentes = linhas.filter((l) => l.status === 'a_classificar' || l.status === 'possivel_duplicado')
+  const pendentes = linhas.filter((l) => l.status === 'a_classificar' || l.status === 'possivel_duplicado' || l.status === 'cartao')
   const visiveis = linhas.filter((l) =>
     filtro === 'todos' ? true
-      : filtro === 'pendentes' ? l.status === 'a_classificar' || l.status === 'possivel_duplicado'
+      : filtro === 'pendentes' ? l.status === 'a_classificar' || l.status === 'possivel_duplicado' || l.status === 'cartao'
       : filtro === 'feitos' ? l.status === 'lancado' || l.status === 'conciliado'
       : l.status === 'ignorado')
   const contagem = {
@@ -299,9 +299,10 @@ function LinhaExtrato({ l, aberto, onAbrir, unidade, duplicado, busy, onResolver
   onDesfazer: (l: Linha) => void
 }) {
   const entrada = l.amount > 0
-  const pendente = l.status === 'a_classificar' || l.status === 'possivel_duplicado'
+  const pendente = l.status === 'a_classificar' || l.status === 'possivel_duplicado' || l.status === 'cartao'
   const badge = {
     a_classificar: <Badge tone="amber">A classificar</Badge>,
+    cartao: <Badge tone="orange"><CreditCard className="w-3 h-3" /> Venda no cartão: confira</Badge>,
     possivel_duplicado: <Badge tone="orange"><AlertTriangle className="w-3 h-3" /> Possível duplicado</Badge>,
     lancado: <Badge tone="teal">{l.auto ? <Sparkles className="w-3 h-3" /> : <Check className="w-3 h-3" />} Lançado</Badge>,
     conciliado: <Badge tone="teal">{l.auto ? <Sparkles className="w-3 h-3" /> : <Check className="w-3 h-3" />} Conferido</Badge>,
@@ -326,7 +327,7 @@ function LinhaExtrato({ l, aberto, onAbrir, unidade, duplicado, busy, onResolver
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-1.5">
             {badge}
-            {l.how && l.status !== 'possivel_duplicado' && <span className="text-xs text-muted">{l.how}{l.auto ? ' (pelo sistema)' : l.decided_by_name ? ` (${l.decided_by_name})` : ''}</span>}
+            {l.how && l.status !== 'possivel_duplicado' && l.status !== 'cartao' && <span className="text-xs text-muted">{l.how}{l.auto ? ' (pelo sistema)' : l.decided_by_name ? ` (${l.decided_by_name})` : ''}</span>}
             {pendente && l.status === 'a_classificar' && !aberto && (
               <button onClick={onAbrir} className="text-xs text-purple font-medium">Classificar</button>
             )}
@@ -350,6 +351,8 @@ function LinhaExtrato({ l, aberto, onAbrir, unidade, duplicado, busy, onResolver
               </div>
             </div>
           )}
+
+          {l.status === 'cartao' && <ConferirCartao l={l} busy={busy} onResolver={onResolver} />}
 
           {l.status === 'a_classificar' && aberto && (
             entrada
@@ -514,6 +517,85 @@ function Botoes({ busy, ok, onOk, onFechar, texto }: { busy: boolean; ok: boolea
     <div className="flex flex-wrap gap-2">
       <Button disabled={busy || !ok} onClick={onOk}>{texto}</Button>
       <Button variant="ghost" onClick={onFechar}>Cancelar</Button>
+    </div>
+  )
+}
+
+// Depósito que parece venda no cartão: pode ser de uma festa que já tem o
+// pagamento lançado (a maquininha deposita sem a taxa, às vezes parcelado).
+function ConferirCartao({ l, busy, onResolver }: {
+  l: Linha; busy: boolean; onResolver: (l: Linha, action: string, dados?: Record<string, unknown>) => void
+}) {
+  const vendas = l.suggestions.filter((s) => s.payment_id)
+  const [modo, setModo] = useState<'lancado' | 'festa' | 'nao'>('lancado')
+  const [marcadas, setMarcadas] = useState<string[]>(() => vendas.filter((v) => v.bate).slice(0, 1).map((v) => v.payment_id!))
+  const [festas, setFestas] = useState<{ id: string; label: string }[]>([])
+  const [festa, setFesta] = useState('')
+  const [valor, setValor] = useState(Math.abs(l.amount).toFixed(2).replace('.', ','))
+  const [descricao, setDescricao] = useState('')
+
+  useEffect(() => {
+    supabase.from('reservations').select('id, event_date, child_name, client:clients(name)')
+      .eq('unit_id', l.unit_id).neq('status', 'cancelada')
+      .gte('event_date', format(subDays(parseISO(l.posted_date), 120), 'yyyy-MM-dd'))
+      .order('event_date').limit(400)
+      .then(({ data }) => setFestas((data ?? []).map((r: any) => ({
+        id: r.id, label: `${format(parseISO(r.event_date), 'dd/MM/yyyy')}${r.child_name ? ' · ' + r.child_name : ''} (${r.client?.name ?? '—'})`,
+      }))))
+  }, [l.unit_id, l.posted_date])
+
+  const valorNum = Number(valor.replace(/\./g, '').replace(',', '.'))
+  return (
+    <div className="mt-2 rounded-lg border border-orange/40 bg-orange-light/40 p-3 space-y-3 text-sm">
+      <p>Parece <b>venda no cartão</b>. Pode ser de uma festa que <b>já tem o pagamento lançado</b> — confira para não lançar duas vezes.</p>
+      <div className="flex flex-wrap gap-2">
+        {([['lancado', 'Já foi lançado na festa'], ['festa', 'É de festa e não foi lançado'], ['nao', 'Não é de festa']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setModo(k)} className={`h-8 px-3 rounded-full text-xs font-medium border ${modo === k ? 'bg-purple text-white border-purple' : 'bg-surface border-line'}`}>{label}</button>
+        ))}
+      </div>
+      {modo === 'lancado' && (
+        <>
+          {vendas.length === 0 ? (
+            <p className="text-xs text-muted">Não achamos vendas no cartão lançadas nas festas desta unidade nos últimos dias. Se já foi lançado, pode confirmar mesmo assim.</p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted">Marque a(s) venda(s) que este depósito paga:</p>
+              {vendas.map((v) => (
+                <label key={v.payment_id} className={`flex items-start gap-2 px-3 py-2 rounded-lg border bg-surface cursor-pointer ${marcadas.includes(v.payment_id!) ? 'border-purple' : 'border-line'}`}>
+                  <input type="checkbox" className="mt-0.5" checked={marcadas.includes(v.payment_id!)}
+                    onChange={(e) => setMarcadas((m) => (e.target.checked ? [...m, v.payment_id!] : m.filter((x) => x !== v.payment_id)))} />
+                  <span className="min-w-0">{v.label}{v.bate && <span className="ml-1 text-teal font-medium">· valor bate</span>}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <Button disabled={busy} onClick={() => onResolver(l, 'cartao_lancado', { payment_ids: marcadas })}>
+            <Check className="w-4 h-4" /> Confirmar: já foi lançado (não lançar de novo)
+          </Button>
+        </>
+      )}
+      {modo === 'festa' && (
+        <>
+          <select value={festa} onChange={(e) => setFesta(e.target.value)} className={campo} aria-label="Festa">
+            <option value="">De qual festa?</option>
+            {festas.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select>
+          <label className="block">
+            <span className="block text-xs text-muted mb-1">Valor da venda (com a taxa da maquininha). Caiu na conta: {brl(Math.abs(l.amount))}</span>
+            <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className={campo} />
+          </label>
+          <Button disabled={busy || !festa || !(valorNum > 0)} onClick={() => onResolver(l, 'festa', { reservation_id: festa, valor: valorNum })}>Lançar na festa</Button>
+        </>
+      )}
+      {modo === 'nao' && (
+        <>
+          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição (opcional)" className={campo} />
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={busy} onClick={() => onResolver(l, 'receita', { description: descricao })}>Lançar como outra receita</Button>
+            <Button variant="secondary" disabled={busy} onClick={() => onResolver(l, 'ignorar')}>Não lançar</Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

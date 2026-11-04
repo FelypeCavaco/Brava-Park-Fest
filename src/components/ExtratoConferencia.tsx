@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Clock, Pencil, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Check, ChevronRight, Clock, CreditCard, Pencil, Sparkles, X } from 'lucide-react'
 import { format, parseISO, subDays } from 'date-fns'
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
@@ -14,13 +14,13 @@ import type { ExtratoArquivo } from '../lib/extratoArquivo'
 // fazer (festa, conta, despesa com categoria, inclusive nova, receita) ou
 // não lançar. Só então envia (bank_import com a escolha de cada um).
 
-type Acao = 'auto' | 'festa' | 'conta' | 'despesa' | 'receita' | 'ignorar'
+type Acao = 'auto' | 'festa' | 'conta' | 'despesa' | 'receita' | 'ignorar' | 'cartao_lancado'
 
 interface Previa {
-  status: 'lancado' | 'conciliado' | 'possivel_duplicado' | 'a_classificar' | 'ignorado' | 'ja_enviado'
+  status: 'lancado' | 'conciliado' | 'possivel_duplicado' | 'cartao' | 'a_classificar' | 'ignorado' | 'ja_enviado'
   how: string | null
   dup: string | null
-  suggestions: { reservation_id?: string; expense_id?: string; label: string }[]
+  suggestions: { reservation_id?: string; expense_id?: string; payment_id?: string; bate?: boolean; label: string }[]
 }
 
 interface Item {
@@ -38,6 +38,8 @@ interface Item {
   fornecedor: string
   descReceita: string
   lembrar: boolean
+  paymentIds: string[]
+  valorVenda: string
 }
 
 const NOVA = '__nova__'
@@ -86,13 +88,13 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
   unidade?: string
   arquivo: string
   extrato: ExtratoArquivo
-  onLancado: (r: { total: number; novas: number; lancadas: number; duplicados: number; a_classificar: number; ignoradas: number }) => void
+  onLancado: (r: { total: number; novas: number; lancadas: number; duplicados: number; cartao?: number; a_classificar: number; ignoradas: number }) => void
   onCancelar: () => void
 }) {
   const [itens, setItens] = useState<Item[]>(() => extrato.movimentos.map((m) => ({
     id: m.id, orig: { data: m.data, valor: m.valor, descricao: m.descricao },
     data: m.data, entrada: m.valor > 0, valor: Math.abs(m.valor).toFixed(2).replace('.', ','), descricao: m.descricao,
-    acao: 'auto', reservationId: '', expenseId: '', categoria: '', novaCategoria: '', fornecedor: '', descReceita: '', lembrar: true,
+    acao: 'auto', reservationId: '', expenseId: '', categoria: '', novaCategoria: '', fornecedor: '', descReceita: '', lembrar: true, paymentIds: [], valorVenda: '',
   })))
   const [previa, setPrevia] = useState<Record<string, Previa> | null>(null)
   const [erroPrevia, setErroPrevia] = useState<string | null>(null)
@@ -126,7 +128,7 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
   const muda = (id: string, p: Partial<Item>) => setItens((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)))
   const editado = (x: Item) => x.data !== x.orig.data || x.descricao !== x.orig.descricao
     || (parseDecimal(x.valor) ?? 0) * (x.entrada ? 1 : -1) !== x.orig.valor
-  const precisaAtencao = (x: Item) => x.acao === 'auto' && ['possivel_duplicado', 'a_classificar'].includes(previa?.[x.id]?.status ?? '')
+  const precisaAtencao = (x: Item) => x.acao === 'auto' && ['possivel_duplicado', 'a_classificar', 'cartao'].includes(previa?.[x.id]?.status ?? '')
   const visiveis = itens.filter((x) => filtro === 'todos' || precisaAtencao(x))
   const naoLancar = itens.filter((x) => x.acao === 'ignorar' || previa?.[x.id]?.status === 'ja_enviado').length
 
@@ -153,7 +155,8 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
       const valor = (parseDecimal(x.valor) ?? 0) * (x.entrada ? 1 : -1)
       const acao = x.acao === 'auto' ? { tipo: 'auto' }
         : x.acao === 'ignorar' ? { tipo: 'ignorar', lembrar: x.lembrar }
-        : x.acao === 'festa' ? { tipo: 'festa', reservation_id: x.reservationId }
+        : x.acao === 'festa' ? { tipo: 'festa', reservation_id: x.reservationId, ...(parseDecimal(x.valorVenda) ? { valor: parseDecimal(x.valorVenda) } : {}) }
+        : x.acao === 'cartao_lancado' ? { tipo: 'cartao_lancado', payment_ids: x.paymentIds }
         : x.acao === 'conta' ? { tipo: 'conta', expense_id: x.expenseId }
         : x.acao === 'despesa' ? { tipo: 'despesa', category: categoriaFinal(x.categoria, x.novaCategoria), supplier: x.fornecedor, lembrar: x.lembrar }
         : { tipo: 'receita', description: x.descReceita, lembrar: x.lembrar }
@@ -226,6 +229,17 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
                   </button>
                 </div>
               )}
+              {p?.status === 'cartao' && x.acao === 'auto' && !isOpen && (
+                <div className="px-3 pb-3 -mt-1 ml-10 flex flex-wrap gap-2">
+                  {p.suggestions.filter((s) => s.bate).slice(0, 2).map((s) => (
+                    <button key={s.payment_id} onClick={() => muda(x.id, { acao: 'cartao_lancado', paymentIds: [s.payment_id!] })}
+                      className="h-8 px-3 rounded-lg text-xs font-medium border border-purple/40 bg-purple-light/50 text-purple-dark">
+                      Já lançado: {s.label.split(' · cai na conta')[0]}
+                    </button>
+                  ))}
+                  <button onClick={() => setAberto(x.id)} className="h-8 px-3 rounded-lg text-xs font-medium border border-line bg-surface">Conferir</button>
+                </div>
+              )}
               {p?.status === 'a_classificar' && x.acao === 'auto' && !isOpen && p.suggestions.length > 0 && (
                 <div className="px-3 pb-3 -mt-1 ml-10 flex flex-wrap gap-2">
                   {p.suggestions.map((s) => (
@@ -245,7 +259,7 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
                     <div className="flex rounded-lg border border-line overflow-hidden h-10">
                       <button onClick={() => muda(x.id, { entrada: true, acao: ['despesa', 'conta'].includes(x.acao) ? 'auto' : x.acao })}
                         className={`flex-1 text-xs font-medium ${x.entrada ? 'bg-teal text-white' : 'bg-surface'}`}>Entrada</button>
-                      <button onClick={() => muda(x.id, { entrada: false, acao: ['festa', 'receita'].includes(x.acao) ? 'auto' : x.acao })}
+                      <button onClick={() => muda(x.id, { entrada: false, acao: ['festa', 'receita', 'cartao_lancado'].includes(x.acao) ? 'auto' : x.acao })}
                         className={`flex-1 text-xs font-medium ${!x.entrada ? 'bg-danger text-white' : 'bg-surface'}`}>Saída</button>
                     </div>
                     <input value={x.valor} onChange={(e) => muda(x.id, { valor: e.target.value })} inputMode="decimal" className={`${campo} col-span-2 sm:col-span-2`} aria-label="Valor" />
@@ -254,9 +268,15 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
 
                   <label className="block">
                     <span className="block text-xs text-muted mb-1">O que fazer com este movimento?</span>
-                    <select value={x.acao} onChange={(e) => muda(x.id, { acao: e.target.value as Acao })} className={campo}>
+                    <select value={x.acao} className={campo} onChange={(e) => {
+                      const acao = e.target.value as Acao
+                      // venda no cartão: já marca a venda cujo valor bate
+                      const bate = (p?.suggestions ?? []).filter((s) => s.payment_id && s.bate).slice(0, 1).map((s) => s.payment_id!)
+                      muda(x.id, acao === 'cartao_lancado' && x.paymentIds.length === 0 ? { acao, paymentIds: bate } : { acao })
+                    }}>
                       <option value="auto">Deixar o sistema decidir</option>
                       {x.entrada ? <>
+                        <option value="cartao_lancado">Venda no cartão já lançada na festa</option>
                         <option value="festa">Pagamento de festa</option>
                         <option value="receita">Outra receita</option>
                       </> : <>
@@ -272,6 +292,26 @@ export function ExtratoConferencia({ unitId, unidade, arquivo, extrato, onLancad
                       <option value="">Escolha a festa...</option>
                       {festas.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </select>
+                  )}
+                  {x.acao === 'cartao_lancado' && (
+                    <div className="space-y-1.5">
+                      {(p?.suggestions ?? []).filter((s) => s.payment_id).length === 0
+                        ? <p className="text-xs text-muted">Não achamos vendas no cartão lançadas nas festas nos últimos dias. Pode confirmar mesmo assim.</p>
+                        : <p className="text-xs text-muted">Marque a(s) venda(s) que este depósito paga:</p>}
+                      {(p?.suggestions ?? []).filter((s) => s.payment_id).map((s) => (
+                        <label key={s.payment_id} className={`flex items-start gap-2 px-3 py-2 rounded-lg border bg-surface cursor-pointer ${x.paymentIds.includes(s.payment_id!) ? 'border-purple' : 'border-line'}`}>
+                          <input type="checkbox" className="mt-0.5" checked={x.paymentIds.includes(s.payment_id!)}
+                            onChange={(e) => muda(x.id, { paymentIds: e.target.checked ? [...x.paymentIds, s.payment_id!] : x.paymentIds.filter((i) => i !== s.payment_id) })} />
+                          <span className="min-w-0">{s.label}{s.bate && <span className="ml-1 text-teal font-medium">· valor bate</span>}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {x.acao === 'festa' && p?.status === 'cartao' && (
+                    <label className="block">
+                      <span className="block text-xs text-muted mb-1">Valor da venda com a taxa (opcional; se vazio, lança o que caiu na conta)</span>
+                      <input value={x.valorVenda} onChange={(e) => muda(x.id, { valorVenda: e.target.value })} inputMode="decimal" className={campo} />
+                    </label>
                   )}
                   {x.acao === 'conta' && (
                     <select value={x.expenseId} onChange={(e) => muda(x.id, { expenseId: e.target.value })} className={campo} aria-label="Conta a pagar">
@@ -333,7 +373,8 @@ function Situacao({ x, p, editado, categoria, festa, conta }: {
   if (p?.status === 'ja_enviado') return linha(<Check className="w-3.5 h-3.5 shrink-0" />, 'text-muted', 'Já enviado antes: não entra de novo')
   if (x.acao === 'ignorar') return linha(<X className="w-3.5 h-3.5 shrink-0" />, 'text-muted', 'Não será lançado')
   if (x.acao !== 'auto') {
-    const t = x.acao === 'festa' ? `Pagamento da festa ${festa ?? '(escolha a festa)'}`
+    const t = x.acao === 'cartao_lancado' ? `Venda no cartão já lançada${x.paymentIds.length ? ` (${x.paymentIds.length} venda${x.paymentIds.length > 1 ? 's' : ''})` : ''}: só confere`
+      : x.acao === 'festa' ? `Pagamento da festa ${festa ?? '(escolha a festa)'}`
       : x.acao === 'conta' ? `Baixa da conta ${conta ?? '(escolha a conta)'}`
       : x.acao === 'despesa' ? `Despesa · ${categoria || '(escolha a categoria)'}${x.fornecedor ? ' · ' + x.fornecedor : ''}`
       : `Outra receita${x.descReceita ? ' · ' + x.descReceita : ''}`
@@ -343,6 +384,7 @@ function Situacao({ x, p, editado, categoria, festa, conta }: {
   if (!p) return linha(<Clock className="w-3.5 h-3.5 shrink-0" />, 'text-muted', 'Conferindo...')
   if (p.status === 'lancado' || p.status === 'conciliado') return linha(<Sparkles className="w-3.5 h-3.5 shrink-0" />, 'text-teal', <>O sistema vai lançar: <b>{p.how}</b></>)
   if (p.status === 'ignorado') return linha(<X className="w-3.5 h-3.5 shrink-0" />, 'text-muted', p.how ?? 'Será ignorado')
+  if (p.status === 'cartao') return linha(<CreditCard className="w-3.5 h-3.5 shrink-0" />, 'text-orange', <>Parece <b>venda no cartão</b>: pode ser de festa e já ter sido lançada. Confira.</>)
   if (p.status === 'possivel_duplicado') return linha(<AlertTriangle className="w-3.5 h-3.5 shrink-0" />, 'text-orange', <>Pode ser repetido: <b>{p.dup ?? 'um lançamento que já existe'}</b></>)
   return linha(<AlertTriangle className="w-3.5 h-3.5 shrink-0" />, 'text-amber', p.suggestions.length ? 'Não reconhecido: é alguma destas?' : 'Não reconhecido: escolha o que fazer, ou deixe para classificar depois')
 }

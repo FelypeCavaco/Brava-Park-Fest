@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { periodoPadrao, type Periodo, type TipoGrafico } from '../lib/periodo'
 
 // Seletor de período dos gráficos (o mesmo em todas as telas) e um gráfico
@@ -108,6 +108,7 @@ export interface SerieGrafico {
   tracejada?: boolean
   pilha?: string
   onClick?: (linha: any) => void
+  ajuda?: string // explicação curta mostrada ao passar o mouse na legenda
 }
 
 // Gráfico de barras ou linhas para dados em faixas (cada linha tem "rotulo").
@@ -132,10 +133,10 @@ export function GraficoSerie({ dados, series, tipo, altura = 240, formatar, inte
       <XAxis dataKey="rotulo" tick={eixo} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={8} />
       <YAxis tick={eixo} axisLine={false} tickLine={false} width={larguraEixo ?? (formatar ? 64 : 40)} allowDecimals={!inteiro} tickFormatter={formatar ? fmtEixo : undefined} />
       {tooltip}
-      <Legend wrapperStyle={{ fontSize: 12 }} />
     </>
   )
   return (
+    <div>
     <ResponsiveContainer width="100%" height={altura}>
       {tipo === 'linhas' ? (
         <LineChart data={dados} onClick={clique} style={clique ? { cursor: 'pointer' } : undefined}>
@@ -164,6 +165,8 @@ export function GraficoSerie({ dados, series, tipo, altura = 240, formatar, inte
         </BarChart>
       )}
     </ResponsiveContainer>
+    <LegendaAjuda itens={series.map((x) => ({ nome: x.nome, cor: x.cor, ajuda: x.ajuda, linha: tipo === 'linhas', tracejada: x.tracejada }))} />
+    </div>
   )
 }
 
@@ -270,6 +273,49 @@ export function FiltroCategorias({ entradas, saidas, selecionadas, onChange }: {
           {todas.length === 0 && <p className="text-xs text-muted">Nenhuma categoria com valor neste período.</p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// Legenda dos gráficos: passar o mouse (ou tocar) num item mostra uma
+// explicação curta do que aquela cor representa.
+export function LegendaAjuda({ itens }: { itens: { nome: string; cor: string; ajuda?: string; linha?: boolean; tracejada?: boolean }[] }) {
+  const [aberto, setAberto] = useState<number | null>(null)
+  return (
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-1 text-xs">
+      {itens.map((it, i) => (
+        <span
+          key={it.nome}
+          className="relative inline-flex items-center gap-1.5"
+          onMouseEnter={() => setAberto(i)}
+          onMouseLeave={() => setAberto(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setAberto((v) => (v === i ? null : i))}
+            onBlur={() => setAberto(null)}
+            className={`inline-flex items-center gap-1.5 ${it.ajuda ? 'cursor-help' : 'cursor-default'}`}
+            style={{ color: it.cor }}
+            aria-describedby={it.ajuda ? `leg-${i}` : undefined}
+          >
+            {it.linha ? (
+              <svg width="16" height="8" aria-hidden><line x1="0" y1="4" x2="16" y2="4" stroke={it.cor} strokeWidth="2" strokeDasharray={it.tracejada ? '4 3' : undefined} /></svg>
+            ) : (
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: it.cor, opacity: it.tracejada ? 0.45 : 1 }} />
+            )}
+            <span className={it.ajuda ? 'underline decoration-dotted underline-offset-2' : ''}>{it.nome}</span>
+          </button>
+          {it.ajuda && aberto === i && (
+            <span
+              id={`leg-${i}`}
+              role="tooltip"
+              className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 max-w-[80vw] rounded-lg bg-ink text-white text-[11px] leading-snug px-3 py-2 shadow-lg text-left font-normal"
+            >
+              {it.ajuda}
+            </span>
+          )}
+        </span>
+      ))}
     </div>
   )
 }

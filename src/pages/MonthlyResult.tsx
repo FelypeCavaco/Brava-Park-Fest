@@ -219,8 +219,8 @@ export function MonthlyResult() {
               tipo={lucroP.tipo}
               formatar={currency}
               series={[
-                ...(unidadesGrafico.length > 1 ? unidadesGrafico.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6E6880', tracejada: true })) : []),
-                { chave: 'lucro', nome: unidadesGrafico.length > 1 ? 'Lucro líquido (total)' : 'Lucro líquido', cor: '#1F7A5C' },
+                ...(unidadesGrafico.length > 1 ? unidadesGrafico.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6E6880', tracejada: true, ajuda: 'Lucro líquido só desta unidade: pagamentos recebidos e outras entradas, menos taxa da maquininha, despesas pagas, estornos e custos das festas.' })) : []),
+                { chave: 'lucro', nome: unidadesGrafico.length > 1 ? 'Lucro líquido (total)' : 'Lucro líquido', cor: '#1F7A5C', ajuda: 'Pagamentos recebidos e outras entradas, menos taxa da maquininha, despesas pagas, estornos e custos das festas do período. É o mesmo cálculo do Resultado do mês.' },
               ]}
             />
           </Card>

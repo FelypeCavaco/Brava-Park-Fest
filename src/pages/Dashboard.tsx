@@ -734,7 +734,7 @@ export function Dashboard() {
                 tipo={fatP.tipo}
                 altura={260}
                 formatar={currency}
-                series={UNITS.map((u) => ({ chave: u.id, nome: u.name, cor: u.color }))}
+                series={UNITS.map((u) => ({ chave: u.id, nome: u.name, cor: u.color, ajuda: `Pagamentos de clientes recebidos pela ${u.name}, pela data em que o cliente pagou (de qualquer festa, inclusive de meses futuros).` }))}
               />
             </Card>
 

@@ -125,8 +125,8 @@ export function FestasPorMesChart() {
         inteiro
         larguraEixo={30}
         series={[
-          ...unidades.map((u) => ({ chave: u, nome: UNITS.find((x) => x.id === u)?.name ?? u, cor: unitColor(u), pilha: festasP.tipo === 'barras' ? 'festas' : undefined })),
-          ...(totalAnterior > 0 ? [{ chave: 'anterior', nome: 'Ano anterior (total)', cor: '#F2900C', tracejada: true }] : []),
+          ...unidades.map((u) => ({ chave: u, nome: UNITS.find((x) => x.id === u)?.name ?? u, cor: unitColor(u), pilha: festasP.tipo === 'barras' ? 'festas' : undefined, ajuda: modo === 'realizadas' ? 'Festas desta unidade pela data em que acontecem (sem as canceladas).' : 'Festas desta unidade pela data em que foram cadastradas (vendas), contando as que depois foram canceladas.' })),
+          ...(totalAnterior > 0 ? [{ chave: 'anterior', nome: 'Ano anterior (total)', cor: '#F2900C', tracejada: true, ajuda: 'Total do mesmo período um ano antes, para comparar se está melhor ou pior.' }] : []),
         ]}
       />
     </Card>

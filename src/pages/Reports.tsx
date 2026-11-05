@@ -312,8 +312,8 @@ export function Reports() {
               tipo={projP.tipo}
               formatar={currency}
               series={unitIds.length > 1
-                ? unitIds.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6D28D9', pilha: projP.tipo === 'barras' ? 'p' : undefined }))
-                : [{ chave: 'total', nome: 'A receber', cor: '#6D28D9' }]}
+                ? unitIds.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6D28D9', pilha: projP.tipo === 'barras' ? 'p' : undefined, ajuda: 'Quanto ainda falta receber das festas já marcadas nesta unidade, pela data da festa.' }))
+                : [{ chave: 'total', nome: 'A receber', cor: '#6D28D9', ajuda: 'Quanto ainda falta receber das festas já marcadas (valor da festa menos o que já foi pago), pela data da festa.' }]}
             />
           </Card>
 

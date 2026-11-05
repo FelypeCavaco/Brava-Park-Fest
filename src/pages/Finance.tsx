@@ -24,10 +24,12 @@ import {
 import { currentMonthValue, monthBounds } from '../lib/monthUtils'
 import { faixasDoPeriodo, descreverPeriodo, type Faixa } from '../lib/periodo'
 import { PeriodoGrafico, GraficoSerie, usePeriodo, FiltroCategorias, useFiltroCategorias } from '../components/PeriodoGrafico'
-import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, CAT_PAGAMENTOS_FESTAS, CAT_CUSTOS_FESTAS, type SerieResult } from '../lib/financeAggregates'
+import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, CAT_PAGAMENTOS_FESTAS, CAT_CUSTOS_FESTAS, categoriaDaEntrada, type SerieResult } from '../lib/financeAggregates'
 import { useUndo } from '../lib/UndoContext'
 import { friendlyDbError } from '../lib/format'
 import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFestasView } from './FinanceViews'
+
+interface ItemDetalhe { id: string; categoria: string; descricao: string; detalhe: string; data: string; valor: number }
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -114,14 +116,7 @@ export function Finance() {
   const [agregadosProntos, setAgregadosProntos] = useState(false)
   const [festaCostsByUnit, setFestaCostsByUnit] = useState<Record<string, { realizados: number; restantes: number }>>({})
 
-  const [fluxoDetalhe, setFluxoDetalhe] = useState<{
-    tipo: 'entradas' | 'saidas'
-    mesLabel: string
-    loading: boolean
-    entradas: { cliente: string; valor: number; data: string; metodo: string | null }[]
-    despesasPagas: { descricao: string; valor: number }[]
-    custosFesta: { cliente: string; descricao: string; valor: number }[]
-  } | null>(null)
+  const [fluxoDetalhe, setFluxoDetalhe] = useState<{ tipo: 'entradas' | 'saidas'; mesLabel: string; loading: boolean; filtrado: boolean; itens: ItemDetalhe[] } | null>(null)
 
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [editDescription, setEditDescription] = useState('')
@@ -267,69 +262,107 @@ export function Finance() {
     setAgregadosProntos(true)
   }
 
-  // Detalhe de um mês específico do gráfico de fluxo de caixa — aberto ao
-  // clicar em cima da barra de "Entradas" ou "Saídas".
-  async function openFluxoDetalhe(unitSlug: string | 'todas', faixa: { ini: string; fim: string }, mesLabel: string, tipo: 'entradas' | 'saidas') {
+  // Detalhe de um ponto do gráfico (um dia ou um mês) — aberto ao clicar em
+  // "Entradas" ou "Saídas". Segue o filtro de categorias do gráfico: lista
+  // cada lançamento com descrição, data e categoria.
+  async function openFluxoDetalhe(unitSlug: string | 'todas', faixa: { ini: string; fim: string }, mesLabel: string, tipo: 'entradas' | 'saidas', filtro: string[] | null = null) {
     const unitIds = unitSlug === 'todas' ? Object.values(unitDbIds).map((d) => d.unitId) : [unitDbIds[unitSlug]?.unitId].filter(Boolean)
     if (unitIds.length === 0) return
-    setFluxoDetalhe({ tipo, mesLabel, loading: true, entradas: [], despesasPagas: [], custosFesta: [] })
+    setFluxoDetalhe({ tipo, mesLabel, loading: true, filtrado: filtro !== null, itens: [] })
     const startIso = faixa.ini
     const endIso = faixa.fim
+    const br = (d: string) => format(parseISO(d), 'dd/MM/yyyy')
+    const metodo = (m: string | null) => (m ? PAYMENT_METHOD_LABEL[m as PaymentMethod] ?? m : null)
+    const itens: ItemDetalhe[] = []
 
     if (tipo === 'entradas') {
-      const { data } = await supabase
-        .from('payments')
-        .select('amount, payment_date, payment_method, reservation:reservations!inner(unit_id, client:clients(name))')
-        .in('reservation.unit_id', unitIds)
-        .gte('payment_date', startIso)
-        .lt('payment_date', endIso)
-        .order('payment_date')
-      const entradas = (data ?? []).map((p: any) => ({
-        cliente: p.reservation?.client?.name ?? '—',
-        valor: Number(p.amount),
-        data: format(parseISO(p.payment_date), 'dd/MM/yyyy'),
-        metodo: p.payment_method,
-      }))
-      // Acertos recebidos de outra unidade também entram no caixa do mês.
-      const { data: incomes } = await supabase
-        .from('other_incomes')
-        .select('amount, received_date, payment_method, description')
-        .in('unit_id', unitIds)
-        .gte('received_date', startIso)
-        .lt('received_date', endIso)
-      for (const inc of incomes ?? []) {
-        entradas.push({ cliente: inc.description || 'Outra entrada', valor: Number(inc.amount), data: format(parseISO(inc.received_date), 'dd/MM/yyyy'), metodo: inc.payment_method })
+      const [{ data: pags }, { data: incomes }] = await Promise.all([
+        supabase
+          .from('payments')
+          .select('id, amount, payment_date, payment_method, notes, reservation:reservations!inner(unit_id, event_date, child_name, client:clients(name))')
+          .in('reservation.unit_id', unitIds)
+          .gte('payment_date', startIso)
+          .lt('payment_date', endIso)
+          .order('payment_date'),
+        supabase
+          .from('other_incomes')
+          .select('id, amount, received_date, payment_method, description, kind, category')
+          .in('unit_id', unitIds)
+          .gte('received_date', startIso)
+          .lt('received_date', endIso)
+          .order('received_date'),
+      ])
+      for (const p of (pags ?? []) as any[]) {
+        const r = p.reservation
+        itens.push({
+          id: `p-${p.id}`,
+          categoria: CAT_PAGAMENTOS_FESTAS,
+          descricao: `Pagamento — ${r?.client?.name ?? 'cliente'}${r?.child_name ? ` (festa de ${r.child_name}, ${br(r.event_date)})` : r?.event_date ? ` (festa em ${br(r.event_date)})` : ''}`,
+          detalhe: [br(p.payment_date), metodo(p.payment_method), p.notes].filter(Boolean).join(' · '),
+          data: p.payment_date,
+          valor: Number(p.amount),
+        })
       }
-      setFluxoDetalhe({ tipo, mesLabel, loading: false, entradas, despesasPagas: [], custosFesta: [] })
-      return
+      for (const o of (incomes ?? []) as any[]) {
+        itens.push({
+          id: `o-${o.id}`,
+          categoria: categoriaDaEntrada(o),
+          descricao: o.description || categoriaDaEntrada(o),
+          detalhe: [br(o.received_date), metodo(o.payment_method)].filter(Boolean).join(' · '),
+          data: o.received_date,
+          valor: Number(o.amount),
+        })
+      }
+    } else {
+      // Despesa fixa já é um lançamento de verdade em `expenses` (com
+      // recurring_expense_id preenchido), então já vem junto na busca abaixo.
+      const [{ data: expensesData }, { data: reservationsData }] = await Promise.all([
+        supabase
+          .from('expenses')
+          .select('id, category, description, supplier, amount, paid_date, payment_method, recurring_expense_id')
+          .in('unit_id', unitIds)
+          .eq('status', 'pago')
+          .eq('covers_festa_costs', false)
+          .gte('paid_date', startIso)
+          .lt('paid_date', endIso)
+          .order('paid_date'),
+        supabase
+          .from('reservations')
+          .select('id, event_date, child_name, client:clients(name), reservation_costs(id, description, amount)')
+          .in('unit_id', unitIds)
+          .neq('status', 'cancelada')
+          .gte('event_date', startIso)
+          .lt('event_date', endIso)
+          .order('event_date'),
+      ])
+      for (const e of (expensesData ?? []) as any[]) {
+        itens.push({
+          id: `e-${e.id}`,
+          categoria: e.category || 'Outros',
+          descricao: [e.description, e.supplier].filter(Boolean).join(' — ') || 'Despesa',
+          detalhe: [`pago em ${br(e.paid_date)}`, metodo(e.payment_method), e.recurring_expense_id ? 'despesa fixa' : null].filter(Boolean).join(' · '),
+          data: e.paid_date,
+          valor: Number(e.amount),
+        })
+      }
+      for (const r of (reservationsData ?? []) as any[]) {
+        for (const c of r.reservation_costs ?? []) {
+          itens.push({
+            id: `c-${c.id}`,
+            categoria: CAT_CUSTOS_FESTAS,
+            descricao: c.description || 'Custo da festa',
+            detalhe: `festa de ${r.child_name || r.client?.name || 'cliente'} em ${br(r.event_date)}`,
+            data: r.event_date,
+            valor: Number(c.amount),
+          })
+        }
+      }
     }
 
-    // Despesa fixa já é um lançamento de verdade em `expenses` (com
-    // recurring_expense_id preenchido), então já vem junto na busca abaixo —
-    // não precisa buscar separado.
-    const [{ data: expensesData }, { data: reservationsData }] = await Promise.all([
-      supabase.from('expenses').select('description, supplier, amount, recurring_expense_id').in('unit_id', unitIds).eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', startIso).lt('paid_date', endIso),
-      supabase
-        .from('reservations')
-        .select('id, client:clients(name), reservation_costs(description, amount)')
-        .in('unit_id', unitIds)
-        .neq('status', 'cancelada')
-        .gte('event_date', startIso)
-        .lt('event_date', endIso),
-    ])
-
-    const despesasPagas = (expensesData ?? []).map((e) => ({
-      descricao: (e.description || e.supplier || 'Despesa') + (e.recurring_expense_id ? ' (fixa)' : ''),
-      valor: Number(e.amount),
-    }))
-    const custosFesta: { cliente: string; descricao: string; valor: number }[] = []
-    for (const r of reservationsData ?? []) {
-      for (const c of (r as any).reservation_costs ?? []) {
-        custosFesta.push({ cliente: (r as any).client?.name ?? '—', descricao: c.description, valor: Number(c.amount) })
-      }
-    }
-
-    setFluxoDetalhe({ tipo, mesLabel, loading: false, entradas: [], despesasPagas, custosFesta })
+    const prefixo = tipo === 'entradas' ? 'e:' : 's:'
+    const filtrados = filtro === null ? itens : itens.filter((i) => filtro.includes(prefixo + i.categoria))
+    filtrados.sort((a, b) => a.data.localeCompare(b.data))
+    setFluxoDetalhe({ tipo, mesLabel, loading: false, filtrado: filtro !== null, itens: filtrados })
   }
 
   const summaryByUnit = useMemo(() => {
@@ -837,14 +870,14 @@ export function Finance() {
 
           <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
             <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} extra={<FiltroCategorias entradas={fluxoCats.entradas} saidas={fluxoCats.saidas} selecionadas={fluxoF.selecionadas} onChange={fluxoF.setSelecionadas} />} /></div>
-            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' Com o filtro ligado, o gráfico mostra só as categorias marcadas; o detalhe ao clicar continua mostrando tudo.'}</p>
+            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' O filtro de categorias vale para o gráfico e para o detalhe.'}</p>
             <GraficoSerie
               dados={fluxoChartData}
               tipo={fluxoP.tipo}
               formatar={currency}
               series={[
-                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas') },
-                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas') },
+                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', fluxoF.selecionadas) },
+                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', fluxoF.selecionadas) },
               ]}
             />
           </Card>
@@ -858,10 +891,10 @@ export function Finance() {
               formatar={currency}
               altura={260}
               series={[
-                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C' },
-                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A' },
-                { chave: 'saldo', nome: 'Saldo', cor: '#59239B' },
-                { chave: 'acumulado', nome: 'Saldo acumulado', cor: '#F2900C', tracejada: true },
+                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', compF.selecionadas) },
+                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', compF.selecionadas) },
+                { chave: 'saldo', nome: 'Saldo', cor: '#59239B', ajuda: 'Entradas menos saídas de cada ponto do gráfico. Abaixo de zero: saiu mais do que entrou naquele dia ou mês.' },
+                { chave: 'acumulado', nome: 'Saldo acumulado', cor: '#F2900C', tracejada: true, ajuda: 'O saldo somado desde o começo do período escolhido. Mostra se, no conjunto, sobrou ou faltou dinheiro até aquele ponto.' },
               ]}
             />
             {compChartData.length > 0 && (() => {
@@ -1163,99 +1196,65 @@ export function Finance() {
         </div>
       )}
 
-      {fluxoDetalhe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-ink/40" onClick={() => setFluxoDetalhe(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-display font-semibold">
-                {fluxoDetalhe.tipo === 'entradas' ? 'Entradas' : 'Saídas'} — {fluxoDetalhe.mesLabel}
-              </h2>
-              <button onClick={() => setFluxoDetalhe(null)} className="text-muted hover:text-ink">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {fluxoDetalhe && (() => {
+        const entrada = fluxoDetalhe.tipo === 'entradas'
+        const cor = entrada ? 'text-teal' : 'text-danger'
+        const grupos = new Map<string, ItemDetalhe[]>()
+        for (const it of fluxoDetalhe.itens) grupos.set(it.categoria, [...(grupos.get(it.categoria) ?? []), it])
+        const somar = (l: ItemDetalhe[]) => l.reduce((s, i) => s + i.valor, 0)
+        const ordem = [...grupos.entries()].sort((a, b) => somar(b[1]) - somar(a[1]))
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-ink/40" onClick={() => setFluxoDetalhe(null)} />
+            <div className="relative w-full max-w-lg bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-lg font-display font-semibold">
+                  {entrada ? 'Entradas' : 'Saídas'} — {fluxoDetalhe.mesLabel}
+                </h2>
+                <button onClick={() => setFluxoDetalhe(null)} className="text-muted hover:text-ink" aria-label="Fechar">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs text-muted mb-4">
+                {fluxoDetalhe.filtrado ? 'Só as categorias marcadas no filtro do gráfico.' : 'Todas as categorias.'}
+                {!entrada && ' Contas entram pela data do pagamento; custos das festas, pela data da festa.'}
+              </p>
 
-            {fluxoDetalhe.loading ? (
-              <p className="text-sm text-muted py-6 text-center">Carregando...</p>
-            ) : fluxoDetalhe.tipo === 'entradas' ? (
-              <div>
-                {fluxoDetalhe.entradas.length === 0 ? (
-                  <p className="text-sm text-muted py-4 text-center">Nenhum pagamento recebido neste mês.</p>
-                ) : (
-                  <ul className="divide-y divide-line">
-                    {fluxoDetalhe.entradas.map((p, i) => (
-                      <li key={i} className="py-2.5 flex items-center justify-between gap-3 text-sm">
-                        <div>
-                          <p className="font-medium">{p.cliente}</p>
-                          <p className="text-xs text-muted">
-                            {p.data}{p.metodo ? ` · ${PAYMENT_METHOD_LABEL[p.metodo as PaymentMethod] ?? p.metodo}` : ''}
-                          </p>
-                        </div>
-                        <span className="font-medium text-teal">{currency(p.valor)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="flex items-center justify-between pt-3 mt-2 border-t border-line text-sm font-medium">
-                  <span>Total</span>
-                  <span className="text-teal">{currency(fluxoDetalhe.entradas.reduce((s, p) => s + p.valor, 0))}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {fluxoDetalhe.despesasPagas.length === 0 && fluxoDetalhe.custosFesta.length === 0 ? (
-                  <p className="text-sm text-muted py-4 text-center">Nenhuma saída neste mês.</p>
-                ) : (
-                  <>
-                    {fluxoDetalhe.despesasPagas.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-xs text-muted font-medium">Despesas gerais pagas</p>
-                          <p className="text-xs text-danger font-medium">{currency(fluxoDetalhe.despesasPagas.reduce((s, d) => s + d.valor, 0))}</p>
-                        </div>
-                        <ul className="divide-y divide-line">
-                          {fluxoDetalhe.despesasPagas.map((d, i) => (
-                            <li key={i} className="py-2 flex items-center justify-between text-sm">
-                              <span>{d.descricao}</span>
-                              <span className="text-danger">{currency(d.valor)}</span>
-                            </li>
-                          ))}
-                        </ul>
+              {fluxoDetalhe.loading ? (
+                <p className="text-sm text-muted py-6 text-center">Carregando...</p>
+              ) : fluxoDetalhe.itens.length === 0 ? (
+                <p className="text-sm text-muted py-4 text-center">Nenhum lançamento neste período{fluxoDetalhe.filtrado ? ' nas categorias marcadas' : ''}.</p>
+              ) : (
+                <div className="space-y-4">
+                  {ordem.map(([cat, lista]) => (
+                    <div key={cat}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs text-muted font-semibold">{cat} <span className="font-normal">({lista.length})</span></p>
+                        <p className={`text-xs font-semibold ${cor}`}>{currency(somar(lista))}</p>
                       </div>
-                    )}
-                    {fluxoDetalhe.custosFesta.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-xs text-muted font-medium">Custos de festas do mês</p>
-                          <p className="text-xs text-danger font-medium">{currency(fluxoDetalhe.custosFesta.reduce((s, c) => s + c.valor, 0))}</p>
-                        </div>
-                        <ul className="divide-y divide-line">
-                          {fluxoDetalhe.custosFesta.map((c, i) => (
-                            <li key={i} className="py-2 flex items-center justify-between text-sm">
-                              <span>{c.descricao} <span className="text-muted">({c.cliente})</span></span>
-                              <span className="text-danger">{currency(c.valor)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between pt-3 border-t border-line text-sm font-medium">
-                      <span>Total</span>
-                      <span className="text-danger">
-                        {currency(
-                          fluxoDetalhe.despesasPagas.reduce((s, d) => s + d.valor, 0) +
-                            fluxoDetalhe.custosFesta.reduce((s, c) => s + c.valor, 0),
-                        )}
-                      </span>
+                      <ul className="divide-y divide-line">
+                        {lista.map((it) => (
+                          <li key={it.id} className="py-2 flex items-start justify-between gap-3 text-sm">
+                            <div className="min-w-0">
+                              <p className="font-medium">{it.descricao}</p>
+                              <p className="text-xs text-muted">{it.detalhe}</p>
+                            </div>
+                            <span className={`whitespace-nowrap ${cor}`}>{currency(it.valor)}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  </>
-                )}
-              </div>
-            )}
+                  ))}
+                  <div className="flex items-center justify-between pt-3 border-t border-line text-sm font-medium">
+                    <span>Total ({fluxoDetalhe.itens.length} lançamento{fluxoDetalhe.itens.length === 1 ? '' : 's'})</span>
+                    <span className={cor}>{currency(somar(fluxoDetalhe.itens))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {editingExpense && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

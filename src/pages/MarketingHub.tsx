@@ -487,12 +487,12 @@ export function MarketingHub() {
               <Card title={`Ocupação por mês — ${descreverPeriodo(ocupP.periodo, { granularidade: 'mensal', aFrente: 3 })}`}>
                 <div className="mb-3"><PeriodoGrafico periodo={ocupP.periodo} onChange={ocupP.setPeriodo} tipo={ocupP.tipo} onTipo={ocupP.setTipo} mensal /></div>
                 <p className="text-[11px] text-muted mb-2">% dos dias do mês com festa em cada unidade (uma festa por dia). Em "Comparar meses" entram também os próximos 3 meses.</p>
-                <GraficoSerie dados={dadosOcupacao} tipo={ocupP.tipo} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s) }))} />
+                <GraficoSerie dados={dadosOcupacao} tipo={ocupP.tipo} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s), ajuda: `Quantos dias do mês tiveram festa na ${nomeUnidade(s)}, em porcentagem (uma festa por dia).` }))} />
               </Card>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card title={`Ocupação por dia da semana — ${descreverPeriodo(semanaP.periodo)}`}>
                   <div className="mb-3"><PeriodoGrafico periodo={semanaP.periodo} onChange={semanaP.setPeriodo} tipo={semanaP.tipo} onTipo={semanaP.setTipo} /></div>
-                  <GraficoSerie dados={dadosDiaSemana.map((d) => ({ ...d, rotulo: d.dia }))} tipo={semanaP.tipo} altura={220} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s) }))} />
+                  <GraficoSerie dados={dadosDiaSemana.map((d) => ({ ...d, rotulo: d.dia }))} tipo={semanaP.tipo} altura={220} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s), ajuda: `Dos dias de cada tipo no período (ex: todos os sábados), em quantos teve festa na ${nomeUnidade(s)}.` }))} />
                   <Tabela cab={['Dia', ...unidades.map(nomeUnidade)]} linhas={DIAS.map((d, i) => [d, ...unidades.map((s) => { const o = ocupacaoDiaSemana(s, semanaDeAte.de, semanaDeAte.ate)[i]; return `${o.pct}% (${o.n} de ${o.total})` })])} />
                 </Card>
                 <Card title="Datas livres de sexta a domingo (próximos 60 dias)">

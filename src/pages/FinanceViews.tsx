@@ -419,9 +419,9 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
               formatar={brl}
               onClickLinha={(row) => row?.mesValue && onMonthChange(row.mesValue)}
               series={[
-                { chave: 'receita', nome: 'Receita das festas', cor: '#1F7A5C' },
-                { chave: 'custos', nome: 'Custos das festas', cor: '#B23A3A' },
-                { chave: 'resultado', nome: 'Resultado do mês', cor: '#5B3FA0' },
+                { chave: 'receita', nome: 'Receita das festas', cor: '#1F7A5C', ajuda: 'Valor das festas realizadas no mês, pela data da festa (não pela data do pagamento).' },
+                { chave: 'custos', nome: 'Custos das festas', cor: '#B23A3A', ajuda: 'Custos das festas realizadas no mês: o que foi lançado em cada festa (inclusive despesas fixas de festa), insumos do estoque e taxa da maquininha.' },
+                { chave: 'resultado', nome: 'Resultado do mês', cor: '#5B3FA0', ajuda: 'O que sobrou no mês: lucro das festas menos as despesas gerais pagas e os cancelamentos. Clique num mês para ver as festas dele.' },
               ]}
             />
           </Card>

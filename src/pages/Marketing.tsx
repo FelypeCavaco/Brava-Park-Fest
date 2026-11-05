@@ -199,8 +199,8 @@ export function Marketing() {
               tipo={cacP.tipo}
               formatar={currency}
               series={[
-                { chave: 'cac', nome: 'CAC (custo por cliente fechado)', cor: '#6D28D9' },
-                { chave: 'gasto', nome: 'Gasto com tráfego', cor: '#F2900C', tracejada: true },
+                { chave: 'cac', nome: 'CAC (custo por cliente fechado)', cor: '#6D28D9', ajuda: 'Quanto custou, em tráfego pago, cada festa fechada com cliente que veio de Instagram, Facebook ou Google naquele mês. Quanto menor, melhor.' },
+                { chave: 'gasto', nome: 'Gasto com tráfego', cor: '#F2900C', tracejada: true, ajuda: 'Total investido em anúncios no mês, como foi lançado na tela de Marketing.' },
               ]}
             />
           </Card>

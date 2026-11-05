@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { supabase } from '../lib/supabaseClient'
 import { CLIENT_SOURCE_LABEL } from '../types'
-import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
+import { PeriodoGrafico, GraficoSerie, usePeriodo, LegendaAjuda } from '../components/PeriodoGrafico'
 import { faixasDoPeriodo, descreverPeriodo, indiceDaFaixa, limitesDasFaixas } from '../lib/periodo'
 
 const PIE_COLORS = ['#6D28D9', '#7CB92E', '#F59E0B', '#1F7A5C', '#DC2626', '#6E6880']
@@ -138,6 +138,7 @@ export function Funnel() {
             {comFechadas.length === 0 ? (
               <p className="text-sm text-muted py-6 text-center">Nenhuma festa fechada neste período.</p>
             ) : visao === 'pizza' ? (
+              <>
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <Pie
@@ -153,16 +154,17 @@ export function Funnel() {
                     ))}
                   </Pie>
                   <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} verticalAlign="bottom" />
                 </PieChart>
               </ResponsiveContainer>
+              <LegendaAjuda itens={comFechadas.map((o, i) => ({ nome: CLIENT_SOURCE_LABEL[o.origem] ?? o.origem, cor: PIE_COLORS[i % PIE_COLORS.length], ajuda: `${o.fechados} festa${o.fechados === 1 ? "" : "s"} fechada${o.fechados === 1 ? "" : "s"} de clientes que chegaram por ${CLIENT_SOURCE_LABEL[o.origem] ?? o.origem}, pela data do cadastro da festa.` }))} />
+              </>
             ) : (
               <GraficoSerie
                 dados={doPeriodo.linhas}
                 tipo={visao}
                 inteiro
                 larguraEixo={30}
-                series={comFechadas.map((o, i) => ({ chave: o.origem, nome: CLIENT_SOURCE_LABEL[o.origem] ?? o.origem, cor: PIE_COLORS[i % PIE_COLORS.length] }))}
+                series={comFechadas.map((o, i) => ({ chave: o.origem, nome: CLIENT_SOURCE_LABEL[o.origem] ?? o.origem, cor: PIE_COLORS[i % PIE_COLORS.length], ajuda: `Festas fechadas de clientes que chegaram por ${CLIENT_SOURCE_LABEL[o.origem] ?? o.origem}, pela data do cadastro da festa.` }))}
               />
             )}
             <p className="text-xs text-muted mb-3 mt-2">Festas cadastradas no período (pela data do cadastro), separadas pela origem do cliente.</p>

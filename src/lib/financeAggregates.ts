@@ -140,7 +140,7 @@ export interface SerieResult extends MonthResult {
 export const CAT_PAGAMENTOS_FESTAS = 'Pagamentos de festas'
 export const CAT_CUSTOS_FESTAS = 'Custos das festas'
 
-function categoriaDaEntrada(o: { kind?: string | null; category?: string | null; description?: string | null }) {
+export function categoriaDaEntrada(o: { kind?: string | null; category?: string | null; description?: string | null }) {
   if (o.category) return o.category
   if (o.kind === 'multa_juros') return 'Multa e juros'
   if (o.kind === 'acerto_unidades') return 'Acertos entre unidades'

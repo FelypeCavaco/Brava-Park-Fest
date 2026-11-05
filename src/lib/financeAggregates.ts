@@ -131,14 +131,34 @@ async function buscarTudo<T>(montar: () => any): Promise<T[]> {
   return out
 }
 
-function vazio(): MonthResult {
-  return { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0 }
+// Para os gráficos: além dos totais, o valor de cada categoria de entrada e de saída.
+export interface SerieResult extends MonthResult {
+  entradasCat: Record<string, number>
+  saidasCat: Record<string, number>
 }
 
-export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<string, string>): Promise<Record<string, MonthResult>[]> {
+export const CAT_PAGAMENTOS_FESTAS = 'Pagamentos de festas'
+export const CAT_CUSTOS_FESTAS = 'Custos das festas'
+
+function categoriaDaEntrada(o: { kind?: string | null; category?: string | null; description?: string | null }) {
+  if (o.category) return o.category
+  if (o.kind === 'multa_juros') return 'Multa e juros'
+  if (o.kind === 'acerto_unidades') return 'Acertos entre unidades'
+  return 'Outras entradas'
+}
+
+function soma(m: Record<string, number>, k: string, v: number) {
+  m[k] = (m[k] ?? 0) + v
+}
+
+function vazio(): SerieResult {
+  return { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0, entradasCat: {}, saidasCat: {} }
+}
+
+export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<string, string>): Promise<Record<string, SerieResult>[]> {
   const slugs = Object.keys(unitIdBySlug)
   const result = faixas.map(() => {
-    const r: Record<string, MonthResult> = {}
+    const r: Record<string, SerieResult> = {}
     for (const s of slugs) r[s] = vazio()
     return r
   })
@@ -154,7 +174,7 @@ export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<stri
     buscarTudo<any>(() => supabase.from('reservations').select('id, unit_id, final_value, event_date').in('unit_id', unitIds).neq('status', 'cancelada').gte('event_date', ini).lt('event_date', fim).order('id')),
     buscarTudo<any>(() => supabase.from('expenses').select('id, amount, unit_id, category, paid_date').in('unit_id', unitIds).eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', ini).lt('paid_date', fim).order('id')),
     loadFeePercentByMethod(),
-    buscarTudo<any>(() => supabase.from('other_incomes').select('id, amount, unit_id, received_date').in('unit_id', unitIds).gte('received_date', ini).lt('received_date', fim).order('id')),
+    buscarTudo<any>(() => supabase.from('other_incomes').select('id, amount, unit_id, received_date, kind, category').in('unit_id', unitIds).gte('received_date', ini).lt('received_date', fim).order('id')),
   ])
 
   for (const p of pagamentos) {
@@ -162,6 +182,7 @@ export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<stri
     const slug = slugByUnitId[p.reservation?.unit_id]
     if (i < 0 || !slug) continue
     result[i][slug].receita += Number(p.amount)
+    soma(result[i][slug].entradasCat, CAT_PAGAMENTOS_FESTAS, Number(p.amount))
     if (p.payment_method) result[i][slug].taxasCartao += (Number(p.amount) * (taxas[p.payment_method] ?? 0)) / 100
   }
   for (const e of despesas) {
@@ -170,11 +191,15 @@ export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<stri
     if (i < 0 || !slug) continue
     if (e.category === 'Estorno') result[i][slug].estornos += Number(e.amount)
     else result[i][slug].despesas += Number(e.amount)
+    soma(result[i][slug].saidasCat, e.category || 'Outros', Number(e.amount))
   }
   for (const o of entradas) {
     const i = idx(o.received_date)
     const slug = slugByUnitId[o.unit_id]
-    if (i >= 0 && slug) result[i][slug].recuperacao += Number(o.amount)
+    if (i >= 0 && slug) {
+      result[i][slug].recuperacao += Number(o.amount)
+      soma(result[i][slug].entradasCat, categoriaDaEntrada(o), Number(o.amount))
+    }
   }
   const faixaDaReserva: Record<string, number> = {}
   const unidadeDaReserva: Record<string, string> = {}
@@ -198,7 +223,10 @@ export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<stri
     for (const c of custos) {
       const i = faixaDaReserva[c.reservation_id]
       const slug = unidadeDaReserva[c.reservation_id]
-      if (i !== undefined && slug) result[i][slug].custos += Number(c.amount)
+      if (i !== undefined && slug) {
+        result[i][slug].custos += Number(c.amount)
+        soma(result[i][slug].saidasCat, CAT_CUSTOS_FESTAS, Number(c.amount))
+      }
     }
   }
   return result

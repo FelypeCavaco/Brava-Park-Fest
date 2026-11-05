@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { periodoPadrao, type Periodo, type TipoGrafico } from '../lib/periodo'
 
@@ -164,5 +164,112 @@ export function GraficoSerie({ dados, series, tipo, altura = 240, formatar, inte
         </BarChart>
       )}
     </ResponsiveContainer>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Filtro de categorias dos gráficos do Financeiro. Cada categoria é guardada
+// como "e:Nome" (entrada) ou "s:Nome" (saída); null = todas.
+
+export function useFiltroCategorias(chave: string) {
+  const [sel, setSel] = useState<string[] | null>(() => {
+    try {
+      const v = localStorage.getItem(`grafico:${chave}:categorias`)
+      return v ? (JSON.parse(v) as string[] | null) : null
+    } catch {
+      return null
+    }
+  })
+  return {
+    selecionadas: sel,
+    setSelecionadas: (v: string[] | null) => {
+      setSel(v)
+      try {
+        localStorage.setItem(`grafico:${chave}:categorias`, JSON.stringify(v))
+      } catch {
+        /* sem armazenamento: só não lembra */
+      }
+    },
+  }
+}
+
+export function FiltroCategorias({ entradas, saidas, selecionadas, onChange }: {
+  entradas: string[]
+  saidas: string[]
+  selecionadas: string[] | null
+  onChange: (v: string[] | null) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [aberto])
+
+  const todas = [...entradas.map((c) => `e:${c}`), ...saidas.map((c) => `s:${c}`)]
+  const marcada = (k: string) => selecionadas === null || selecionadas.includes(k)
+  const qtd = selecionadas === null ? todas.length : todas.filter((k) => selecionadas.includes(k)).length
+  const rotulo = selecionadas === null || qtd === todas.length ? 'Todas as categorias' : qtd === 0 ? 'Nenhuma categoria' : `${qtd} de ${todas.length} categorias`
+
+  function alternar(k: string) {
+    const atual = selecionadas === null ? todas : selecionadas
+    const nova = atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k]
+    onChange(todas.every((x) => nova.includes(x)) ? null : nova)
+  }
+  function grupo(prefixo: 'e' | 's', lista: string[], so: boolean) {
+    const chaves = lista.map((c) => `${prefixo}:${c}`)
+    const outras = (selecionadas ?? todas).filter((x) => !x.startsWith(`${prefixo}:`))
+    onChange(so ? chaves : [...outras, ...chaves].length === todas.length ? null : [...outras, ...chaves])
+  }
+
+  const bloco = (titulo: string, prefixo: 'e' | 's', lista: string[], cor: string) =>
+    lista.length > 0 && (
+      <div className="mb-2">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className={`text-[11px] font-semibold uppercase tracking-wide ${cor}`}>{titulo}</p>
+          <span className="flex gap-2 text-[11px]">
+            <button type="button" className="text-purple hover:underline" onClick={() => grupo(prefixo, lista, false)}>marcar todas</button>
+            <button type="button" className="text-purple hover:underline" onClick={() => grupo(prefixo, lista, true)}>só estas</button>
+          </span>
+        </div>
+        {lista.map((c) => {
+          const k = `${prefixo}:${c}`
+          return (
+            <label key={k} className="flex items-center gap-2 py-1 text-xs cursor-pointer hover:bg-paper rounded px-1">
+              <input type="checkbox" checked={marcada(k)} onChange={() => alternar(k)} />
+              <span className="truncate">{c}</span>
+            </label>
+          )
+        })}
+      </div>
+    )
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className={`h-8 px-2.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1.5 ${selecionadas === null ? 'border-line bg-surface text-ink/80' : 'border-purple bg-purple-light text-purple-dark'}`}
+      >
+        {rotulo}
+        <span aria-hidden className="text-[10px]">▾</span>
+      </button>
+      {aberto && (
+        <div className="absolute z-30 mt-1 left-0 w-72 max-w-[85vw] max-h-80 overflow-y-auto bg-surface border border-line rounded-lg shadow-xl p-3">
+          <div className="flex items-center justify-between mb-2">
+            <button type="button" className="text-xs font-medium text-purple hover:underline" onClick={() => onChange(null)}>Mostrar todas</button>
+            <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => setAberto(false)}>Fechar</button>
+          </div>
+          {bloco('Entradas', 'e', entradas, 'text-teal')}
+          {bloco('Saídas', 's', saidas, 'text-danger')}
+          {todas.length === 0 && <p className="text-xs text-muted">Nenhuma categoria com valor neste período.</p>}
+        </div>
+      )}
+    </div>
   )
 }

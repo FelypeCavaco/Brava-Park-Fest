@@ -23,8 +23,8 @@ import {
 } from '../types'
 import { currentMonthValue, monthBounds } from '../lib/monthUtils'
 import { faixasDoPeriodo, descreverPeriodo, type Faixa } from '../lib/periodo'
-import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
-import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, type MonthResult } from '../lib/financeAggregates'
+import { PeriodoGrafico, GraficoSerie, usePeriodo, FiltroCategorias, useFiltroCategorias } from '../components/PeriodoGrafico'
+import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, CAT_PAGAMENTOS_FESTAS, CAT_CUSTOS_FESTAS, type SerieResult } from '../lib/financeAggregates'
 import { useUndo } from '../lib/UndoContext'
 import { friendlyDbError } from '../lib/format'
 import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFestasView } from './FinanceViews'
@@ -101,8 +101,10 @@ export function Finance() {
   const fluxoP = usePeriodo('financeiro-fluxo', 6, 'barras')
   const compP = usePeriodo('financeiro-comparativo', 6, 'linhas')
   const [recarga, setRecarga] = useState(0)
-  const [fluxoSerie, setFluxoSerie] = useState<{ faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null>(null)
-  const [compSerie, setCompSerie] = useState<{ faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null>(null)
+  const [fluxoSerie, setFluxoSerie] = useState<{ faixas: Faixa[]; dados: Record<string, SerieResult>[] } | null>(null)
+  const [compSerie, setCompSerie] = useState<{ faixas: Faixa[]; dados: Record<string, SerieResult>[] } | null>(null)
+  const fluxoF = useFiltroCategorias('financeiro-fluxo')
+  const compF = useFiltroCategorias('financeiro-comparativo')
 
   const [editCoversFestaCosts, setEditCoversFestaCosts] = useState(false)
   // Custos lançados nas festas do mês atual, por unidade: das festas que já
@@ -409,9 +411,11 @@ export function Finance() {
   }, [compP.periodo, unitIdBySlugAll, unitDbIdsLoading, recarga])
 
   // Soma as unidades visíveis de cada faixa (as duas quando "Ambas").
-  function linhasDaSerie(serie: { faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null) {
+  // Só as categorias escolhidas no filtro entram na conta (null = todas).
+  function linhasDaSerie(serie: { faixas: Faixa[]; dados: Record<string, SerieResult>[] } | null, filtro: string[] | null) {
     if (!serie) return []
     const slugs = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
+    const vale = (k: string) => filtro === null || filtro.includes(k)
     let acumulado = 0
     return serie.faixas.map((f, i) => {
       let entradas = 0
@@ -419,15 +423,31 @@ export function Finance() {
       for (const s of slugs) {
         const d = serie.dados[i]?.[s]
         if (!d) continue
-        entradas += d.receita + d.recuperacao
-        saidas += d.despesas + d.estornos + d.custos
+        for (const [c, v] of Object.entries(d.entradasCat)) if (vale(`e:${c}`)) entradas += v
+        for (const [c, v] of Object.entries(d.saidasCat)) if (vale(`s:${c}`)) saidas += v
       }
       acumulado += entradas - saidas
       return { rotulo: f.rotulo, faixa: f, entradas, saidas, saldo: entradas - saidas, acumulado }
     })
   }
-  const fluxoChartData = useMemo(() => linhasDaSerie(fluxoSerie), [fluxoSerie, selectedUnit])
-  const compChartData = useMemo(() => linhasDaSerie(compSerie), [compSerie, selectedUnit])
+  // Categorias que têm valor no período (para a lista do filtro).
+  function categoriasDaSerie(serie: { dados: Record<string, SerieResult>[] } | null) {
+    const e = new Set<string>()
+    const sd = new Set<string>()
+    const slugs = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
+    for (const faixa of serie?.dados ?? []) {
+      for (const s of slugs) {
+        for (const c of Object.keys(faixa[s]?.entradasCat ?? {})) e.add(c)
+        for (const c of Object.keys(faixa[s]?.saidasCat ?? {})) sd.add(c)
+      }
+    }
+    const ordenar = (set: Set<string>, primeiro: string) => [...set].sort((a, b) => (a === primeiro ? -1 : b === primeiro ? 1 : a.localeCompare(b, 'pt-BR')))
+    return { entradas: ordenar(e, CAT_PAGAMENTOS_FESTAS), saidas: ordenar(sd, CAT_CUSTOS_FESTAS) }
+  }
+  const fluxoCats = useMemo(() => categoriasDaSerie(fluxoSerie), [fluxoSerie, selectedUnit])
+  const compCats = useMemo(() => categoriasDaSerie(compSerie), [compSerie, selectedUnit])
+  const fluxoChartData = useMemo(() => linhasDaSerie(fluxoSerie, fluxoF.selecionadas), [fluxoSerie, selectedUnit, fluxoF.selecionadas])
+  const compChartData = useMemo(() => linhasDaSerie(compSerie, compF.selecionadas), [compSerie, selectedUnit, compF.selecionadas])
 
   const visibleUnitSlugs = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
   const unitIds = visibleUnitSlugs
@@ -816,8 +836,8 @@ export function Finance() {
           </Card>
 
           <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
-            <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} /></div>
-            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).</p>
+            <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} extra={<FiltroCategorias entradas={fluxoCats.entradas} saidas={fluxoCats.saidas} selecionadas={fluxoF.selecionadas} onChange={fluxoF.setSelecionadas} />} /></div>
+            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' Com o filtro ligado, o gráfico mostra só as categorias marcadas; o detalhe ao clicar continua mostrando tudo.'}</p>
             <GraficoSerie
               dados={fluxoChartData}
               tipo={fluxoP.tipo}
@@ -830,7 +850,7 @@ export function Finance() {
           </Card>
 
           <Card title={`Comparativo — ${descreverPeriodo(compP.periodo)}`}>
-            <div className="mb-3"><PeriodoGrafico periodo={compP.periodo} onChange={compP.setPeriodo} tipo={compP.tipo} onTipo={compP.setTipo} /></div>
+            <div className="mb-3"><PeriodoGrafico periodo={compP.periodo} onChange={compP.setPeriodo} tipo={compP.tipo} onTipo={compP.setTipo} extra={<FiltroCategorias entradas={compCats.entradas} saidas={compCats.saidas} selecionadas={compF.selecionadas} onChange={compF.setSelecionadas} />} /></div>
             <p className="text-xs text-muted mb-2">Entradas, saídas e o que sobrou em cada ponto do período. A linha tracejada é o saldo somado desde o começo do período.</p>
             <GraficoSerie
               dados={compChartData}

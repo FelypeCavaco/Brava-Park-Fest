@@ -6,13 +6,14 @@ import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { AlertTriangle, ChevronDown, ChevronUp, Info, Lightbulb } from 'lucide-react'
-import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { UNITS } from '../lib/UnitContext'
 import { addMonthsToValue } from '../lib/monthUtils'
+import { faixasDoPeriodo, descreverPeriodo } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 
 // ---------- tipos do retorno das funções ----------
 interface FestaRealizada {
@@ -197,16 +198,18 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
   unitDbIds: Record<string, { unitId: string }>; mostrarUnidade: boolean
 }) {
   const { data, loading, error } = useMonthViews(month, unitId)
-  const [serie, setSerie] = useState<{ mes: string; mesValue: string; receita: number; custos: number; resultado: number }[]>([])
+  const [serie, setSerie] = useState<{ rotulo: string; mesValue: string; receita: number; custos: number; resultado: number }[]>([])
+  const resP = usePeriodo('financeiro-resultado-festas', 6, 'barras')
 
   useEffect(() => {
     let vivo = true
-    const meses = Array.from({ length: 6 }, (_, i) => addMonthsToValue(month, i - 5))
+    // O resultado é calculado por mês no banco: o período é sempre mês a mês (até 24 meses).
+    const meses = faixasDoPeriodo(resP.periodo, { granularidade: 'mensal' }).map((f) => f.mes ?? f.chave).slice(-24)
     Promise.all(meses.map((m) => loadMonthViews(m, unitId).catch(() => null))).then((lista) => {
       if (!vivo) return
       setSerie(
         lista.map((d, i) => ({
-          mes: format(parseISO(`${meses[i]}-01`), 'MMM', { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase()),
+          rotulo: format(parseISO(`${meses[i]}-01`), meses.some((m) => m.slice(0, 4) !== meses[0].slice(0, 4)) ? 'MMM/yy' : 'MMM', { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase()),
           mesValue: meses[i],
           receita: n(d?.resultado.receita),
           custos: n(d?.resultado.custos_lancados) + n(d?.resultado.insumos) + n(d?.resultado.taxa),
@@ -217,7 +220,7 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
     return () => {
       vivo = false
     }
-  }, [month, unitId])
+  }, [resP.periodo, unitId])
 
   const r = data?.resultado
   const custosFestas = r ? n(r.custos_lancados) + n(r.insumos) : 0
@@ -407,20 +410,20 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
             </Card>
           )}
 
-          <Card title="Resultado das festas — últimos 6 meses">
-            <p className="text-xs text-muted mb-2">Receita × custos das festas realizadas em cada mês (custos = lançados + insumos + taxa) e a linha do resultado do mês. Clique num mês para ver as festas dele.</p>
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart data={serie} onClick={(e: any) => e?.activePayload?.[0]?.payload?.mesValue && onMonthChange(e.activePayload[0].payload.mesValue)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={48} />
-                <Tooltip formatter={(v: number) => brl(v)} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="receita" name="Receita das festas" fill="#1F7A5C" radius={[4, 4, 0, 0]} cursor="pointer" />
-                <Bar dataKey="custos" name="Custos das festas" fill="#B23A3A" radius={[4, 4, 0, 0]} cursor="pointer" />
-                <Line dataKey="resultado" name="Resultado do mês" stroke="#5B3FA0" strokeWidth={2} dot />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <Card title={`Resultado das festas — ${descreverPeriodo(resP.periodo, { granularidade: 'mensal' })}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={resP.periodo} onChange={resP.setPeriodo} tipo={resP.tipo} onTipo={resP.setTipo} mensal /></div>
+            <p className="text-xs text-muted mb-2">Receita × custos das festas realizadas em cada mês (custos = lançados + insumos + taxa) e o resultado do mês. Clique num mês para ver as festas dele. Este resultado é calculado mês a mês.</p>
+            <GraficoSerie
+              dados={serie}
+              tipo={resP.tipo}
+              formatar={brl}
+              onClickLinha={(row) => row?.mesValue && onMonthChange(row.mesValue)}
+              series={[
+                { chave: 'receita', nome: 'Receita das festas', cor: '#1F7A5C' },
+                { chave: 'custos', nome: 'Custos das festas', cor: '#B23A3A' },
+                { chave: 'resultado', nome: 'Resultado do mês', cor: '#5B3FA0' },
+              ]}
+            />
           </Card>
         </>
       )}

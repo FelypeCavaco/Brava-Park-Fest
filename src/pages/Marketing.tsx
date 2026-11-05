@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
-import { currentMonthValue, monthBounds, lastNMonths } from '../lib/monthUtils'
+import { currentMonthValue, monthBounds } from '../lib/monthUtils'
+import { faixasDoPeriodo, descreverPeriodo, indiceDaFaixa, limitesDasFaixas } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 
 const CLOSED_STATUSES = ['confirmada', 'sinal_pago', 'quitada']
 const PAID_TRAFFIC_SOURCES = ['instagram', 'facebook', 'google']
@@ -25,7 +26,8 @@ export function Marketing() {
   const [gastoMes, setGastoMes] = useState(0)
   const [contratosFechados, setContratosFechados] = useState(0)
   const [ticketMedio, setTicketMedio] = useState(0)
-  const [cacHistory, setCacHistory] = useState<{ mes: string; cac: number }[]>([])
+  const [cacHistory, setCacHistory] = useState<Record<string, string | number>[]>([])
+  const cacP = usePeriodo('marketing-cac', 6, 'linhas')
 
   const unitIds = selectedUnit === 'todas' ? Object.values(unitDbIds).map((d) => d.unitId) : [unitDbIds[selectedUnit]?.unitId].filter(Boolean) as string[]
 
@@ -61,29 +63,36 @@ export function Marketing() {
     setContratosFechados(fechados.length)
     setTicketMedio(ticket)
 
-    const months = lastNMonths(6)
-    const history = await Promise.all(
-      months.map(async ({ value, label }) => {
-        const { startIso: mStart, endIso: mEnd } = monthBounds(value)
-        const [{ data: spend }, { data: closed }] = await Promise.all([
-          supabase.from('marketing_spend').select('amount').in('unit_id', unitIds).eq('month', mStart),
-          supabase
-            .from('reservations')
-            .select('id, client:clients!inner(source)')
-            .in('unit_id', unitIds)
-            .in('status', CLOSED_STATUSES)
-            .in('client.source', PAID_TRAFFIC_SOURCES)
-            .gte('created_at', mStart)
-            .lt('created_at', mEnd),
-        ])
-        const gastoDoMes = (spend ?? []).reduce((s, r) => s + Number(r.amount), 0)
-        const fechadosDoMes = (closed ?? []).length
-        return { mes: label, cac: fechadosDoMes > 0 ? Math.round(gastoDoMes / fechadosDoMes) : 0 }
-      }),
-    )
-    setCacHistory(history)
     setLoading(false)
   }
+
+  // CAC por mês no período escolhido (o gasto com tráfego é lançado por mês).
+  useEffect(() => {
+    if (unitIds.length === 0) return
+    const faixas = faixasDoPeriodo(cacP.periodo, { granularidade: 'mensal' })
+    const { ini, fim } = limitesDasFaixas(faixas)
+    const idx = indiceDaFaixa(faixas)
+    let vivo = true
+    Promise.all([
+      supabase.from('marketing_spend').select('amount, month').in('unit_id', unitIds).gte('month', ini).lt('month', fim),
+      supabase
+        .from('reservations')
+        .select('id, created_at, client:clients!inner(source)')
+        .in('unit_id', unitIds)
+        .in('status', CLOSED_STATUSES)
+        .in('client.source', PAID_TRAFFIC_SOURCES)
+        .gte('created_at', ini)
+        .lt('created_at', fim),
+    ]).then(([{ data: spend }, { data: closed }]) => {
+      if (!vivo) return
+      const gasto = faixas.map(() => 0)
+      const fechados = faixas.map(() => 0)
+      for (const r of spend ?? []) { const k = idx(r.month); if (k >= 0) gasto[k] += Number(r.amount) }
+      for (const r of closed ?? []) { const k = idx(r.created_at); if (k >= 0) fechados[k] += 1 }
+      setCacHistory(faixas.map((f, k) => ({ rotulo: f.rotulo, cac: fechados[k] > 0 ? Math.round(gasto[k] / fechados[k]) : 0, gasto: gasto[k] })))
+    })
+    return () => { vivo = false }
+  }, [cacP.periodo, selectedUnit, unitDbIds, gastoMes])
 
   async function handleSaveSpend(e: FormEvent) {
     e.preventDefault()
@@ -182,16 +191,18 @@ export function Marketing() {
             </Card>
           </div>
 
-          <Card title="Evolução do CAC — últimos 6 meses">
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={cacHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                <Line type="monotone" dataKey="cac" stroke="#6D28D9" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <Card title={`Evolução do CAC — ${descreverPeriodo(cacP.periodo, { granularidade: 'mensal' })}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={cacP.periodo} onChange={cacP.setPeriodo} tipo={cacP.tipo} onTipo={cacP.setTipo} mensal /></div>
+            <p className="text-xs text-muted mb-2">O gasto com tráfego é lançado por mês, então este gráfico é sempre mês a mês.</p>
+            <GraficoSerie
+              dados={cacHistory}
+              tipo={cacP.tipo}
+              formatar={currency}
+              series={[
+                { chave: 'cac', nome: 'CAC (custo por cliente fechado)', cor: '#6D28D9' },
+                { chave: 'gasto', nome: 'Gasto com tráfego', cor: '#F2900C', tracejada: true },
+              ]}
+            />
           </Card>
         </>
       )}

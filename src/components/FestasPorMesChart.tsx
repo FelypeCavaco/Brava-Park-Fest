@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { Bar, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { faixasDoPeriodo, descreverPeriodo, indiceDaFaixa, limitesDasFaixas } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from './PeriodoGrafico'
 import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
 import { useUnit, UNITS, unitColor } from '../lib/UnitContext'
@@ -12,16 +13,13 @@ import { useUnit, UNITS, unitColor } from '../lib/UnitContext'
 //     contando todas as cadastradas — inclusive as que ainda estão em
 //     orçamento e as que depois foram canceladas (aparecem no resumo).
 
-const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-
 type Modo = 'realizadas' | 'fechadas'
 interface Linha { event_date: string; created_at: string; unit_id: string; status: string }
 
 export function FestasPorMesChart() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const [rows, setRows] = useState<Linha[]>([])
-  const anoAtual = new Date().getFullYear()
-  const [ano, setAno] = useState(anoAtual)
+  const festasP = usePeriodo('painel-festas-por-mes', 12, 'barras')
   const [modo, setModo] = useState<Modo>('realizadas')
 
   useEffect(() => {
@@ -49,46 +47,47 @@ export function FestasPorMesChart() {
     [rows, modo],
   )
 
-  const anos = useMemo(() => {
-    const set = new Set<number>([anoAtual])
-    for (const r of datas) set.add(Number(r.ref.slice(0, 4)))
-    return Array.from(set).sort((a, b) => b - a)
-  }, [datas, anoAtual])
-
   const unidades = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
+  const faixas = useMemo(() => faixasDoPeriodo(festasP.periodo), [festasP.periodo])
 
+  // Conta por faixa do período; "anterior" = a mesma faixa um ano antes.
   const { data, canceladas, orcamento } = useMemo(() => {
-    const base = MESES.map((mes) => {
-      const row: Record<string, number | string> = { mes, anterior: 0, total: 0 }
+    const base = faixas.map((f) => {
+      const row: Record<string, number | string> = { rotulo: f.rotulo, anterior: 0, total: 0 }
       for (const u of unidades) row[u] = 0
       return row
     })
+    const idx = indiceDaFaixa(faixas)
+    const { ini, fim } = limitesDasFaixas(faixas)
+    const umAnoAntes = (d: string) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`
+    const umAnoDepois = (d: string) => `${Number(d.slice(0, 4)) + 1}${d.slice(4)}`
     let canc = 0
     let orc = 0
     for (const r of datas) {
       const slug = slugById[r.unit_id]
       if (!slug || !unidades.includes(slug)) continue
-      const y = Number(r.ref.slice(0, 4))
-      const m = Number(r.ref.slice(5, 7)) - 1
-      if (y === ano) {
-        base[m][slug] = (base[m][slug] as number) + 1
-        base[m].total = (base[m].total as number) + 1
+      if (r.ref >= ini && r.ref < fim) {
+        const k = idx(r.ref)
+        if (k < 0) continue
+        base[k][slug] = (base[k][slug] as number) + 1
+        base[k].total = (base[k].total as number) + 1
         if (r.status === 'cancelada') canc++
         if (r.status === 'orcamento') orc++
-      } else if (y === ano - 1) {
-        base[m].anterior = (base[m].anterior as number) + 1
+      } else if (r.ref >= umAnoAntes(ini) && r.ref < umAnoAntes(fim)) {
+        const k = idx(umAnoDepois(r.ref))
+        if (k >= 0) base[k].anterior = (base[k].anterior as number) + 1
       }
     }
     return { data: base, canceladas: canc, orcamento: orc }
-  }, [datas, slugById, unidades.join(','), ano])
+  }, [datas, slugById, unidades.join(','), faixas])
 
   const totalAno = data.reduce((s, r) => s + (r.total as number), 0)
   const totalAnterior = data.reduce((s, r) => s + (r.anterior as number), 0)
-  const melhorMes = data.reduce((best, r) => ((r.total as number) > (best.total as number) ? r : best), data[0])
+  const melhorMes = data.reduce((best, r) => ((r.total as number) > (best.total as number) ? r : best), data[0] ?? { rotulo: '', total: 0 })
 
   return (
     <Card
-      title={modo === 'realizadas' ? 'Festas por mês — realizadas' : 'Festas por mês — fechadas (vendas)'}
+      title={`${modo === 'realizadas' ? 'Festas realizadas' : 'Festas fechadas (vendas)'} — ${descreverPeriodo(festasP.periodo)}`}
       action={
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-line p-0.5" role="tablist">
@@ -107,33 +106,29 @@ export function FestasPorMesChart() {
               </button>
             ))}
           </div>
-          <select value={ano} onChange={(e) => setAno(Number(e.target.value))} aria-label="Ano" className="border border-line rounded-lg px-2 py-1 text-xs">
-            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
         </div>
       }
     >
+      <div className="mb-3"><PeriodoGrafico periodo={festasP.periodo} onChange={festasP.setPeriodo} tipo={festasP.tipo} onTipo={festasP.setTipo} /></div>
       <p className="text-xs text-muted mb-3">
-        {totalAno} festa{totalAno === 1 ? '' : 's'} {modo === 'realizadas' ? 'realizadas' : 'fechadas'} em {ano}
-        {totalAnterior > 0 ? ` · ${totalAnterior} em ${ano - 1}` : ''}
-        {totalAno > 0 ? ` · mês ${modo === 'realizadas' ? 'mais cheio' : 'que mais vendeu'}: ${melhorMes.mes} (${melhorMes.total})` : ''}
+        {totalAno} festa{totalAno === 1 ? '' : 's'} {modo === 'realizadas' ? 'realizadas' : 'fechadas'} no período
+        {totalAnterior > 0 ? ` · ${totalAnterior} no mesmo período do ano anterior` : ''}
+        {totalAno > 0 ? ` · ${modo === 'realizadas' ? 'mais cheio' : 'que mais vendeu'}: ${melhorMes.rotulo} (${melhorMes.total})` : ''}
         {modo === 'realizadas'
-          ? ' · conta pelo mês da festa, sem as canceladas'
-          : ` · conta pelo mês em que a festa foi cadastrada, de qualquer data${canceladas > 0 ? ` · ${canceladas} depois cancelada${canceladas === 1 ? '' : 's'}` : ''}${orcamento > 0 ? ` · ${orcamento} ainda em orçamento` : ''}`}
+          ? ' · conta pela data da festa, sem as canceladas'
+          : ` · conta pela data em que a festa foi cadastrada${canceladas > 0 ? ` · ${canceladas} depois cancelada${canceladas === 1 ? '' : 's'}` : ''}${orcamento > 0 ? ` · ${orcamento} ainda em orçamento` : ''}`}
       </p>
-      <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-          <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={30} />
-          <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {unidades.map((u) => (
-            <Bar key={u} dataKey={u} name={UNITS.find((x) => x.id === u)?.name ?? u} stackId="festas" fill={unitColor(u)} radius={[3, 3, 0, 0]} />
-          ))}
-          {totalAnterior > 0 && <Line type="monotone" dataKey="anterior" name={`${ano - 1} (total)`} stroke="#F2900C" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2 }} />}
-        </ComposedChart>
-      </ResponsiveContainer>
+      <GraficoSerie
+        dados={data}
+        tipo={festasP.tipo}
+        altura={260}
+        inteiro
+        larguraEixo={30}
+        series={[
+          ...unidades.map((u) => ({ chave: u, nome: UNITS.find((x) => x.id === u)?.name ?? u, cor: unitColor(u), pilha: festasP.tipo === 'barras' ? 'festas' : undefined })),
+          ...(totalAnterior > 0 ? [{ chave: 'anterior', nome: 'Ano anterior (total)', cor: '#F2900C', tracejada: true }] : []),
+        ]}
+      />
     </Card>
   )
 }

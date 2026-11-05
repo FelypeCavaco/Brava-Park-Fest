@@ -128,7 +128,7 @@ export function FinanceBreakdown({ unitId }: { unitId: string | null }) {
         detalhe: `${dataBr(x.received_date)} · ${formaLabel(x.payment_method)}`,
         valor: Number(x.amount),
       }))
-      if (outras.length) nosEntrada.push({ chave: 'e-outras', titulo: 'Outras entradas', detalhe: 'Acertos entre unidades, multa e juros', valor: somar(outras), filhos: outras })
+      if (outras.length) nosEntrada.push({ chave: 'e-outras', titulo: 'Outras entradas', detalhe: 'Lançadas à mão, acertos entre unidades, multa e juros', valor: somar(outras), filhos: outras })
       nosEntrada.sort((x, y) => y.valor - x.valor)
 
       // ---------- saídas: categoria → conta → itens ----------

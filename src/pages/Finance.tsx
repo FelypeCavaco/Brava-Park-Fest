@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { FinanceBreakdown } from '../components/FinanceBreakdown'
 import { InstallmentsForecast } from '../components/InstallmentsForecast'
+import { NovoLancamento } from '../components/NovoLancamento'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -21,8 +21,10 @@ import {
   type PayableStatus,
   type PaymentMethod,
 } from '../types'
-import { currentMonthValue, lastNMonths, monthBounds, addMonthsToValue } from '../lib/monthUtils'
-import { loadMonthByUnit, loadExpectedRemainingByUnit } from '../lib/financeAggregates'
+import { currentMonthValue, monthBounds } from '../lib/monthUtils'
+import { faixasDoPeriodo, descreverPeriodo, type Faixa } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
+import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, type MonthResult } from '../lib/financeAggregates'
 import { useUndo } from '../lib/UndoContext'
 import { friendlyDbError } from '../lib/format'
 import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFestasView } from './FinanceViews'
@@ -86,6 +88,8 @@ export function Finance() {
   const { scheduleDelete } = useUndo()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
+  // Entradas de dinheiro lançadas à mão (Novo lançamento → Entrada → Outra entrada).
+  const [entradasManuais, setEntradasManuais] = useState<{ id: string; unit_id: string; category: string | null; description: string; amount: number; received_date: string; payment_method: string | null }[]>([])
   const [expenseItemsByExpense, setExpenseItemsByExpense] = useState<Record<string, { id: string; itemName: string; quantity: number; inventoryItemId: string | null; lineValue?: number | null }[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,18 +97,13 @@ export function Finance() {
   // Recebido de outra unidade por estoque transferido: entra no caixa, mas não é faturamento.
   const [acertosRecebidosByUnit, setAcertosRecebidosByUnit] = useState<Record<string, number>>({})
   const [recebimentosPrevistosByUnit, setRecebimentosPrevistosByUnit] = useState<Record<string, number>>({})
-  const [fluxoCaixaByUnit, setFluxoCaixaByUnit] = useState<Record<string, { mes: string; mesValue: string; entradas: number; saidas: number }[]>>({})
+  // Gráficos com período escolhido: fluxo de caixa (barras) e comparativo (linhas).
+  const fluxoP = usePeriodo('financeiro-fluxo', 6, 'barras')
+  const compP = usePeriodo('financeiro-comparativo', 6, 'linhas')
+  const [recarga, setRecarga] = useState(0)
+  const [fluxoSerie, setFluxoSerie] = useState<{ faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null>(null)
+  const [compSerie, setCompSerie] = useState<{ faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null>(null)
 
-  const [expenseUnit, setExpenseUnit] = useState(selectedUnit === 'todas' ? UNITS[0].id : selectedUnit)
-  const [category, setCategory] = useState<ExpenseCategory>(EXPENSE_CATEGORIES[0])
-  const [categoryOutro, setCategoryOutro] = useState('')
-  const [description, setDescription] = useState('')
-  const [supplier, setSupplier] = useState('')
-  const [amount, setAmount] = useState('')
-  const [dueDate, setDueDate] = useState(todayIso)
-  const [coversFestaCosts, setCoversFestaCosts] = useState(false)
-  // Aviso anti-dupla contagem: custo de festa parecido já lançado no mesmo mês.
-  const [contaAviso, setContaAviso] = useState<{ id: string; reservationId: string; cliente: string; data: string; descricao: string; valor: number }[] | null>(null)
   const [editCoversFestaCosts, setEditCoversFestaCosts] = useState(false)
   // Custos lançados nas festas do mês atual, por unidade: das festas que já
   // aconteceram (saem do saldo do mês) e das que ainda vão acontecer (saem
@@ -138,14 +137,6 @@ export function Finance() {
   const [purchaseDeletion, setPurchaseDeletion] = useState<{ expense: Expense; justification: string; error: string | null } | null>(null)
   const [expandedPurchase, setExpandedPurchase] = useState<string | null>(null)
 
-  const [recUnit, setRecUnit] = useState(selectedUnit === 'todas' ? UNITS[0].id : selectedUnit)
-  const [recCategory, setRecCategory] = useState<ExpenseCategory>(EXPENSE_CATEGORIES[0])
-  const [recCategoryOutro, setRecCategoryOutro] = useState('')
-  const [recDescription, setRecDescription] = useState('')
-  const [recAmount, setRecAmount] = useState('')
-  const [recDay, setRecDay] = useState('5')
-  const [recComecar, setRecComecar] = useState<'este_mes' | 'proximo_mes'>('este_mes')
-
   useEffect(() => {
     if (!unitDbIdsLoading) loadAll()
   }, [unitDbIdsLoading, unitDbIds])
@@ -164,10 +155,11 @@ export function Finance() {
     await supabase.rpc('ensure_recurring_expenses_current_month')
 
     const dbIdToSlug = dbIdToSlugMap()
-    const [{ data: exp, error: expErr }, { data: rec }, { data: expItems }] = await Promise.all([
+    const [{ data: exp, error: expErr }, { data: rec }, { data: expItems }, { data: incs }] = await Promise.all([
       supabase.from('expenses').select('*').order('due_date', { ascending: false }),
       supabase.from('recurring_expenses').select('*').order('day_of_month'),
       supabase.from('expense_items').select('id, expense_id, item_name, quantity, inventory_item_id, line_value'),
+      supabase.from('other_incomes').select('id, unit_id, category, description, amount, received_date, payment_method').eq('kind', 'manual').order('received_date', { ascending: false }).limit(300),
     ])
 
     if (expErr) setError('Não foi possível carregar as despesas.')
@@ -214,6 +206,7 @@ export function Finance() {
       grouped[it.expense_id] = list
     }
     setExpenseItemsByExpense(grouped)
+    setEntradasManuais((incs ?? []).map((i: any) => ({ id: i.id, unit_id: dbIdToSlug[i.unit_id] ?? '', category: i.category ?? null, description: i.description, amount: Number(i.amount), received_date: i.received_date, payment_method: i.payment_method })))
     setLoading(false)
 
     await loadAggregates()
@@ -268,31 +261,18 @@ export function Finance() {
     }
     setFestaCostsByUnit(custos)
 
-    const months = lastNMonths(6)
-    const fluxoPorUnidade: Record<string, { mes: string; mesValue: string; entradas: number; saidas: number }[]> = {}
-    for (const slug of Object.keys(unitIdBySlug)) fluxoPorUnidade[slug] = []
-    for (const { value, label } of months) {
-      const data = await loadMonthByUnit(value, unitIdBySlug)
-      for (const slug of Object.keys(unitIdBySlug)) {
-        fluxoPorUnidade[slug].push({
-          mes: label,
-          mesValue: value,
-          entradas: (data[slug]?.receita ?? 0) + (data[slug]?.recuperacao ?? 0),
-          saidas: (data[slug]?.despesas ?? 0) + (data[slug]?.estornos ?? 0) + (data[slug]?.custos ?? 0),
-        })
-      }
-    }
-    setFluxoCaixaByUnit(fluxoPorUnidade)
+    setRecarga((n) => n + 1)
     setAgregadosProntos(true)
   }
 
   // Detalhe de um mês específico do gráfico de fluxo de caixa — aberto ao
   // clicar em cima da barra de "Entradas" ou "Saídas".
-  async function openFluxoDetalhe(unitSlug: string | 'todas', mesValue: string, mesLabel: string, tipo: 'entradas' | 'saidas') {
+  async function openFluxoDetalhe(unitSlug: string | 'todas', faixa: { ini: string; fim: string }, mesLabel: string, tipo: 'entradas' | 'saidas') {
     const unitIds = unitSlug === 'todas' ? Object.values(unitDbIds).map((d) => d.unitId) : [unitDbIds[unitSlug]?.unitId].filter(Boolean)
     if (unitIds.length === 0) return
     setFluxoDetalhe({ tipo, mesLabel, loading: true, entradas: [], despesasPagas: [], custosFesta: [] })
-    const { startIso, endIso } = monthBounds(mesValue)
+    const startIso = faixa.ini
+    const endIso = faixa.fim
 
     if (tipo === 'entradas') {
       const { data } = await supabase
@@ -316,7 +296,7 @@ export function Finance() {
         .gte('received_date', startIso)
         .lt('received_date', endIso)
       for (const inc of incomes ?? []) {
-        entradas.push({ cliente: 'Acerto entre unidades', valor: Number(inc.amount), data: format(parseISO(inc.received_date), 'dd/MM/yyyy'), metodo: inc.payment_method })
+        entradas.push({ cliente: inc.description || 'Outra entrada', valor: Number(inc.amount), data: format(parseISO(inc.received_date), 'dd/MM/yyyy'), metodo: inc.payment_method })
       }
       setFluxoDetalhe({ tipo, mesLabel, loading: false, entradas, despesasPagas: [], custosFesta: [] })
       return
@@ -407,18 +387,47 @@ export function Finance() {
     )
   }, [selectedUnit, summaryByUnit])
 
-  const fluxoChartData = useMemo(() => {
-    if (selectedUnit !== 'todas') return fluxoCaixaByUnit[selectedUnit] ?? []
-    const porUnidade = UNITS.map((u) => fluxoCaixaByUnit[u.id] ?? [])
-    const base = porUnidade.find((arr) => arr.length > 0)
-    if (!base) return []
-    return base.map((row, i) => ({
-      mes: row.mes,
-      mesValue: row.mesValue,
-      entradas: porUnidade.reduce((s, arr) => s + (arr[i]?.entradas ?? 0), 0),
-      saidas: porUnidade.reduce((s, arr) => s + (arr[i]?.saidas ?? 0), 0),
-    }))
-  }, [selectedUnit, fluxoCaixaByUnit])
+  // Carrega as séries dos gráficos quando muda o período ou depois de lançar algo.
+  const unitIdBySlugAll = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const u of UNITS) if (unitDbIds[u.id]) m[u.id] = unitDbIds[u.id].unitId
+    return m
+  }, [unitDbIds])
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    let vivo = true
+    const faixas = faixasDoPeriodo(fluxoP.periodo)
+    loadSerieByUnit(faixas, unitIdBySlugAll).then((dados) => vivo && setFluxoSerie({ faixas, dados }))
+    return () => { vivo = false }
+  }, [fluxoP.periodo, unitIdBySlugAll, unitDbIdsLoading, recarga])
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    let vivo = true
+    const faixas = faixasDoPeriodo(compP.periodo)
+    loadSerieByUnit(faixas, unitIdBySlugAll).then((dados) => vivo && setCompSerie({ faixas, dados }))
+    return () => { vivo = false }
+  }, [compP.periodo, unitIdBySlugAll, unitDbIdsLoading, recarga])
+
+  // Soma as unidades visíveis de cada faixa (as duas quando "Ambas").
+  function linhasDaSerie(serie: { faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null) {
+    if (!serie) return []
+    const slugs = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
+    let acumulado = 0
+    return serie.faixas.map((f, i) => {
+      let entradas = 0
+      let saidas = 0
+      for (const s of slugs) {
+        const d = serie.dados[i]?.[s]
+        if (!d) continue
+        entradas += d.receita + d.recuperacao
+        saidas += d.despesas + d.estornos + d.custos
+      }
+      acumulado += entradas - saidas
+      return { rotulo: f.rotulo, faixa: f, entradas, saidas, saldo: entradas - saidas, acumulado }
+    })
+  }
+  const fluxoChartData = useMemo(() => linhasDaSerie(fluxoSerie), [fluxoSerie, selectedUnit])
+  const compChartData = useMemo(() => linhasDaSerie(compSerie), [compSerie, selectedUnit])
 
   const visibleUnitSlugs = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
   const unitIds = visibleUnitSlugs
@@ -455,90 +464,39 @@ export function Finance() {
 
   const totalDespesasGeral = useMemo(() => filteredExpenses.reduce((s, e) => s + (e.covers_festa_costs ? 0 : e.amount), 0), [filteredExpenses])
 
-  // Antes de salvar uma conta, confere se já não existe um custo de festa
-  // parecido (mesmo valor, ou descrição parecida) lançado numa festa da mesma
-  // unidade no mesmo mês — o mesmo aviso que a Central da festa já faz no
-  // sentido contrário. Só avisa: dá para salvar mesmo assim.
-  async function checkContaParecidaComCusto(unitId: string, valor: number, texto: string) {
-    const { startIso, endIso } = monthBounds(dueDate.slice(0, 7))
-    const { data } = await supabase
-      .from('reservations')
-      .select('id, event_date, client:clients(name), reservation_costs(id, description, amount)')
-      .eq('unit_id', unitId)
-      .neq('status', 'cancelada')
-      .gte('event_date', startIso)
-      .lt('event_date', endIso)
-    const t = texto.trim().toLowerCase()
-    const achados: NonNullable<typeof contaAviso> = []
-    for (const r of (data ?? []) as any[]) {
-      for (const c of r.reservation_costs ?? []) {
-        const desc = String(c.description ?? '').toLowerCase()
-        const mesmoValor = Math.abs(Number(c.amount) - valor) < 0.01
-        const textoParecido = t.length > 2 && desc.length > 2 && (desc.includes(t) || t.includes(desc))
-        if (mesmoValor || textoParecido) {
-          achados.push({ id: c.id, reservationId: r.id, cliente: r.client?.name ?? 'Festa', data: r.event_date, descricao: c.description, valor: Number(c.amount) })
+  // Categorias que já aparecem nas contas e despesas fixas (inclusive as
+  // escritas à mão antes do Novo lançamento), para aparecerem na lista.
+  const categoriasUsadas = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of expenses) if (e.category) set.add(e.category)
+    for (const r of recurring) if (r.category) set.add(r.category)
+    return Array.from(set)
+  }, [expenses, recurring])
+
+  const entradasManuaisVisiveis = useMemo(() => entradasManuais.filter((i) => unitIds.includes(i.unit_id)), [entradasManuais, unitIds])
+
+  function removerEntradaManual(id: string) {
+    const inc = entradasManuais.find((i) => i.id === id)
+    if (!inc) return
+    setEntradasManuais((prev) => prev.filter((i) => i.id !== id))
+    scheduleDelete({
+      label: `Entrada de ${currency(inc.amount)} removida`,
+      commit: async () => {
+        const { error: err } = await supabase.rpc('delete_other_income', { p_id: id })
+        if (err) {
+          setError(friendlyDbError(err.message))
+          setEntradasManuais((prev) => [inc, ...prev])
         }
-      }
-    }
-    return achados.length > 0 ? achados : null
-  }
-
-  async function handleAddExpense(e: FormEvent) {
-    e.preventDefault()
-    await salvarConta({})
-  }
-
-  async function salvarConta(opts: { pularAviso?: boolean; cobreCustos?: boolean }) {
-    const value = Number(amount)
-    if (!value || !description.trim()) return
-
-    const dbIds = unitDbIds[expenseUnit]
-    if (!dbIds) {
-      setError('Não encontrei essa unidade no banco de dados ainda.')
-      return
-    }
-    const cobre = opts.cobreCustos ?? coversFestaCosts
-    if (!cobre && !opts.pularAviso) {
-      const achados = await checkContaParecidaComCusto(dbIds.unitId, value, `${description} ${supplier}`.trim())
-      if (achados) {
-        setContaAviso(achados)
-        return
-      }
-    }
-    setContaAviso(null)
-
-    const finalCategory = category === 'Outros' ? (categoryOutro.trim() || 'Outros') : category
-
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert({
-        unit_id: dbIds.unitId,
-        category: finalCategory,
-        description: description.trim(),
-        supplier: supplier.trim() || null,
-        amount: value,
-        due_date: dueDate,
-        status: effectiveStatus('a_vencer', dueDate),
-        covers_festa_costs: cobre,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      setError('Não foi possível salvar a despesa.')
-      return
-    }
-
-    setExpenses((prev) => [
-      ...prev,
-      { id: data.id, unit_id: expenseUnit, category: data.category, description: data.description, supplier: data.supplier, amount: Number(data.amount), due_date: data.due_date, paid_date: data.paid_date, status: data.status, payment_method: data.payment_method, recurring_expense_id: null, covers_festa_costs: !!data.covers_festa_costs, is_stock_purchase: false, settlement_batch_id: null, settlement_id: null, reservation_id: null, other_items_value: 0 },
-    ])
-    setDescription('')
-    setCoversFestaCosts(false)
-    setSupplier('')
-    setAmount('')
-    setCategoryOutro('')
-    await loadAggregates()
+        await loadAggregates()
+      },
+      undo: async () => {
+        const desc = inc.category && inc.description.startsWith(inc.category) ? inc.description.slice(inc.category.length).replace(/^ — /, '') : inc.description
+        await supabase.rpc('register_other_income', {
+          p_unit: unitDbIds[inc.unit_id]?.unitId, p_category: inc.category, p_description: desc || null, p_amount: inc.amount, p_date: inc.received_date, p_method: inc.payment_method,
+        })
+        await loadAll()
+      },
+    })
   }
 
   // Compra de estoque: exclui pelo banco (desconta estoque e valor juntos). O
@@ -693,63 +651,6 @@ export function Finance() {
     await loadAggregates()
   }
 
-  async function handleAddRecurring(e: FormEvent) {
-    e.preventDefault()
-    const value = Number(recAmount)
-    const day = Math.min(28, Math.max(1, Number(recDay) || 5))
-    if (!value || !recDescription.trim()) return
-
-    const dbIds = unitDbIds[recUnit]
-    if (!dbIds) {
-      setError('Não encontrei essa unidade no banco de dados ainda.')
-      return
-    }
-
-    const finalRecCategory = recCategory === 'Outros' ? (recCategoryOutro.trim() || 'Outros') : recCategory
-    const firstChargeMonth = recComecar === 'proximo_mes' ? `${addMonthsToValue(currentMonthValue(), 1)}-01` : null
-
-    const { data, error } = await supabase
-      .from('recurring_expenses')
-      .insert({
-        unit_id: dbIds.unitId,
-        category: finalRecCategory,
-        description: recDescription.trim(),
-        amount: value,
-        day_of_month: day,
-        active: true,
-        first_charge_month: firstChargeMonth,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      setError('Não foi possível salvar a despesa fixa.')
-      return
-    }
-
-    setRecurring((prev) => [
-      ...prev,
-      {
-        id: data.id,
-        unit_id: recUnit,
-        category: data.category,
-        description: data.description,
-        amount: Number(data.amount),
-        day_of_month: data.day_of_month,
-        active: data.active,
-        first_charge_month: data.first_charge_month,
-      },
-    ])
-    setRecDescription('')
-    setRecAmount('')
-    setRecCategoryOutro('')
-    setRecComecar('este_mes')
-    // Se já pediu pra valer este mês, gera o lançamento pendente na hora —
-    // senão só apareceria depois de recarregar o Painel/Financeiro.
-    if (!firstChargeMonth) await supabase.rpc('ensure_recurring_expenses_current_month')
-    await loadAll()
-  }
-
   async function toggleRecurring(id: string) {
     const current = recurring.find((r) => r.id === id)
     if (!current) return
@@ -860,7 +761,7 @@ export function Finance() {
               <Card>
                 <p className="text-xs text-muted">Entradas do mês</p>
                 <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
-                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de outras entradas (acertos entre unidades, multa e juros)</p>}
+                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de outras entradas (lançadas à mão, acertos entre unidades, multa e juros)</p>}
                 <p className="text-[11px] text-muted mt-0.5 leading-snug">Pagamentos de clientes que você recebeu neste mês, de qualquer festa (inclusive festas de meses futuros).</p>
               </Card>
               <Card>
@@ -914,40 +815,46 @@ export function Finance() {
             </div>
           </Card>
 
-          <Card title={selectedUnit === 'todas' ? `Fluxo de caixa — últimos 6 meses (${UNITS.map((u) => u.name).join(' + ')})` : 'Fluxo de caixa — últimos 6 meses'}>
-            <p className="text-xs text-muted mb-2">Clique numa barra de Entradas ou Saídas pra ver o detalhe daquele mês.</p>
-            <p className="text-xs text-muted mb-2">A barra de saídas do mês atual inclui custos de festas que ainda vão acontecer neste mês.</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={fluxoChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar
-                  dataKey="entradas"
-                  name="Entradas"
-                  fill="#1F7A5C"
-                  radius={[4, 4, 0, 0]}
-                  cursor="pointer"
-                  onClick={(barData: any) => {
-                    const row = barData.payload ?? barData
-                    openFluxoDetalhe(selectedUnit, row.mesValue, row.mes, 'entradas')
-                  }}
-                />
-                <Bar
-                  dataKey="saidas"
-                  name="Saídas"
-                  fill="#B23A3A"
-                  radius={[4, 4, 0, 0]}
-                  cursor="pointer"
-                  onClick={(barData: any) => {
-                    const row = barData.payload ?? barData
-                    openFluxoDetalhe(selectedUnit, row.mesValue, row.mes, 'saidas')
-                  }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} /></div>
+            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).</p>
+            <GraficoSerie
+              dados={fluxoChartData}
+              tipo={fluxoP.tipo}
+              formatar={currency}
+              series={[
+                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas') },
+                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas') },
+              ]}
+            />
+          </Card>
+
+          <Card title={`Comparativo — ${descreverPeriodo(compP.periodo)}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={compP.periodo} onChange={compP.setPeriodo} tipo={compP.tipo} onTipo={compP.setTipo} /></div>
+            <p className="text-xs text-muted mb-2">Entradas, saídas e o que sobrou em cada ponto do período. A linha tracejada é o saldo somado desde o começo do período.</p>
+            <GraficoSerie
+              dados={compChartData}
+              tipo={compP.tipo}
+              formatar={currency}
+              altura={260}
+              series={[
+                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C' },
+                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A' },
+                { chave: 'saldo', nome: 'Saldo', cor: '#59239B' },
+                { chave: 'acumulado', nome: 'Saldo acumulado', cor: '#F2900C', tracejada: true },
+              ]}
+            />
+            {compChartData.length > 0 && (() => {
+              const e = compChartData.reduce((t, r) => t + r.entradas, 0)
+              const sd = compChartData.reduce((t, r) => t + r.saidas, 0)
+              const melhor = compChartData.reduce((m, r) => (r.saldo > m.saldo ? r : m), compChartData[0])
+              const pior = compChartData.reduce((m, r) => (r.saldo < m.saldo ? r : m), compChartData[0])
+              return (
+                <p className="text-xs text-muted mt-2">
+                  No período: entraram {currency(e)}, saíram {currency(sd)}, saldo de {currency(e - sd)}. Melhor: {melhor.rotulo} ({currency(melhor.saldo)}). Pior: {pior.rotulo} ({currency(pior.saldo)}).
+                </p>
+              )
+            })()}
           </Card>
         </>
       )}
@@ -1027,202 +934,18 @@ export function Finance() {
           </table>
         )}
 
-        <Can permission="action:financeiro.despesas_fixas">
-          <form onSubmit={handleAddRecurring} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <select value={recUnit} onChange={(e) => setRecUnit(e.target.value)} className="border border-line rounded-lg px-3 py-2 text-sm">
-              {UNITS.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-            <select value={recCategory} onChange={(e) => setRecCategory(e.target.value as ExpenseCategory)} className="border border-line rounded-lg px-3 py-2 text-sm">
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            {recCategory === 'Outros' && (
-              <input
-                type="text"
-                value={recCategoryOutro}
-                onChange={(e) => setRecCategoryOutro(e.target.value)}
-                placeholder="Qual categoria?"
-                className="border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            )}
-            <input
-              type="text"
-              value={recDescription}
-              onChange={(e) => setRecDescription(e.target.value)}
-              placeholder="Descrição (ex: Aluguel)"
-              className="border border-line rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              type="number"
-              value={recAmount}
-              onChange={(e) => setRecAmount(e.target.value)}
-              placeholder="Valor mensal"
-              className="border border-line rounded-lg px-3 py-2 text-sm"
-            />
-            <select
-              value={recComecar}
-              onChange={(e) => setRecComecar(e.target.value as 'este_mes' | 'proximo_mes')}
-              className="border border-line rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="este_mes">Já descontar este mês</option>
-              <option value="proximo_mes">Começar só mês que vem</option>
-            </select>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min={1}
-                max={28}
-                value={recDay}
-                onChange={(e) => setRecDay(e.target.value)}
-                placeholder="Dia"
-                className="w-20 border border-line rounded-lg px-3 py-2 text-sm"
-              />
-              <Button type="submit" className="flex-1 justify-center">
-                <Plus className="w-4 h-4" /> Adicionar
-              </Button>
-            </div>
-          </form>
-        </Can>
+        <p className="text-xs text-muted">Para criar uma despesa fixa, use <strong>Novo lançamento → Conta a pagar → Repete todo mês</strong>.</p>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Can permission="action:financeiro.registrar_despesa">
-        <Card title="Registrar conta a pagar" className="lg:col-span-2">
-          <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-muted mb-1">Unidade</label>
-              <select
-                value={expenseUnit}
-                onChange={(e) => setExpenseUnit(e.target.value)}
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              >
-                {UNITS.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Categoria</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              >
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              {category === 'Outros' && (
-                <input
-                  type="text"
-                  value={categoryOutro}
-                  onChange={(e) => setCategoryOutro(e.target.value)}
-                  placeholder="Qual categoria?"
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm mt-2"
-                />
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs text-muted mb-1">Descrição</label>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex: Conta de luz, material de limpeza..."
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
-              <input
-                type="text"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                placeholder="Nome do fornecedor"
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Vencimento</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Valor</label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0,00"
-                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div className="sm:col-span-2 pt-2 border-t border-line flex flex-wrap items-center justify-between gap-2 bg-purple-light/60 rounded-lg px-3 py-2.5">
-              <p className="text-xs text-purple-dark">
-                Para compras de estoque, use <strong>Estoque → Entrada de compra</strong>: ela soma no estoque e cria esta conta sozinha.
-              </p>
-              <Link to="/estoque?entrada=1" className="text-xs font-medium text-purple whitespace-nowrap">Abrir Entrada de compra →</Link>
-            </div>
-
-            <label className="sm:col-span-2 flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={coversFestaCosts}
-                onChange={(e) => setCoversFestaCosts(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                Esta conta paga custos que já estão lançados nas festas
-                <span className="block text-xs text-muted">
-                  Ex: nota do fornecedor de docinhos que já entra sozinha como despesa fixa de cada festa. Ela fica na
-                  lista para você controlar o vencimento, mas não entra nos totais — senão o gasto conta duas vezes.
-                </span>
-              </span>
-            </label>
-
-            {contaAviso && (
-              <div className="sm:col-span-2 bg-amber-light text-amber text-sm rounded-lg px-3 py-2.5 space-y-2">
-                <p className="font-medium">Já existe um custo de festa parecido neste mês</p>
-                <ul className="text-xs space-y-0.5">
-                  {contaAviso.map((c) => (
-                    <li key={c.id}>
-                      • <Link to={`/reservas/${c.reservationId}`} className="underline">{c.cliente}</Link> ({format(parseISO(c.data), 'dd/MM')}): {c.descricao} — {currency(c.valor)}
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs">Se esta conta paga esse mesmo custo, marque como "paga custos das festas" para não contar duas vezes.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" onClick={() => setContaAviso(null)}>Voltar</Button>
-                  <Button type="button" variant="secondary" onClick={() => salvarConta({ cobreCustos: true, pularAviso: true })}>Marcar como "paga custos das festas" e salvar</Button>
-                  <Button type="button" onClick={() => salvarConta({ pularAviso: true })}>Salvar mesmo assim</Button>
-                </div>
-              </div>
-            )}
-
-            <div className="sm:col-span-2 flex items-end">
-              <Button type="submit" className="w-full justify-center">
-                <Plus className="w-4 h-4" /> Adicionar conta
-              </Button>
-            </div>
-          </form>
-          <p className="text-xs text-muted mt-3">
-            Use esta área para gastos gerais do negócio. Custos de uma festa específica (buffet, decoração, DJ, equipe)
-            são lançados na própria festa (Central da festa → Financeiro), não aqui.
-          </p>
-        </Card>
-        </Can>
+        <div className="lg:col-span-2">
+          <NovoLancamento
+            unitDbIds={unitDbIds}
+            defaultUnit={selectedUnit === 'todas' ? UNITS[0]?.id ?? '' : selectedUnit}
+            categoriasUsadas={categoriasUsadas}
+            onSaved={loadAll}
+          />
+        </div>
 
         <Card title="Despesas por categoria">
           {porCategoria.length === 0 ? (
@@ -1351,6 +1074,45 @@ export function Finance() {
           </tbody>
         </table>
       </Card>
+
+      {entradasManuaisVisiveis.length > 0 && (
+        <Card title="Entradas lançadas à mão">
+          <p className="text-xs text-muted mb-2">Dinheiro que entrou e não era pagamento de festa (Novo lançamento → Entrada de dinheiro → Outra entrada). Pagamentos de festa ficam na própria festa.</p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted border-b border-line">
+                {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
+                <th className="pb-3 font-medium">Recebido em</th>
+                <th className="pb-3 font-medium">Tipo</th>
+                <th className="pb-3 font-medium">Descrição</th>
+                <th className="pb-3 font-medium">Valor</th>
+                <th className="pb-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {entradasManuaisVisiveis.map((i) => (
+                <tr key={i.id}>
+                  {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === i.unit_id)?.name}</td>}
+                  <td className="py-3 text-muted">{new Date(i.received_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td className="py-3">{i.category ?? 'Outras entradas'}</td>
+                  <td className="py-3">
+                    {i.description}
+                    {i.payment_method && <p className="text-xs text-muted">{PAYMENT_METHOD_LABEL[i.payment_method as PaymentMethod] ?? i.payment_method}</p>}
+                  </td>
+                  <td className="py-3 text-teal font-medium">{currency(i.amount)}</td>
+                  <td className="py-3 text-right">
+                    <Can permission="action:financeiro.remover">
+                      <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </Can>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {purchaseDeletion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

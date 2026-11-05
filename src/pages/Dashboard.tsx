@@ -3,7 +3,6 @@ import { InstallmentNotices } from '../components/InstallmentNotices'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { addDays, format, parseISO, differenceInCalendarDays, differenceInCalendarMonths } from 'date-fns'
 import { AlertTriangle, Sparkles, BellRing, ArrowLeftRight } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { DashboardMascot } from '../components/mascot/DashboardMascot'
@@ -18,8 +17,10 @@ import { loadLegacyMenuFields } from '../lib/menuSections'
 import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { describeAudit, type AuditEntry } from '../lib/auditLabels'
-import { currentMonthValue, monthBounds, lastNMonths, daysInMonth } from '../lib/monthUtils'
-import { loadMonthByUnit, loadExpectedRemainingByUnit, type MonthResult } from '../lib/financeAggregates'
+import { currentMonthValue, monthBounds, daysInMonth } from '../lib/monthUtils'
+import { loadMonthByUnit, loadExpectedRemainingByUnit, loadSerieByUnit, type MonthResult } from '../lib/financeAggregates'
+import { faixasDoPeriodo, descreverPeriodo } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 
 const CLOSED_STATUSES = ['confirmada', 'sinal_pago', 'quitada']
 
@@ -108,6 +109,24 @@ function nextBirthdayOccurrence(birthdayIso: string, today: Date) {
 
 export function Dashboard() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
+  // Faturamento recebido por unidade, no período escolhido.
+  const fatP = usePeriodo('painel-faturamento', 6, 'barras')
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    const unitIdBySlug: Record<string, string> = {}
+    for (const u of UNITS) if (unitDbIds[u.id]) unitIdBySlug[u.id] = unitDbIds[u.id].unitId
+    const faixas = faixasDoPeriodo(fatP.periodo)
+    let vivo = true
+    loadSerieByUnit(faixas, unitIdBySlug).then((dados) => {
+      if (!vivo) return
+      setFaturamentoMensal(faixas.map((f, i) => {
+        const entry: Record<string, string | number> = { rotulo: f.rotulo }
+        for (const slug of Object.keys(unitIdBySlug)) entry[slug] = dados[i]?.[slug]?.receita ?? 0
+        return entry
+      }))
+    })
+    return () => { vivo = false }
+  }, [fatP.periodo, unitDbIds, unitDbIdsLoading])
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -224,16 +243,6 @@ export function Dashboard() {
     }
     setPrevistoByUnit(previsto)
 
-    const months = lastNMonths(6)
-    const history = await Promise.all(
-      months.map(async ({ value, label }) => {
-        const data = await loadMonthByUnit(value, unitIdBySlug)
-        const entry: any = { mes: label }
-        for (const slug of Object.keys(unitIdBySlug)) entry[slug] = data[slug]?.receita ?? 0
-        return entry
-      }),
-    )
-    setFaturamentoMensal(history)
 
     const in7days = format(addDays(new Date(), 7), 'yyyy-MM-dd')
     const today = format(new Date(), 'yyyy-MM-dd')
@@ -718,22 +727,15 @@ export function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card title="Faturamento recebido por unidade — últimos 6 meses" className={avisosFinanceiroNoTopo ? 'lg:col-span-3' : 'lg:col-span-2'}>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={faturamentoMensal}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                  <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                  <Tooltip
-                    formatter={(value: number) => currency(value)}
-                    contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  {UNITS.map((u) => (
-                    <Bar key={u.id} dataKey={u.id} name={u.name} fill={u.color} radius={[4, 4, 0, 0]} />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
+            <Card title={`Faturamento recebido por unidade — ${descreverPeriodo(fatP.periodo)}`} className={avisosFinanceiroNoTopo ? 'lg:col-span-3' : 'lg:col-span-2'}>
+              <div className="mb-3"><PeriodoGrafico periodo={fatP.periodo} onChange={fatP.setPeriodo} tipo={fatP.tipo} onTipo={fatP.setTipo} /></div>
+              <GraficoSerie
+                dados={faturamentoMensal}
+                tipo={fatP.tipo}
+                altura={260}
+                formatar={currency}
+                series={UNITS.map((u) => ({ chave: u.id, nome: u.name, cor: u.color }))}
+              />
             </Card>
 
             {!avisosFinanceiroNoTopo && saldoEmAbertoCard}

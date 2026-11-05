@@ -2,13 +2,14 @@ import { useCurrentUserName } from '../lib/AuthContext'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, Target } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { currentMonthValue, addMonthsToValue, monthBounds } from '../lib/monthUtils'
-import { loadMonthByUnit, loadExpectedRemainingByUnit, type MonthResult } from '../lib/financeAggregates'
+import { loadMonthByUnit, loadExpectedRemainingSerie, type MonthResult } from '../lib/financeAggregates'
+import { faixasDoPeriodo, descreverPeriodo } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -33,7 +34,8 @@ export function Reports() {
   const [loading, setLoading] = useState(true)
   const [goals, setGoals] = useState<Record<string, number>>({})
   const [byUnit, setByUnit] = useState<Record<string, MonthResult>>({})
-  const [projecao, setProjecao] = useState<{ mes: string; valor: number }[]>([])
+  const [projecao, setProjecao] = useState<Record<string, string | number>[]>([])
+  const projP = usePeriodo('relatorios-projecao', 6, 'barras')
   const [goalInput, setGoalInput] = useState('')
   const [goalUnit, setGoalUnit] = useState(UNITS[0].id)
   const [exportLog, setExportLog] = useState<{ id: string; quando: string; usuario: string }[]>([])
@@ -70,17 +72,27 @@ export function Reports() {
     }
     setGoals(goalsBySlug)
 
-    const proj = await Promise.all(
-      [1, 2, 3, 4].map(async (i) => {
-        const value = addMonthsToValue(currentMonth, i)
-        const valor = await loadExpectedRemainingByUnit(value, unitIdBySlug)
-        const label = new Date(`${value}-01T00:00:00`).toLocaleDateString('pt-BR', { month: 'short' })
-        return { mes: label.charAt(0).toUpperCase() + label.slice(1).replace('.', ''), valor }
-      }),
-    )
-    setProjecao(proj)
     setLoading(false)
   }
+
+  // Projeção de recebimento no período escolhido (por unidade visível).
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    const faixas = faixasDoPeriodo(projP.periodo, { futuro: true })
+    let vivo = true
+    Promise.all(unitIds.map((slug) => (unitDbIds[slug] ? loadExpectedRemainingSerie(faixas, [unitDbIds[slug].unitId]) : Promise.resolve(faixas.map(() => 0))))).then((porUnidade) => {
+      if (!vivo) return
+      setProjecao(faixas.map((f, i) => {
+        const row: Record<string, string | number> = { rotulo: f.rotulo, total: 0 }
+        unitIds.forEach((slug, k) => {
+          row[slug] = porUnidade[k][i]
+          row.total = (row.total as number) + porUnidade[k][i]
+        })
+        return row
+      }))
+    })
+    return () => { vivo = false }
+  }, [projP.periodo, unitDbIds, unitDbIdsLoading, selectedUnit])
 
   const goalProgress = useMemo(
     () =>
@@ -290,19 +302,19 @@ export function Reports() {
             </table>
           </Card>
 
-          <Card title="Projeção de recebimento — próximos meses">
+          <Card title={`Projeção de recebimento — ${descreverPeriodo(projP.periodo, { futuro: true })}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={projP.periodo} onChange={projP.setPeriodo} tipo={projP.tipo} onTipo={projP.setTipo} futuro /></div>
             <p className="text-xs text-muted mb-3">
-              Saldo ainda não recebido das festas já agendadas (não canceladas) em cada mês.
+              Saldo ainda não recebido das festas já agendadas (não canceladas), pela data da festa.
             </p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={projecao}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                <Bar dataKey="valor" name="A receber" fill="#6D28D9" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <GraficoSerie
+              dados={projecao}
+              tipo={projP.tipo}
+              formatar={currency}
+              series={unitIds.length > 1
+                ? unitIds.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6D28D9', pilha: projP.tipo === 'barras' ? 'p' : undefined }))
+                : [{ chave: 'total', nome: 'A receber', cor: '#6D28D9' }]}
+            />
           </Card>
 
           {exportLog.length > 0 && (

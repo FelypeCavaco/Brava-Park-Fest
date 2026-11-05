@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient'
 import { monthBounds } from './monthUtils'
+import { indiceDaFaixa, limitesDasFaixas, type Faixa } from './periodo'
 
 export interface MonthResult {
   receita: number // pagamentos recebidos no mês (bruto)
@@ -112,4 +113,111 @@ export async function loadExpectedRemainingByUnit(monthValue: string, unitIdBySl
     const saldo = Number(r.final_value) - pago
     return sum + Math.max(0, saldo)
   }, 0)
+}
+
+// ---------------------------------------------------------------------------
+// Séries para os gráficos com período escolhido (ver lib/periodo.ts): mesma
+// conta de loadMonthByUnit, mas para várias faixas (dias ou meses) buscando o
+// intervalo inteiro de uma vez e separando por faixa aqui.
+
+async function buscarTudo<T>(montar: () => any): Promise<T[]> {
+  const out: T[] = []
+  for (let de = 0; de < 50000; de += 1000) {
+    const { data, error } = await montar().range(de, de + 999)
+    if (error || !data) break
+    out.push(...(data as T[]))
+    if (data.length < 1000) break
+  }
+  return out
+}
+
+function vazio(): MonthResult {
+  return { receita: 0, taxasCartao: 0, despesas: 0, estornos: 0, recuperacao: 0, custos: 0, festas: 0, ticketMedio: 0 }
+}
+
+export async function loadSerieByUnit(faixas: Faixa[], unitIdBySlug: Record<string, string>): Promise<Record<string, MonthResult>[]> {
+  const slugs = Object.keys(unitIdBySlug)
+  const result = faixas.map(() => {
+    const r: Record<string, MonthResult> = {}
+    for (const s of slugs) r[s] = vazio()
+    return r
+  })
+  if (faixas.length === 0 || slugs.length === 0) return result
+  const { ini, fim } = limitesDasFaixas(faixas)
+  const idx = indiceDaFaixa(faixas)
+  const slugByUnitId: Record<string, string> = {}
+  for (const s of slugs) slugByUnitId[unitIdBySlug[s]] = s
+  const unitIds = Object.values(unitIdBySlug)
+
+  const [pagamentos, reservas, despesas, taxas, entradas] = await Promise.all([
+    buscarTudo<any>(() => supabase.from('payments').select('id, amount, payment_date, payment_method, reservation:reservations!inner(unit_id)').in('reservation.unit_id', unitIds).gte('payment_date', ini).lt('payment_date', fim).order('id')),
+    buscarTudo<any>(() => supabase.from('reservations').select('id, unit_id, final_value, event_date').in('unit_id', unitIds).neq('status', 'cancelada').gte('event_date', ini).lt('event_date', fim).order('id')),
+    buscarTudo<any>(() => supabase.from('expenses').select('id, amount, unit_id, category, paid_date').in('unit_id', unitIds).eq('status', 'pago').eq('covers_festa_costs', false).gte('paid_date', ini).lt('paid_date', fim).order('id')),
+    loadFeePercentByMethod(),
+    buscarTudo<any>(() => supabase.from('other_incomes').select('id, amount, unit_id, received_date').in('unit_id', unitIds).gte('received_date', ini).lt('received_date', fim).order('id')),
+  ])
+
+  for (const p of pagamentos) {
+    const i = idx(p.payment_date)
+    const slug = slugByUnitId[p.reservation?.unit_id]
+    if (i < 0 || !slug) continue
+    result[i][slug].receita += Number(p.amount)
+    if (p.payment_method) result[i][slug].taxasCartao += (Number(p.amount) * (taxas[p.payment_method] ?? 0)) / 100
+  }
+  for (const e of despesas) {
+    const i = idx(e.paid_date)
+    const slug = slugByUnitId[e.unit_id]
+    if (i < 0 || !slug) continue
+    if (e.category === 'Estorno') result[i][slug].estornos += Number(e.amount)
+    else result[i][slug].despesas += Number(e.amount)
+  }
+  for (const o of entradas) {
+    const i = idx(o.received_date)
+    const slug = slugByUnitId[o.unit_id]
+    if (i >= 0 && slug) result[i][slug].recuperacao += Number(o.amount)
+  }
+  const faixaDaReserva: Record<string, number> = {}
+  const unidadeDaReserva: Record<string, string> = {}
+  const somaTicket = faixas.map(() => ({} as Record<string, number>))
+  for (const r of reservas) {
+    const i = idx(r.event_date)
+    const slug = slugByUnitId[r.unit_id]
+    if (i < 0 || !slug) continue
+    faixaDaReserva[r.id] = i
+    unidadeDaReserva[r.id] = slug
+    result[i][slug].festas += 1
+    somaTicket[i][slug] = (somaTicket[i][slug] ?? 0) + Number(r.final_value)
+  }
+  result.forEach((r, i) => {
+    for (const s of slugs) r[s].ticketMedio = r[s].festas > 0 ? (somaTicket[i][s] ?? 0) / r[s].festas : 0
+  })
+  const ids = Object.keys(faixaDaReserva)
+  for (let k = 0; k < ids.length; k += 150) {
+    const lote = ids.slice(k, k + 150)
+    const custos = await buscarTudo<any>(() => supabase.from('reservation_costs').select('id, amount, reservation_id').in('reservation_id', lote).order('id'))
+    for (const c of custos) {
+      const i = faixaDaReserva[c.reservation_id]
+      const slug = unidadeDaReserva[c.reservation_id]
+      if (i !== undefined && slug) result[i][slug].custos += Number(c.amount)
+    }
+  }
+  return result
+}
+
+// Saldo ainda a receber das festas (final_value − pago), por faixa da data da festa.
+export async function loadExpectedRemainingSerie(faixas: Faixa[], unitIds: string[]): Promise<number[]> {
+  const out = faixas.map(() => 0)
+  if (faixas.length === 0 || unitIds.length === 0) return out
+  const { ini, fim } = limitesDasFaixas(faixas)
+  const idx = indiceDaFaixa(faixas)
+  const reservas = await buscarTudo<any>(() =>
+    supabase.from('reservations').select('id, event_date, final_value, payments(amount)').in('unit_id', unitIds).neq('status', 'cancelada').gte('event_date', ini).lt('event_date', fim).order('id'),
+  )
+  for (const r of reservas) {
+    const i = idx(r.event_date)
+    if (i < 0) continue
+    const pago = (r.payments ?? []).reduce((s: number, p: any) => s + Number(p.amount), 0)
+    out[i] += Math.max(0, Number(r.final_value) - pago)
+  }
+  return out
 }

@@ -38,6 +38,7 @@ const ABAS: Record<string, string> = {
   recurring_expenses: 'Despesas fixas',
   festa_fixed_costs: 'Custos fixos das festas',
   other_incomes: 'Outras entradas',
+  finance_categories: 'Categorias do financeiro',
   inventory_items: 'Estoque',
   suppliers: 'Fornecedores',
   staff_members: 'Equipe',

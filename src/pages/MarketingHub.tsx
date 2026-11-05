@@ -7,7 +7,8 @@ import { Link } from 'react-router-dom'
 import { addDays, addMonths, differenceInCalendarDays, format, getDay, parseISO, startOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { AlertTriangle, Lightbulb } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { faixasDoPeriodo, descreverPeriodo, limitesDasFaixas } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit, UNITS, unitColor } from '../lib/UnitContext'
@@ -85,6 +86,8 @@ export function MarketingHub() {
     return v ?? 'resumo'
   })
   const [meses, setMeses] = useState(12)
+  const ocupP = usePeriodo('marketing-ocupacao', 12, 'barras')
+  const semanaP = usePeriodo('marketing-dia-semana', 12, 'barras')
   const [loading, setLoading] = useState(true)
   const [festas, setFestas] = useState<Festa[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -180,16 +183,20 @@ export function MarketingHub() {
     const n = festas.filter((f) => f.slug === slug && f.status !== 'cancelada' && f.eventDate >= mesIso && f.eventDate < format(fim, 'yyyy-MM-dd')).length
     return { n, dias, pct: pct(n, dias) }
   }
-  const mesesGrafico = useMemo(() => {
-    const out: string[] = []
-    for (let i = -(meses - 1); i <= 3; i++) out.push(format(startOfMonth(addMonths(parseISO(hoje), i)), 'yyyy-MM-dd'))
-    return out
-  }, [meses, hoje])
-  const dadosOcupacao = mesesGrafico.map((m) => {
-    const row: Record<string, string | number> = { mes: format(parseISO(m), 'MMM/yy', { locale: ptBR }) }
-    for (const s of unidades) row[s] = ocupacaoMes(s, m).pct
+  // Ocupação é por mês (uma festa por dia): o gráfico é sempre mês a mês.
+  const faixasOcupacao = useMemo(() => faixasDoPeriodo(ocupP.periodo, { granularidade: 'mensal', aFrente: 3 }), [ocupP.periodo])
+  const dadosOcupacao = faixasOcupacao.map((f) => {
+    const row: Record<string, string | number> = { rotulo: f.rotulo }
+    for (const s of unidades) row[s] = ocupacaoMes(s, f.ini).pct
     return row
   })
+  // Dia da semana: período escolhido (em "meses", até hoje).
+  const semanaDeAte = useMemo(() => {
+    const { ini, fim } = limitesDasFaixas(faixasDoPeriodo(semanaP.periodo))
+    let ate = format(addDays(parseISO(fim), -1), 'yyyy-MM-dd')
+    if (semanaP.periodo.modo === 'meses' && ate > hoje) ate = hoje
+    return { de: ini, ate }
+  }, [semanaP.periodo, hoje])
 
   function ocupacaoDiaSemana(slug: string, de: string, ate: string) {
     const totais = Array(7).fill(0)
@@ -200,7 +207,7 @@ export function MarketingHub() {
   }
   const dadosDiaSemana = DIAS.map((d, i) => {
     const row: Record<string, string | number> = { dia: d }
-    for (const s of unidades) row[s] = ocupacaoDiaSemana(s, inicio, hoje)[i].pct
+    for (const s of unidades) row[s] = ocupacaoDiaSemana(s, semanaDeAte.de, semanaDeAte.ate)[i].pct
     return row
   })
 
@@ -477,32 +484,16 @@ export function MarketingHub() {
 
           {aba === 'ocupacao' && (
             <>
-              <Card title="Ocupação por mês (inclui os próximos 3 meses)">
-                <p className="text-[11px] text-muted mb-2">% dos dias do mês com festa em cada unidade (uma festa por dia).</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={dadosOcupacao} barGap={2}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                    <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                    <YAxis unit="%" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                    <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={unitColor(s)} radius={[4, 4, 0, 0]} />)}
-                  </BarChart>
-                </ResponsiveContainer>
+              <Card title={`Ocupação por mês — ${descreverPeriodo(ocupP.periodo, { granularidade: 'mensal', aFrente: 3 })}`}>
+                <div className="mb-3"><PeriodoGrafico periodo={ocupP.periodo} onChange={ocupP.setPeriodo} tipo={ocupP.tipo} onTipo={ocupP.setTipo} mensal /></div>
+                <p className="text-[11px] text-muted mb-2">% dos dias do mês com festa em cada unidade (uma festa por dia). Em "Comparar meses" entram também os próximos 3 meses.</p>
+                <GraficoSerie dados={dadosOcupacao} tipo={ocupP.tipo} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s) }))} />
               </Card>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card title="Ocupação por dia da semana (no período)">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={dadosDiaSemana} barGap={2}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                      <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                      <YAxis unit="%" tick={{ fontSize: 11, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                      <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      {unidades.map((s) => <Bar key={s} dataKey={s} name={nomeUnidade(s)} fill={unitColor(s)} radius={[4, 4, 0, 0]} />)}
-                    </BarChart>
-                  </ResponsiveContainer>
-                  <Tabela cab={['Dia', ...unidades.map(nomeUnidade)]} linhas={DIAS.map((d, i) => [d, ...unidades.map((s) => { const o = ocupacaoDiaSemana(s, inicio, hoje)[i]; return `${o.pct}% (${o.n} de ${o.total})` })])} />
+                <Card title={`Ocupação por dia da semana — ${descreverPeriodo(semanaP.periodo)}`}>
+                  <div className="mb-3"><PeriodoGrafico periodo={semanaP.periodo} onChange={semanaP.setPeriodo} tipo={semanaP.tipo} onTipo={semanaP.setTipo} /></div>
+                  <GraficoSerie dados={dadosDiaSemana.map((d) => ({ ...d, rotulo: d.dia }))} tipo={semanaP.tipo} altura={220} formatar={(v) => `${v}%`} larguraEixo={40} series={unidades.map((s) => ({ chave: s, nome: nomeUnidade(s), cor: unitColor(s) }))} />
+                  <Tabela cab={['Dia', ...unidades.map(nomeUnidade)]} linhas={DIAS.map((d, i) => [d, ...unidades.map((s) => { const o = ocupacaoDiaSemana(s, semanaDeAte.de, semanaDeAte.ate)[i]; return `${o.pct}% (${o.n} de ${o.total})` })])} />
                 </Card>
                 <Card title="Datas livres de sexta a domingo (próximos 60 dias)">
                   <p className="text-[11px] text-muted mb-2">Onde vale fazer promoção.</p>

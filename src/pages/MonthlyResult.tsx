@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
-import { currentMonthValue, lastNMonths } from '../lib/monthUtils'
-import { loadMonthByUnit, type MonthResult } from '../lib/financeAggregates'
+import { currentMonthValue } from '../lib/monthUtils'
+import { faixasDoPeriodo, descreverPeriodo, type Faixa } from '../lib/periodo'
+import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
+import { loadMonthByUnit, loadSerieByUnit, type MonthResult } from '../lib/financeAggregates'
 
 // Lucro = receita − estornos − taxas − despesas gerais − custos das festas
 // + recuperação de custo de estoque (acerto recebido de outra unidade, que
@@ -23,7 +24,17 @@ export function MonthlyResult() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const [loading, setLoading] = useState(true)
   const [byUnit, setByUnit] = useState<Record<string, MonthResult>>({})
-  const [history, setHistory] = useState<{ mes: string; lucro: number }[]>([])
+  const lucroP = usePeriodo('resultado-lucro', 6, 'linhas')
+  const [serie, setSerie] = useState<{ faixas: Faixa[]; dados: Record<string, MonthResult>[] } | null>(null)
+  useEffect(() => {
+    if (unitDbIdsLoading) return
+    const unitIdBySlug: Record<string, string> = {}
+    for (const u of UNITS) if (unitDbIds[u.id]) unitIdBySlug[u.id] = unitDbIds[u.id].unitId
+    const faixas = faixasDoPeriodo(lucroP.periodo)
+    let vivo = true
+    loadSerieByUnit(faixas, unitIdBySlug).then((dados) => vivo && setSerie({ faixas, dados }))
+    return () => { vivo = false }
+  }, [lucroP.periodo, unitDbIds, unitDbIdsLoading])
 
   const unitIds = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
 
@@ -39,17 +50,23 @@ export function MonthlyResult() {
     const current = await loadMonthByUnit(currentMonthValue(), unitIdBySlug)
     setByUnit(current)
 
-    const months = lastNMonths(6)
-    const hist = await Promise.all(
-      months.map(async ({ value, label }) => {
-        const data = await loadMonthByUnit(value, unitIdBySlug)
-        const lucro = Object.values(data).reduce((s, r) => s + lucroDe(r), 0)
-        return { mes: label, lucro }
-      }),
-    )
-    setHistory(hist)
     setLoading(false)
   }
+
+  const unidadesGrafico = selectedUnit === 'todas' ? UNITS.map((u) => u.id) : [selectedUnit]
+  const historico = useMemo(() => {
+    if (!serie) return []
+    return serie.faixas.map((f, i) => {
+      const row: Record<string, string | number> = { rotulo: f.rotulo, lucro: 0 }
+      for (const slug of unidadesGrafico) {
+        const r = serie.dados[i]?.[slug]
+        const l = r ? lucroDe(r) : 0
+        row[slug] = l
+        row.lucro = (row.lucro as number) + l
+      }
+      return row
+    })
+  }, [serie, selectedUnit])
 
   const porUnidade = useMemo(
     () =>
@@ -195,16 +212,17 @@ export function MonthlyResult() {
             </Card>
           )}
 
-          <Card title="Lucro líquido — últimos 6 meses">
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={history}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2DBEE" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6E6880' }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip formatter={(value: number) => currency(value)} contentStyle={{ borderRadius: 8, borderColor: '#E2DBEE', fontSize: 13 }} />
-                <Line type="monotone" dataKey="lucro" name="Lucro líquido" stroke="#1F7A5C" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <Card title={`Lucro líquido — ${descreverPeriodo(lucroP.periodo)}`}>
+            <div className="mb-3"><PeriodoGrafico periodo={lucroP.periodo} onChange={lucroP.setPeriodo} tipo={lucroP.tipo} onTipo={lucroP.setTipo} /></div>
+            <GraficoSerie
+              dados={historico}
+              tipo={lucroP.tipo}
+              formatar={currency}
+              series={[
+                ...(unidadesGrafico.length > 1 ? unidadesGrafico.map((slug) => ({ chave: slug, nome: UNITS.find((u) => u.id === slug)?.name ?? slug, cor: UNITS.find((u) => u.id === slug)?.color ?? '#6E6880', tracejada: true })) : []),
+                { chave: 'lucro', nome: unidadesGrafico.length > 1 ? 'Lucro líquido (total)' : 'Lucro líquido', cor: '#1F7A5C' },
+              ]}
+            />
           </Card>
         </>
       )}

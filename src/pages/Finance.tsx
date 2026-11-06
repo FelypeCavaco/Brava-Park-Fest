@@ -121,8 +121,9 @@ export function Finance() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [editSupplier, setEditSupplier] = useState('')
-  const [editCategory, setEditCategory] = useState<ExpenseCategory>(EXPENSE_CATEGORIES[0])
-  const [editCategoryOutro, setEditCategoryOutro] = useState('')
+  const [editCategory, setEditCategory] = useState<string>(EXPENSE_CATEGORIES[0])
+  const [editNovaCat, setEditNovaCat] = useState<string | null>(null)
+  const [categoriasCriadas, setCategoriasCriadas] = useState<string[]>([])
   const [editAmount, setEditAmount] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
   const [editStatus, setEditStatus] = useState<PayableStatus>('a_vencer')
@@ -203,6 +204,8 @@ export function Finance() {
       grouped[it.expense_id] = list
     }
     setExpenseItemsByExpense(grouped)
+    const { data: cats } = await supabase.from('finance_categories').select('kind, name').eq('kind', 'despesa').order('name')
+    setCategoriasCriadas((cats ?? []).map((c) => c.name))
     setEntradasManuais((incs ?? []).map((i: any) => ({ id: i.id, unit_id: dbIdToSlug[i.unit_id] ?? '', category: i.category ?? null, description: i.description, amount: Number(i.amount), received_date: i.received_date, payment_method: i.payment_method })))
     setLoading(false)
 
@@ -526,6 +529,34 @@ export function Finance() {
     return Array.from(set)
   }, [expenses, recurring])
 
+  const listaCategoriasDespesa = useMemo(() => {
+    const base = EXPENSE_CATEGORIES.filter((c) => c !== 'Outros') as string[]
+    const extra = [...categoriasCriadas, ...categoriasUsadas].filter((c) => c && c !== 'Estorno' && c !== 'Outros')
+    const unicos: string[] = []
+    for (const c of [...base, ...extra]) if (!unicos.some((u) => u.toLowerCase() === c.toLowerCase())) unicos.push(c)
+    return [...unicos.slice(0, base.length), ...unicos.slice(base.length).sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Outros']
+  }, [categoriasCriadas, categoriasUsadas])
+
+  // Cria a categoria nova na hora (no modal de edição) e já seleciona ela.
+  async function criarCategoriaEdicao() {
+    const nome = (editNovaCat ?? '').trim().replace(/\s+/g, ' ')
+    if (!nome) return
+    const existente = listaCategoriasDespesa.find((c) => c.toLowerCase() === nome.toLowerCase())
+    if (existente) {
+      setEditCategory(existente)
+      setEditNovaCat(null)
+      return
+    }
+    const { error: err } = await supabase.from('finance_categories').insert({ kind: 'despesa', name: nome })
+    if (err && !/duplicate|unique/i.test(err.message)) {
+      setError(/finance_categories/.test(err.message) ? 'Falta rodar a migração 087 no banco.' : friendlyDbError(err.message))
+      return
+    }
+    setCategoriasCriadas((p) => [...p, nome])
+    setEditCategory(nome)
+    setEditNovaCat(null)
+  }
+
   const entradasManuaisVisiveis = useMemo(() => entradasManuais.filter((i) => unitIds.includes(i.unit_id)), [entradasManuais, unitIds])
 
   function removerEntradaManual(id: string) {
@@ -644,9 +675,8 @@ export function Finance() {
     setEditingExpense(expense)
     setEditDescription(expense.description ?? '')
     setEditSupplier(expense.supplier ?? '')
-    const isKnownCategory = (EXPENSE_CATEGORIES as readonly string[]).includes(expense.category)
-    setEditCategory(isKnownCategory ? expense.category : 'Outros')
-    setEditCategoryOutro(isKnownCategory ? '' : expense.category)
+    setEditCategory(expense.category || 'Outros')
+    setEditNovaCat(null)
     setEditAmount(String(expense.amount))
     setEditDueDate(expense.due_date)
     setEditStatus(forcedStatus ?? expense.status)
@@ -660,7 +690,7 @@ export function Finance() {
     if (!editingExpense) return
     const value = Number(editAmount)
     if (!value || !editDescription.trim()) return
-    const finalCategory = editCategory === 'Outros' ? editCategoryOutro.trim() || 'Outros' : editCategory
+    const finalCategory = editCategory
 
     const payload: Record<string, unknown> = {
       description: editDescription.trim(),
@@ -1288,23 +1318,37 @@ export function Finance() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-muted mb-1">Categoria</label>
-                  <select
-                    value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value as ExpenseCategory)}
-                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
-                  >
-                    {EXPENSE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  {editCategory === 'Outros' && (
-                    <input
-                      type="text"
-                      value={editCategoryOutro}
-                      onChange={(e) => setEditCategoryOutro(e.target.value)}
-                      placeholder="Qual categoria?"
-                      className="w-full border border-line rounded-lg px-3 py-2 text-sm mt-2"
-                    />
+                  {editNovaCat === null ? (
+                    <select
+                      value={editCategory}
+                      onChange={(e) => {
+                        if (e.target.value === '__nova__') setEditNovaCat('')
+                        else setEditCategory(e.target.value)
+                      }}
+                      className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                    >
+                      {listaCategoriasDespesa.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="__nova__">+ Nova categoria…</option>
+                    </select>
+                  ) : (
+                    <div className="flex gap-1.5">
+                      <input
+                        autoFocus
+                        value={editNovaCat}
+                        onChange={(e) => setEditNovaCat(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); criarCategoriaEdicao() }
+                          if (e.key === 'Escape') setEditNovaCat(null)
+                        }}
+                        placeholder="Nome da categoria"
+                        maxLength={60}
+                        className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                      />
+                      <button type="button" onClick={criarCategoriaEdicao} disabled={!editNovaCat.trim()} className="px-3 rounded-lg bg-purple text-white text-xs font-medium disabled:opacity-50">Criar</button>
+                      <button type="button" onClick={() => setEditNovaCat(null)} className="text-muted hover:text-ink px-1 text-xs" aria-label="Cancelar categoria nova">✕</button>
+                    </div>
                   )}
                 </div>
                 <div>

@@ -6,6 +6,7 @@ import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal
 import { VisaoGeral, type AbaFinanceiro } from '../components/financeiro/VisaoGeral'
 import { PontoEquilibrio, ProjecaoCaixa } from '../components/financeiro/Planejamento'
 import { ComparaUnidades, ComparaMesAno, ComparaAnos } from '../components/financeiro/Comparativos'
+import { ListaDeEntradas } from '../components/financeiro/EntradasLista'
 import { Profitability } from './Profitability'
 import { MonthlyResult } from './MonthlyResult'
 import { Reports } from './Reports'
@@ -667,8 +668,8 @@ export function Finance() {
     await loadAll()
   }
 
-  function removerEntradaManual(id: string) {
-    const inc = entradasManuais.find((i) => i.id === id)
+  function removerEntradaManual(id: string, item?: (typeof entradasManuais)[number]) {
+    const inc = entradasManuais.find((i) => i.id === id) ?? item
     if (!inc) return
     setEntradasManuais((prev) => prev.filter((i) => i.id !== id))
     scheduleDelete({
@@ -954,7 +955,7 @@ export function Finance() {
             {([
               ['pagar', `A pagar (${contasAPagar.length})`],
               ['pagas', 'Pagas'],
-              ['entradas', `Entradas lançadas à mão (${entradasManuaisVisiveis.length})`],
+              ['entradas', 'Entradas'],
               ['fixas', `Despesas fixas (${filteredRecurring.length})`],
             ] as const).map(([k, label]) => (
               <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => irPara(aba, k)} className={`px-2.5 h-8 rounded-md text-xs font-medium whitespace-nowrap ${sub === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
@@ -1073,58 +1074,13 @@ export function Finance() {
             </>
           )}
           {sub === 'entradas' && (
-            <>
-        {entradasManuaisVisiveis.length > 0 && (
-          <Card title="Entradas lançadas à mão">
-            <p className="text-xs text-muted mb-2">Dinheiro que entrou e não era pagamento de festa (Novo lançamento → Entrada de dinheiro → Outra entrada). Pagamentos de festa ficam na própria festa.</p>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted border-b border-line">
-                  {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
-                  <th className="pb-3 font-medium">Recebido em</th>
-                  <th className="pb-3 font-medium">Tipo</th>
-                  <th className="pb-3 font-medium">Descrição</th>
-                  <th className="pb-3 font-medium">Valor</th>
-                  <th className="pb-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {entradasManuaisVisiveis.map((i) => (
-                  <tr key={i.id}>
-                    {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === i.unit_id)?.name}</td>}
-                    <td className="py-3 text-muted">{new Date(i.received_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
-                    <td className="py-3">{i.category ?? 'Outras entradas'}</td>
-                    <td className="py-3">
-                      {i.description}
-                      {i.payment_method && <p className="text-xs text-muted">{PAYMENT_METHOD_LABEL[i.payment_method as PaymentMethod] ?? i.payment_method}</p>}
-                    </td>
-                    <td className="py-3 text-teal font-medium">{currency(i.amount)}</td>
-                    <td className="py-3 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <Can permission="action:financeiro.registrar_despesa">
-                          <button onClick={() => abrirEdicaoEntrada(i)} className="text-muted hover:text-purple" aria-label="Editar entrada">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                        </Can>
-                        <Can permission="action:financeiro.remover">
-                          <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </Can>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
-              {entradasManuaisVisiveis.length === 0 && (
-                <Card>
-                  <p className="text-sm text-muted py-2">Nenhuma entrada lançada à mão. Use <strong>+ Novo lançamento → Entrada de dinheiro → Outra entrada</strong> para registrar, por exemplo, um aluguel do espaço.</p>
-                </Card>
-              )}
-            </>
+            <ListaDeEntradas
+              slugs={visibleUnitSlugs}
+              unitDbIds={unitDbIds}
+              recarga={recarga}
+              onEditar={abrirEdicaoEntrada}
+              onRemover={(e) => removerEntradaManual(e.id, e)}
+            />
           )}
           {sub === 'fixas' && (
             <>

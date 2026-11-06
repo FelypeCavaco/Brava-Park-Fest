@@ -2,9 +2,10 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { FinanceBreakdown } from '../components/FinanceBreakdown'
 import { InstallmentsForecast } from '../components/InstallmentsForecast'
 import { NovoLancamento } from '../components/NovoLancamento'
+import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
+import { FileText, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -87,6 +88,7 @@ export function Finance() {
     return v === 'resultado' || v === 'ponte' ? v : 'caixa'
   })
   const [mesVisao, setMesVisao] = useState(currentMonthValue)
+  const [relatorioAberto, setRelatorioAberto] = useState(false)
   const { scheduleDelete } = useUndo()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
@@ -762,10 +764,16 @@ export function Finance() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Financeiro</h1>
-        <p className="text-sm text-muted mt-1">Contas a pagar, despesas fixas e fluxo de caixa do mês — sempre por unidade, já que são contas bancárias diferentes</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Financeiro</h1>
+          <p className="text-sm text-muted mt-1">Contas a pagar, despesas fixas e fluxo de caixa do mês — sempre por unidade, já que são contas bancárias diferentes</p>
+        </div>
+        <Button type="button" variant="secondary" onClick={() => setRelatorioAberto(true)}>
+          <FileText className="w-4 h-4" /> Relatório (PDF ou Excel)
+        </Button>
       </div>
+      {relatorioAberto && <RelatorioFinanceiroModal onClose={() => setRelatorioAberto(false)} />}
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 

@@ -21,6 +21,19 @@ function jsonResponse(body: unknown, status: number) {
   })
 }
 
+// Procura um login pelo e-mail (a API do Supabase não tem busca direta por e-mail).
+async function acharLoginPorEmail(admin: ReturnType<typeof createClient>, email: string) {
+  const alvo = email.toLowerCase()
+  for (let pagina = 1; pagina <= 50; pagina++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page: pagina, perPage: 200 })
+    if (error || !data) return null
+    const achado = data.users.find((u) => (u.email ?? '').toLowerCase() === alvo)
+    if (achado) return achado
+    if (data.users.length < 200) return null
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -73,26 +86,39 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'A senha precisa ter pelo menos 6 caracteres.' }, 400)
     }
 
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
+    const { data: novo, error: createError } = await admin.auth.admin.createUser({
       email: email.trim(),
       password,
       email_confirm: true,
     })
-    if (createError || !created.user) {
-      return jsonResponse({ error: createError?.message ?? 'Não foi possível criar o login.' }, 400)
+    let usuarioId: string | null = novo?.user?.id ?? null
+    if (createError || !novo?.user) {
+      // O e-mail já tem login. Pode ser um login órfão: a pessoa foi apagada
+      // do sistema, mas o login ficou no Supabase. Nesse caso reaproveita o
+      // login. Se já houver um perfil ativo com esse e-mail, recusa.
+      const jaExiste = /already|registered|exists/i.test(createError?.message ?? '')
+      if (!jaExiste) return jsonResponse({ error: createError?.message ?? 'Não foi possível criar o login.' }, 400)
+      const existente = await acharLoginPorEmail(admin, email.trim())
+      if (!existente) return jsonResponse({ error: 'Esse e-mail já tem login, mas não foi possível localizá-lo. Fale com o suporte.' }, 400)
+      const { data: perfilAtivo } = await admin.from('user_profiles').select('id').eq('id', existente.id).maybeSingle()
+      if (perfilAtivo) return jsonResponse({ error: 'Esse e-mail já está cadastrado em um usuário do sistema.' }, 400)
+      const { error: senhaErr } = await admin.auth.admin.updateUserById(existente.id, { password, email_confirm: true })
+      if (senhaErr) return jsonResponse({ error: 'Não foi possível atualizar o login desse e-mail. Fale com o suporte.' }, 400)
+      usuarioId = existente.id
     }
+    if (!usuarioId) return jsonResponse({ error: 'Não foi possível criar o login.' }, 400)
 
     const { error: profileError } = await admin
       .from('user_profiles')
-      .insert({ id: created.user.id, name: name.trim(), email: email.trim(), role_id, active: true, ...(companyId ? { company_id: companyId } : {}) })
+      .insert({ id: usuarioId, name: name.trim(), email: email.trim(), role_id, active: true, ...(companyId ? { company_id: companyId } : {}) })
 
     if (profileError) {
       // desfaz o login criado pra não sobrar um acesso sem perfil associado
-      await admin.auth.admin.deleteUser(created.user.id)
+      if (novo?.user) await admin.auth.admin.deleteUser(usuarioId)
       return jsonResponse({ error: 'Login criado, mas não foi possível salvar o perfil. Tente de novo.' }, 400)
     }
 
-    return jsonResponse({ id: created.user.id }, 200)
+    return jsonResponse({ id: usuarioId }, 200)
   } catch (err) {
     return jsonResponse({ error: err instanceof Error ? err.message : 'Erro desconhecido.' }, 500)
   }

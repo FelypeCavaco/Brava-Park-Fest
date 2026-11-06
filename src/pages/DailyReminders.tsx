@@ -97,7 +97,8 @@ export function DailyReminders() {
           .eq('event_date', yesterday)
           .neq('status', 'cancelada'),
         supabase.from('contact_history').select('type').gte('created_at', startOfTodayIso),
-        supabase.from('contact_history').select('client_name').eq('type', REVIEW_REQUEST_TYPE),
+        // só conta pedido feito a partir do dia da festa de ontem (pedido de festa antiga não vale)
+        supabase.from('contact_history').select('client_name').eq('type', REVIEW_REQUEST_TYPE).gte('created_at', `${yesterday}T00:00:00`),
       ])
 
     if (pendingError) setError('Não foi possível carregar os lembretes.')

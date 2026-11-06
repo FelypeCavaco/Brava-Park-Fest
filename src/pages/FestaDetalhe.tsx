@@ -415,6 +415,18 @@ export function FestaDetalhe() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [costSuggestions, setCostSuggestions] = useState<{ category: string; amount: number }[]>([])
   const [showReviewModal, setShowReviewModal] = useState(false)
+  // Vindo do sininho (?avaliacao=1): abre a aba Geral, rola até o contato com o
+  // cliente e já abre a janela de pedir avaliação.
+  const [avaliacaoPedida, setAvaliacaoPedida] = useState(() => searchParams.get('avaliacao') === '1')
+  useEffect(() => {
+    if (!avaliacaoPedida || !festa) return
+    setAvaliacaoPedida(false)
+    setTab('geral')
+    window.setTimeout(() => {
+      document.getElementById('contato-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setShowReviewModal(true)
+    }, 300)
+  }, [avaliacaoPedida, festa])
   const [notes, setNotes] = useState<FestaNote[]>([])
   const [showNotes, setShowNotes] = useState(false)
   const [showPendencias, setShowPendencias] = useState(false)
@@ -2904,7 +2916,7 @@ export function FestaDetalhe() {
             )}
           </Card>
 
-          <Card title="Contato com o cliente (WhatsApp)" className="md:col-span-2">
+          <Card id="contato-cliente" title="Contato com o cliente (WhatsApp)" className="md:col-span-2">
             <div className="flex flex-wrap gap-2 mb-4">
               {(['confirmar_festa', 'lembrete_festa', 'localizacao', 'lembrete_pagamento', 'pedidos'] as MessageTemplateKey[]).map((key) => (
                 <Button key={key} variant="secondary" className="text-xs px-3 py-1.5" onClick={() => handleWhatsAppAction(key)}>

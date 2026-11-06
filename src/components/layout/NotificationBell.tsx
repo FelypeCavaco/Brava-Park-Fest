@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, FileText } from 'lucide-react'
+import { Bell, FileText, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { brl } from '../../lib/format'
 
-// Sininho no canto superior direito: comprovantes de pagamento enviados pelo
-// portal do cliente que ainda esperam a equipe aprovar ou recusar. O sinal
-// fica enquanto houver algum em análise.
+// Sininho no canto superior direito. Mostra:
+//   • Pedir avaliação: festas que aconteceram nos últimos 3 dias e ainda não
+//     tiveram o pedido de avaliação enviado (o pedido conta só se foi feito
+//     depois da festa). Clicar abre a Central da festa já no pedido.
+//   • Comprovantes de pagamento enviados pelo portal que esperam análise.
+// O sinal fica enquanto houver algum item.
 
 interface Pendente {
   id: string
@@ -20,6 +23,16 @@ interface Pendente {
   unidade: string | null
 }
 
+interface Avaliacao {
+  festaId: string
+  cliente: string
+  dataFesta: string
+  aniversariante: string | null
+  unidade: string | null
+}
+
+const DIAS_AVALIACAO = 3
+
 function haQuanto(iso: string) {
   const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
   if (min < 1) return 'agora'
@@ -30,37 +43,93 @@ function haQuanto(iso: string) {
   return `há ${d} ${d === 1 ? 'dia' : 'dias'}`
 }
 
+function isoLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function quandoFoi(dataFesta: string) {
+  const hoje = new Date()
+  const dias = Math.round((new Date(`${isoLocal(hoje)}T00:00:00`).getTime() - new Date(`${dataFesta}T00:00:00`).getTime()) / 86400000)
+  return dias <= 1 ? 'ontem' : `há ${dias} dias`
+}
+
 export function NotificationBell() {
   const { can } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [pendentes, setPendentes] = useState<Pendente[]>([])
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
   const [aberto, setAberto] = useState(false)
   const caixa = useRef<HTMLDivElement>(null)
-  const permitido = can('page:portal_avisos') || can('action:festa.pagamentos')
+  const podeComprovantes = can('page:portal_avisos') || can('action:festa.pagamentos')
+  const podeAvaliacao = can('page:festa_detalhe') && (can('page:lembretes') || can('page:reservas'))
+  const permitido = podeComprovantes || podeAvaliacao
 
   const carregar = useCallback(async () => {
     if (!permitido) return
-    const { data, error } = await supabase
-      .from('portal_receipts')
-      .select('id, amount, created_at, reservation:reservations(id, event_date, child_name, client:clients(name), unit:units(name))')
-      .eq('status', 'em_analise')
-      .order('created_at', { ascending: true })
-      .limit(30)
-    if (error) return
-    setPendentes(
-      ((data ?? []) as any[]).map((r) => ({
-        id: r.id,
-        valor: Number(r.amount),
-        enviadoEm: r.created_at,
-        festaId: r.reservation?.id,
-        cliente: r.reservation?.client?.name ?? 'Cliente',
-        dataFesta: r.reservation?.event_date ?? '',
-        aniversariante: r.reservation?.child_name ?? null,
-        unidade: r.reservation?.unit?.name ?? null,
-      })),
-    )
-  }, [permitido])
+    if (podeComprovantes) {
+      const { data, error } = await supabase
+        .from('portal_receipts')
+        .select('id, amount, created_at, reservation:reservations(id, event_date, child_name, client:clients(name), unit:units(name))')
+        .eq('status', 'em_analise')
+        .order('created_at', { ascending: true })
+        .limit(30)
+      if (!error) {
+        setPendentes(
+          ((data ?? []) as any[]).map((r) => ({
+            id: r.id,
+            valor: Number(r.amount),
+            enviadoEm: r.created_at,
+            festaId: r.reservation?.id,
+            cliente: r.reservation?.client?.name ?? 'Cliente',
+            dataFesta: r.reservation?.event_date ?? '',
+            aniversariante: r.reservation?.child_name ?? null,
+            unidade: r.reservation?.unit?.name ?? null,
+          })),
+        )
+      }
+    }
+    if (podeAvaliacao) {
+      const hoje = new Date()
+      const ontem = isoLocal(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 1))
+      const desde = isoLocal(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - DIAS_AVALIACAO))
+      const { data: festas } = await supabase
+        .from('reservations')
+        .select('id, event_date, child_name, client:clients(name), unit:units(name)')
+        .neq('status', 'cancelada')
+        .neq('status', 'orcamento')
+        .gte('event_date', desde)
+        .lte('event_date', ontem)
+        .order('event_date', { ascending: false })
+      const lista = (festas ?? []) as any[]
+      if (lista.length === 0) {
+        setAvaliacoes([])
+      } else {
+        // Pedidos de avaliação feitos depois da festa (o registro é pelo nome do cliente).
+        const nomes = Array.from(new Set(lista.map((f) => f.client?.name).filter(Boolean)))
+        const { data: pedidos } = await supabase
+          .from('contact_history')
+          .select('client_name, created_at')
+          .eq('type', 'Pedido de avaliação')
+          .in('client_name', nomes)
+          .gte('created_at', `${desde}T00:00:00`)
+        setAvaliacoes(
+          lista
+            .filter((f) => {
+              const nome = f.client?.name
+              return !(pedidos ?? []).some((p) => p.client_name === nome && p.created_at.slice(0, 10) >= f.event_date)
+            })
+            .map((f) => ({
+              festaId: f.id,
+              cliente: f.client?.name ?? 'Cliente',
+              dataFesta: f.event_date,
+              aniversariante: f.child_name ?? null,
+              unidade: f.unit?.name ?? null,
+            })),
+        )
+      }
+    }
+  }, [permitido, podeComprovantes, podeAvaliacao])
 
   // Atualiza ao abrir cada tela, a cada minuto e ao voltar para a aba.
   useEffect(() => {
@@ -87,14 +156,14 @@ export function NotificationBell() {
   }, [aberto])
 
   if (!permitido) return null
-  const n = pendentes.length
+  const n = pendentes.length + avaliacoes.length
 
   return (
     <div ref={caixa} className="relative shrink-0">
       <button
         onClick={() => setAberto((v) => !v)}
         className={`relative w-10 h-10 rounded-full flex items-center justify-center border transition-colors ${n > 0 ? 'bg-surface border-purple/40 text-purple' : 'bg-surface border-line text-muted hover:text-ink'}`}
-        aria-label={n > 0 ? `${n} comprovante${n === 1 ? '' : 's'} esperando análise` : 'Notificações'}
+        aria-label={n > 0 ? `${n} aviso${n === 1 ? '' : 's'}` : 'Notificações'}
         aria-expanded={aberto}
       >
         <Bell className="w-5 h-5" />
@@ -106,43 +175,84 @@ export function NotificationBell() {
       </button>
 
       {aberto && (
-        <div className="absolute right-0 top-12 z-50 w-[340px] max-w-[calc(100vw-2rem)] bg-surface border border-line rounded-card shadow-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-line">
-            <p className="text-sm font-semibold">Comprovantes para analisar</p>
-            <p className="text-xs text-muted">Enviados pelos clientes no portal da festa.</p>
-          </div>
+        <div className="absolute right-0 top-12 z-50 w-[360px] max-w-[calc(100vw-2rem)] bg-surface border border-line rounded-card shadow-xl overflow-hidden">
           {n === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted text-center">Nenhum comprovante esperando. Tudo em dia.</p>
+            <p className="px-4 py-6 text-sm text-muted text-center">Nenhum aviso agora. Tudo em dia.</p>
           ) : (
-            <ul className="max-h-[60vh] overflow-y-auto divide-y divide-line">
-              {pendentes.map((p) => (
-                <li key={p.id}>
-                  <button
-                    onClick={() => {
-                      setAberto(false)
-                      navigate(`/reservas/${p.festaId}?aba=financeiro`)
-                    }}
-                    className="w-full text-left px-4 py-3 hover:bg-paper flex gap-3"
-                  >
-                    <span className="w-8 h-8 rounded-full bg-purple-light text-purple flex items-center justify-center shrink-0"><FileText className="w-4 h-4" /></span>
-                    <span className="flex-1 min-w-0">
-                      <span className="flex justify-between gap-2">
-                        <span className="text-sm font-medium truncate">{p.cliente}</span>
-                        <span className="text-sm font-semibold tabular-nums">{brl(p.valor)}</span>
-                      </span>
-                      <span className="block text-xs text-muted truncate">
-                        {p.aniversariante ? `Festa de ${p.aniversariante} · ` : 'Festa · '}
-                        {p.dataFesta ? p.dataFesta.split('-').reverse().join('/') : ''}
-                        {p.unidade ? ` · ${p.unidade}` : ''}
-                      </span>
-                      <span className="block text-[11px] text-muted">Enviado {haQuanto(p.enviadoEm)}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="max-h-[70vh] overflow-y-auto">
+              {avaliacoes.length > 0 && (
+                <section>
+                  <div className="px-4 py-3 border-b border-line bg-paper/60">
+                    <p className="text-sm font-semibold">Pedir avaliação ({avaliacoes.length})</p>
+                    <p className="text-xs text-muted">Festas que já aconteceram e ainda não tiveram o pedido de avaliação enviado.</p>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {avaliacoes.map((a) => (
+                      <li key={a.festaId}>
+                        <button
+                          onClick={() => {
+                            setAberto(false)
+                            navigate(`/reservas/${a.festaId}?avaliacao=1`)
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-paper flex gap-3"
+                        >
+                          <span className="w-8 h-8 rounded-full bg-amber-light text-amber flex items-center justify-center shrink-0"><Star className="w-4 h-4" /></span>
+                          <span className="flex-1 min-w-0">
+                            <span className="flex justify-between gap-2">
+                              <span className="text-sm font-medium truncate">{a.cliente}</span>
+                              <span className="text-xs text-muted whitespace-nowrap">festa {quandoFoi(a.dataFesta)}</span>
+                            </span>
+                            <span className="block text-xs text-muted truncate">
+                              {a.aniversariante ? `Festa de ${a.aniversariante} · ` : 'Festa · '}
+                              {a.dataFesta.split('-').reverse().join('/')}
+                              {a.unidade ? ` · ${a.unidade}` : ''}
+                            </span>
+                            <span className="block text-[11px] font-medium text-purple mt-0.5">Pedir avaliação →</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {pendentes.length > 0 && (
+                <section>
+                  <div className="px-4 py-3 border-b border-t border-line bg-paper/60">
+                    <p className="text-sm font-semibold">Comprovantes para analisar ({pendentes.length})</p>
+                    <p className="text-xs text-muted">Enviados pelos clientes no portal da festa.</p>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {pendentes.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          onClick={() => {
+                            setAberto(false)
+                            navigate(`/reservas/${p.festaId}?aba=financeiro`)
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-paper flex gap-3"
+                        >
+                          <span className="w-8 h-8 rounded-full bg-purple-light text-purple flex items-center justify-center shrink-0"><FileText className="w-4 h-4" /></span>
+                          <span className="flex-1 min-w-0">
+                            <span className="flex justify-between gap-2">
+                              <span className="text-sm font-medium truncate">{p.cliente}</span>
+                              <span className="text-sm font-semibold tabular-nums">{brl(p.valor)}</span>
+                            </span>
+                            <span className="block text-xs text-muted truncate">
+                              {p.aniversariante ? `Festa de ${p.aniversariante} · ` : 'Festa · '}
+                              {p.dataFesta ? p.dataFesta.split('-').reverse().join('/') : ''}
+                              {p.unidade ? ` · ${p.unidade}` : ''}
+                            </span>
+                            <span className="block text-[11px] text-muted">Enviado {haQuanto(p.enviadoEm)}</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
           )}
-          {n > 0 && <p className="px-4 py-2 text-[11px] text-muted border-t border-line">Clique para abrir a festa e aprovar ou recusar. O sinal some quando não houver nenhum esperando.</p>}
+          {n > 0 && <p className="px-4 py-2 text-[11px] text-muted border-t border-line">Clique para abrir a festa. O aviso some depois que o pedido é enviado ou o comprovante é analisado.</p>}
         </div>
       )}
     </div>

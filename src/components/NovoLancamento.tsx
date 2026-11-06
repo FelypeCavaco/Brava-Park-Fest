@@ -23,7 +23,20 @@ const NOVA = '__nova__'
 export const TIPOS_ENTRADA_BASE = ['Aluguel do espaço', 'Venda avulsa', 'Reembolso', 'Rendimento da conta', 'Outras entradas']
 
 interface FestaOpcao { id: string; label: string; falta: number; data: string }
-interface Parecido { id: string; reservationId: string; cliente: string; data: string; descricao: string; valor: number }
+interface Parecido { id: string; reservationId: string; cliente: string; data: string; descricao: string; valor: number; tipo?: 'custo' | 'conta' }
+// Entrada parecida já lançada (até 5 dias antes ou depois, valor parecido).
+interface EntradaParecida { id: string; onde: string; reservationId: string | null; quem: string; data: string; valor: number; forma: string }
+
+const JANELA_DIAS = 5
+// Valor parecido: diferença de até R$ 1 ou 1% (o que for maior).
+function valorParecido(a: number, b: number) {
+  return Math.abs(a - b) <= Math.max(1, Math.abs(b) * 0.01)
+}
+function maisDias(iso: string, n: number) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const x = new Date(y, m - 1, d + n)
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+}
 
 function brl(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -70,6 +83,7 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
   const [customDespesa, setCustomDespesa] = useState<string[]>([])
   const [customEntrada, setCustomEntrada] = useState<string[]>([])
   const [aviso, setAviso] = useState<Parecido[] | null>(null)
+  const [avisoEntrada, setAvisoEntrada] = useState<EntradaParecida[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -199,6 +213,53 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
         if (mesmoValor || parecido) achados.push({ id: c.id, reservationId: r.id, cliente: r.client?.name ?? 'Festa', data: r.event_date, descricao: c.description, valor: Number(c.amount) })
       }
     }
+    // Contas já lançadas com valor parecido, até 5 dias antes ou depois.
+    const { data: contas } = await supabase
+      .from('expenses')
+      .select('id, description, supplier, amount, due_date, paid_date')
+      .eq('unit_id', unitId)
+      .gte('due_date', maisDias(ref, -JANELA_DIAS))
+      .lte('due_date', maisDias(ref, JANELA_DIAS))
+    for (const e of (contas ?? []) as any[]) {
+      if (valorParecido(valorNum, Number(e.amount)))
+        achados.push({ id: e.id, reservationId: '', cliente: [e.description, e.supplier].filter(Boolean).join(' — ') || 'Conta', data: e.paid_date ?? e.due_date, descricao: e.paid_date ? 'conta paga' : 'conta a pagar', valor: Number(e.amount), tipo: 'conta' })
+    }
+    return achados.length ? achados : null
+  }
+
+  // Entradas: procura pagamento de festa ou entrada à mão com valor parecido,
+  // até 5 dias antes ou depois da data informada (mesma unidade).
+  async function entradaParecida(unitId: string): Promise<EntradaParecida[] | null> {
+    const de = maisDias(pagoEm, -JANELA_DIAS)
+    const ate = maisDias(pagoEm, JANELA_DIAS)
+    const [{ data: pags }, { data: outras }] = await Promise.all([
+      supabase
+        .from('payments')
+        .select('id, amount, payment_date, payment_method, reservation:reservations!inner(id, unit_id, child_name, client:clients(name))')
+        .eq('reservation.unit_id', unitId)
+        .gte('payment_date', de)
+        .lte('payment_date', ate),
+      supabase
+        .from('other_incomes')
+        .select('id, amount, received_date, payment_method, description')
+        .eq('unit_id', unitId)
+        .gte('received_date', de)
+        .lte('received_date', ate),
+    ])
+    const t = descricao.trim().toLowerCase()
+    const achados: EntradaParecida[] = []
+    for (const p of (pags ?? []) as any[]) {
+      if (!valorParecido(valorNum, Number(p.amount))) continue
+      const r = p.reservation
+      achados.push({ id: p.id, onde: 'Pagamento de festa', reservationId: r?.id ?? null, quem: `${r?.client?.name ?? 'Cliente'}${r?.child_name ? ` (festa de ${r.child_name})` : ''}`, data: p.payment_date, valor: Number(p.amount), forma: p.payment_method ?? '' })
+    }
+    for (const o of (outras ?? []) as any[]) {
+      const desc = String(o.description ?? '').toLowerCase()
+      const textoParecido = t.length > 2 && desc.length > 2 && (desc.includes(t) || t.includes(desc))
+      if (!valorParecido(valorNum, Number(o.amount)) && !textoParecido) continue
+      achados.push({ id: o.id, onde: 'Entrada lançada à mão', reservationId: null, quem: o.description || 'Entrada', data: o.received_date, valor: Number(o.amount), forma: o.payment_method ?? '' })
+    }
+    achados.sort((a, b) => a.data.localeCompare(b.data))
     return achados.length ? achados : null
   }
 
@@ -208,6 +269,7 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
     setFornecedor('')
     setCobre(false)
     setAviso(null)
+    setAvisoEntrada(null)
     setFestaId('')
     setFestaBusca('')
     setNovaCat(null)
@@ -237,8 +299,15 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
     setSalvando(true)
     try {
       if (ehEntrada) {
+        if (origem === 'festa' && !festaId) return setErro('Escolha a festa que pagou.')
+        if (!opts.pularAviso) {
+          const achados = await entradaParecida(unitId)
+          if (achados) {
+            setAvisoEntrada(achados)
+            return
+          }
+        }
         if (origem === 'festa') {
-          if (!festaId) return setErro('Escolha a festa que pagou.')
           const { error } = await supabase.from('payments').insert({
             reservation_id: festaId, amount: valorNum, payment_date: pagoEm, payment_method: forma,
             notes: descricao.trim() ? `${descricao.trim()} (lançado no Financeiro)` : 'Lançado no Financeiro',
@@ -282,6 +351,7 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
       }
       setOk(`Lançado: ${resumo}`)
       setAviso(null)
+      setAvisoEntrada(null)
       if (opts.outro) limpar(false)
       else {
         limpar(false)
@@ -352,7 +422,7 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
             type="button"
             role="tab"
             aria-selected={tipo === t}
-            onClick={() => { setTipo(t); setAviso(null); setNovaCat(null); setErro(null) }}
+            onClick={() => { setTipo(t); setAviso(null); setAvisoEntrada(null); setNovaCat(null); setErro(null) }}
             className={`text-left rounded-lg border px-3 py-2.5 transition-colors ${tipo === t ? (t === 'entrada' ? 'border-teal bg-teal-light' : 'border-purple bg-purple-light') : 'border-line hover:bg-paper'}`}
           >
             <span className={`block text-sm font-semibold ${tipo === t ? (t === 'entrada' ? 'text-teal' : 'text-purple-dark') : ''}`}>{rotuloTipo[t][0]}</span>
@@ -494,18 +564,57 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
           </div>
         )}
 
-        {aviso && (
+        {aviso && (() => {
+          const custos = aviso.filter((c) => c.tipo !== 'conta')
+          const contas = aviso.filter((c) => c.tipo === 'conta')
+          return (
+            <div className="sm:col-span-2 bg-amber-light text-amber text-sm rounded-lg px-3 py-2.5 space-y-2">
+              {custos.length > 0 && (
+                <>
+                  <p className="font-medium">Já existe um custo de festa parecido neste mês</p>
+                  <ul className="text-xs space-y-0.5">
+                    {custos.map((c) => (
+                      <li key={c.id}>• <Link to={`/reservas/${c.reservationId}`} className="underline">{c.cliente}</Link> ({format(parseISO(c.data), 'dd/MM')}): {c.descricao} — {brl(c.valor)}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs">Se esta conta paga esse mesmo custo, use "Só registrar o pagamento" para não contar duas vezes.</p>
+                </>
+              )}
+              {contas.length > 0 && (
+                <>
+                  <p className="font-medium">Já existe uma conta de valor parecido lançada até {JANELA_DIAS} dias antes ou depois</p>
+                  <ul className="text-xs space-y-0.5">
+                    {contas.map((c) => (
+                      <li key={c.id}>• {c.cliente} ({format(parseISO(c.data), 'dd/MM')}, {c.descricao}): {brl(c.valor)}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs">Confira se não é a mesma conta lançada duas vezes.</p>
+                </>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => setAviso(null)}>Voltar</Button>
+                {custos.length > 0 && <Button type="button" variant="secondary" onClick={() => salvar({ cobreForcado: true, pularAviso: true })}>Só registrar o pagamento e salvar</Button>}
+                <Button type="button" onClick={() => salvar({ pularAviso: true })}>Salvar mesmo assim</Button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {avisoEntrada && (
           <div className="sm:col-span-2 bg-amber-light text-amber text-sm rounded-lg px-3 py-2.5 space-y-2">
-            <p className="font-medium">Já existe um custo de festa parecido neste mês</p>
+            <p className="font-medium">Já existe uma entrada de valor parecido lançada até {JANELA_DIAS} dias antes ou depois</p>
             <ul className="text-xs space-y-0.5">
-              {aviso.map((c) => (
-                <li key={c.id}>• <Link to={`/reservas/${c.reservationId}`} className="underline">{c.cliente}</Link> ({format(parseISO(c.data), 'dd/MM')}): {c.descricao} — {brl(c.valor)}</li>
+              {avisoEntrada.map((c) => (
+                <li key={c.id}>
+                  • {c.onde}:{' '}
+                  {c.reservationId ? <Link to={`/reservas/${c.reservationId}`} className="underline">{c.quem}</Link> : c.quem}{' '}
+                  ({format(parseISO(c.data), 'dd/MM')}{c.forma ? `, ${PAYMENT_METHOD_LABEL[c.forma as PaymentMethod] ?? c.forma}` : ''}): {brl(c.valor)}
+                </li>
               ))}
             </ul>
-            <p className="text-xs">Se esta conta paga esse mesmo custo, use "Só registrar o pagamento" para não contar duas vezes.</p>
+            <p className="text-xs">Confira se não é o mesmo dinheiro lançado duas vezes (por exemplo, um pagamento já registrado na festa).</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" onClick={() => setAviso(null)}>Voltar</Button>
-              <Button type="button" variant="secondary" onClick={() => salvar({ cobreForcado: true, pularAviso: true })}>Só registrar o pagamento e salvar</Button>
+              <Button type="button" variant="secondary" onClick={() => setAvisoEntrada(null)}>Voltar</Button>
               <Button type="button" onClick={() => salvar({ pularAviso: true })}>Salvar mesmo assim</Button>
             </div>
           </div>

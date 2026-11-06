@@ -123,7 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Função desligada para a empresa (painel da plataforma): ninguém dela vê.
     if (chaveDesligada(key, brand.disabledModules)) return false
     if (perfilEfetivo?.role?.isAdmin) return true
-    if (!(key in permissions)) return true // chave sem regra cadastrada ainda — não bloqueia
+    // Sem regra cadastrada para o perfil = bloqueado (igual ao banco). Quando
+    // uma página nova entra no sistema, o administrador marca no perfil para liberar.
+    if (!(key in permissions)) return false
     return permissions[key]
   }
 

@@ -147,7 +147,7 @@ export function Users() {
   function roleSummary(role: Role) {
     if (role.isAdmin) return 'Acesso total ao sistema'
     const map = rolePermItems[role.id] ?? {}
-    const allowedCount = ALL_PERMISSIONS.filter((item) => map[item.key] ?? true).length
+    const allowedCount = ALL_PERMISSIONS.filter((item) => map[item.key] ?? false).length
     return `${allowedCount} de ${ALL_PERMISSIONS.length} acessos liberados`
   }
 
@@ -193,7 +193,7 @@ export function Users() {
   function initCreateOverrides(roleId: string) {
     const roleMap = rolePermItems[roleId] ?? {}
     const initial: Record<string, boolean> = {}
-    for (const item of ALL_PERMISSIONS) initial[item.key] = roleMap[item.key] ?? true
+    for (const item of ALL_PERMISSIONS) initial[item.key] = roleMap[item.key] ?? false
     setCreateOverrides(initial)
   }
 
@@ -248,7 +248,7 @@ export function Users() {
 
     if (customizeOnCreate) {
       const roleMap = rolePermItems[formRoleId] ?? {}
-      const diffs = ALL_PERMISSIONS.filter((item) => (createOverrides[item.key] ?? true) !== (roleMap[item.key] ?? true))
+      const diffs = ALL_PERMISSIONS.filter((item) => (createOverrides[item.key] ?? false) !== (roleMap[item.key] ?? false))
       if (diffs.length > 0) {
         const results = await Promise.all(
           diffs.map((item) =>
@@ -312,7 +312,7 @@ export function Users() {
     for (const row of data ?? []) overrides[row.permission_key] = row.allowed
     const roleMap = u.roleId ? rolePermItems[u.roleId] ?? {} : {}
     const effective: Record<string, boolean> = {}
-    for (const item of ALL_PERMISSIONS) effective[item.key] = overrides[item.key] ?? roleMap[item.key] ?? true
+    for (const item of ALL_PERMISSIONS) effective[item.key] = overrides[item.key] ?? roleMap[item.key] ?? false
     setOverrideValues(effective)
     setOverrideKeys(new Set(Object.keys(overrides)))
     setOverrideLoading(false)
@@ -335,7 +335,7 @@ export function Users() {
   async function resetOverride(key: string) {
     if (!overrideUser) return
     const roleMap = overrideUser.roleId ? rolePermItems[overrideUser.roleId] ?? {} : {}
-    const fallback = roleMap[key] ?? true
+    const fallback = roleMap[key] ?? false
     setOverrideValues((prev) => ({ ...prev, [key]: fallback }))
     setOverrideKeys((prev) => {
       const next = new Set(prev)
@@ -762,7 +762,7 @@ export function Users() {
                   <p className="text-xs font-semibold text-ink/70 mb-2">{group.group}</p>
                   <div className="space-y-1.5">
                     {group.items.map((item) => {
-                      const checked = rolePermItems[editingRole.id]?.[item.key] ?? true
+                      const checked = rolePermItems[editingRole.id]?.[item.key] ?? false
                       return (
                         <label key={item.key} className="flex items-center gap-2.5 text-sm cursor-pointer">
                           <input

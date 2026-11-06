@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { FinanceBreakdown } from '../components/FinanceBreakdown'
 import { InstallmentsForecast } from '../components/InstallmentsForecast'
-import { NovoLancamento } from '../components/NovoLancamento'
+import { NovoLancamento, TIPOS_ENTRADA_BASE } from '../components/NovoLancamento'
 import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal'
 import { VisaoGeral, type AbaFinanceiro } from '../components/financeiro/VisaoGeral'
 import { PontoEquilibrio, ProjecaoCaixa } from '../components/financeiro/Planejamento'
@@ -164,6 +164,12 @@ export function Finance() {
   const [editCategory, setEditCategory] = useState<string>(EXPENSE_CATEGORIES[0])
   const [editNovaCat, setEditNovaCat] = useState<string | null>(null)
   const [categoriasCriadas, setCategoriasCriadas] = useState<string[]>([])
+  const [tiposEntradaCriados, setTiposEntradaCriados] = useState<string[]>([])
+  // Edição de uma entrada lançada à mão (migração 090).
+  const [editandoEntrada, setEditandoEntrada] = useState<{ id: string; unit: string; tipo: string; descricao: string; valor: string; data: string; forma: string } | null>(null)
+  const [novoTipoEntrada, setNovoTipoEntrada] = useState<string | null>(null)
+  const [salvandoEntrada, setSalvandoEntrada] = useState(false)
+  const [erroEntrada, setErroEntrada] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
   const [editStatus, setEditStatus] = useState<PayableStatus>('a_vencer')
@@ -244,8 +250,9 @@ export function Finance() {
       grouped[it.expense_id] = list
     }
     setExpenseItemsByExpense(grouped)
-    const { data: cats } = await supabase.from('finance_categories').select('kind, name').eq('kind', 'despesa').order('name')
-    setCategoriasCriadas((cats ?? []).map((c) => c.name))
+    const { data: cats } = await supabase.from('finance_categories').select('kind, name').order('name')
+    setCategoriasCriadas((cats ?? []).filter((c) => c.kind === 'despesa').map((c) => c.name))
+    setTiposEntradaCriados((cats ?? []).filter((c) => c.kind === 'entrada').map((c) => c.name))
     setEntradasManuais((incs ?? []).map((i: any) => ({ id: i.id, unit_id: dbIdToSlug[i.unit_id] ?? '', category: i.category ?? null, description: i.description, amount: Number(i.amount), received_date: i.received_date, payment_method: i.payment_method })))
     setLoading(false)
 
@@ -609,6 +616,56 @@ export function Finance() {
   )
 
   const entradasManuaisVisiveis = useMemo(() => entradasManuais.filter((i) => unitIds.includes(i.unit_id)), [entradasManuais, unitIds])
+
+  const listaTiposEntrada = useMemo(() => {
+    const unicos: string[] = []
+    const base = TIPOS_ENTRADA_BASE.filter((t) => t !== 'Outras entradas')
+    const usados = entradasManuais.map((i) => i.category).filter((c): c is string => !!c && c !== 'Outras entradas')
+    for (const t of [...base, ...[...tiposEntradaCriados, ...usados].sort((a, b) => a.localeCompare(b, 'pt-BR')), 'Outras entradas'])
+      if (!unicos.some((u) => u.toLowerCase() === t.toLowerCase())) unicos.push(t)
+    return unicos
+  }, [tiposEntradaCriados, entradasManuais])
+
+  function abrirEdicaoEntrada(i: (typeof entradasManuais)[number]) {
+    // A descrição é gravada como "Tipo — descrição": separa para editar só a parte livre.
+    const tipo = i.category ?? 'Outras entradas'
+    const desc = i.description.startsWith(`${tipo} — `) ? i.description.slice(tipo.length + 3) : i.description === tipo ? '' : i.description
+    setErroEntrada(null)
+    setNovoTipoEntrada(null)
+    setEditandoEntrada({ id: i.id, unit: i.unit_id, tipo, descricao: desc, valor: String(i.amount).replace('.', ','), data: i.received_date, forma: i.payment_method ?? 'pix' })
+  }
+
+  async function criarTipoEntrada() {
+    const nome = (novoTipoEntrada ?? '').trim().replace(/\s+/g, ' ')
+    if (!nome || !editandoEntrada) return
+    const existente = listaTiposEntrada.find((t) => t.toLowerCase() === nome.toLowerCase())
+    if (!existente) {
+      const { error: err } = await supabase.from('finance_categories').insert({ kind: 'entrada', name: nome })
+      if (err && !/duplicate|unique/i.test(err.message)) return setErroEntrada(friendlyDbError(err.message))
+      setTiposEntradaCriados((p) => [...p, nome])
+    }
+    setEditandoEntrada({ ...editandoEntrada, tipo: existente ?? nome })
+    setNovoTipoEntrada(null)
+  }
+
+  async function salvarEdicaoEntrada(e: FormEvent) {
+    e.preventDefault()
+    if (!editandoEntrada) return
+    if (novoTipoEntrada !== null) return setErroEntrada('Termine de criar o tipo novo (botão Criar) ou cancele.')
+    const valor = Number(editandoEntrada.valor.replace(/\./g, '').replace(',', '.'))
+    if (!valor || valor <= 0) return setErroEntrada('Informe o valor que entrou.')
+    const unitId = unitDbIds[editandoEntrada.unit]?.unitId
+    if (!unitId) return setErroEntrada('Escolha a unidade.')
+    setSalvandoEntrada(true)
+    const { error: err } = await supabase.rpc('update_other_income', {
+      p_id: editandoEntrada.id, p_unit: unitId, p_category: editandoEntrada.tipo, p_description: editandoEntrada.descricao.trim() || null,
+      p_amount: valor, p_date: editandoEntrada.data, p_method: editandoEntrada.forma,
+    })
+    setSalvandoEntrada(false)
+    if (err) return setErroEntrada(/update_other_income/.test(err.message) ? 'Falta rodar a migração 090 no banco.' : friendlyDbError(err.message))
+    setEditandoEntrada(null)
+    await loadAll()
+  }
 
   function removerEntradaManual(id: string) {
     const inc = entradasManuais.find((i) => i.id === id)
@@ -1043,11 +1100,18 @@ export function Finance() {
                     </td>
                     <td className="py-3 text-teal font-medium">{currency(i.amount)}</td>
                     <td className="py-3 text-right">
-                      <Can permission="action:financeiro.remover">
-                        <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </Can>
+                      <div className="flex items-center justify-end gap-3">
+                        <Can permission="action:financeiro.registrar_despesa">
+                          <button onClick={() => abrirEdicaoEntrada(i)} className="text-muted hover:text-purple" aria-label="Editar entrada">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </Can>
+                        <Can permission="action:financeiro.remover">
+                          <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Can>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1437,6 +1501,114 @@ export function Finance() {
           </div>
         )
       })()}
+
+      {editandoEntrada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setEditandoEntrada(null)} />
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-display font-semibold">Editar entrada lançada à mão</h2>
+              <button onClick={() => setEditandoEntrada(null)} className="text-muted hover:text-ink" aria-label="Fechar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={salvarEdicaoEntrada} className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Tipo de entrada</label>
+                {novoTipoEntrada === null ? (
+                  <select
+                    value={editandoEntrada.tipo}
+                    onChange={(e) => (e.target.value === '__nova__' ? setNovoTipoEntrada('') : setEditandoEntrada({ ...editandoEntrada, tipo: e.target.value }))}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  >
+                    {(listaTiposEntrada.includes(editandoEntrada.tipo) ? listaTiposEntrada : [editandoEntrada.tipo, ...listaTiposEntrada]).map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                    <option value="__nova__">+ Nova categoria…</option>
+                  </select>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <input
+                      autoFocus
+                      value={novoTipoEntrada}
+                      onChange={(e) => setNovoTipoEntrada(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); criarTipoEntrada() }
+                        if (e.key === 'Escape') setNovoTipoEntrada(null)
+                      }}
+                      placeholder="Nome do tipo de entrada"
+                      maxLength={60}
+                      className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button type="button" onClick={criarTipoEntrada} disabled={!novoTipoEntrada.trim()} className="px-3 rounded-lg bg-purple text-white text-xs font-medium disabled:opacity-50">Criar</button>
+                    <button type="button" onClick={() => setNovoTipoEntrada(null)} className="text-muted hover:text-ink px-1 text-xs" aria-label="Cancelar tipo novo">✕</button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Descrição (opcional)</label>
+                <input
+                  type="text"
+                  value={editandoEntrada.descricao}
+                  onChange={(e) => setEditandoEntrada({ ...editandoEntrada, descricao: e.target.value })}
+                  placeholder="Ex: aluguel do salão para evento da escola"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1">Valor</label>
+                  <input
+                    inputMode="decimal"
+                    value={editandoEntrada.valor}
+                    onChange={(e) => setEditandoEntrada({ ...editandoEntrada, valor: e.target.value })}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1">Recebido em</label>
+                  <input
+                    type="date"
+                    value={editandoEntrada.data}
+                    onChange={(e) => setEditandoEntrada({ ...editandoEntrada, data: e.target.value })}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1">Forma</label>
+                  <select
+                    value={editandoEntrada.forma}
+                    onChange={(e) => setEditandoEntrada({ ...editandoEntrada, forma: e.target.value })}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  >
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1">Unidade</label>
+                  <select
+                    value={editandoEntrada.unit}
+                    onChange={(e) => setEditandoEntrada({ ...editandoEntrada, unit: e.target.value })}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+                  >
+                    {UNITS.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {erroEntrada && <p className="text-sm bg-danger-light text-danger rounded-lg px-3 py-2">{erroEntrada}</p>}
+              <Button type="submit" className="w-full justify-center mt-2" disabled={salvandoEntrada}>
+                {salvandoEntrada ? 'Salvando...' : 'Salvar alterações'}
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {editingExpense && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

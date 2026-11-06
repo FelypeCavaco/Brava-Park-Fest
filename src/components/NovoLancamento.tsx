@@ -20,7 +20,7 @@ type Tipo = 'pagar' | 'paga' | 'entrada'
 type Origem = 'festa' | 'outra'
 const NOVA = '__nova__'
 
-const TIPOS_ENTRADA_BASE = ['Aluguel do espaço', 'Venda avulsa', 'Reembolso', 'Rendimento da conta', 'Outras entradas']
+export const TIPOS_ENTRADA_BASE = ['Aluguel do espaço', 'Venda avulsa', 'Reembolso', 'Rendimento da conta', 'Outras entradas']
 
 interface FestaOpcao { id: string; label: string; falta: number; data: string }
 interface Parecido { id: string; reservationId: string; cliente: string; data: string; descricao: string; valor: number }

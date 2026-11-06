@@ -55,10 +55,32 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
         .sort((a, b) => b.dias - a.dias)
       setParcelasAtrasadas(lista)
     })
+    // Projeção do caixa dos próximos 30 dias (migração 089): só avisa se o
+    // saldo em conta de todas as unidades da tela foi informado.
+    Promise.all([
+      supabase.rpc('cash_projection', { p_unit: unitId, p_days: 30 }),
+      supabase.from('cash_balances').select('unit_id, amount'),
+      supabase.from('units').select('id'),
+    ]).then(([proj, sal, uni]) => {
+      if (!vivo || proj.error || sal.error) return
+      const saldos = (sal.data ?? []) as { unit_id: string; amount: number }[]
+      // Todas as unidades da tela precisam ter o saldo informado, senão a soma engana.
+      const unidades = unitId ? [unitId] : ((uni.data ?? []) as { id: string }[]).map((u) => u.id)
+      if (unidades.length === 0 || unidades.some((u) => !saldos.find((s) => s.unit_id === u))) return setNegativo(null)
+      let s = saldos.filter((x) => unidades.includes(x.unit_id)).reduce((t, x) => t + Number(x.amount), 0)
+      const porDia = new Map<string, number>()
+      for (const m of (proj.data ?? []) as any[]) porDia.set(m.dia, (porDia.get(m.dia) ?? 0) + Number(m.valor))
+      for (const dia of [...porDia.keys()].sort()) {
+        s += porDia.get(dia)!
+        if (s < 0) return setNegativo({ dia, saldo: s })
+      }
+      setNegativo(null)
+    })
     return () => {
       vivo = false
     }
   }, [mes, unitId])
+  const [negativo, setNegativo] = useState<{ dia: string; saldo: number } | null>(null)
 
   const r = atual?.resultado
   const lucro = r ? Number(r.resultado) : null
@@ -67,7 +89,14 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
 
   const alertas = useMemo(() => {
     const out: Alerta[] = []
-    if (resumo && resumo.saldoProjetado < 0)
+    if (negativo)
+      out.push({
+        nivel: 'alta',
+        titulo: `O caixa previsto fica negativo em ${dm(negativo.dia)} (${brl(negativo.saldo)})`,
+        detalhe: 'Considera o saldo em conta informado e tudo o que já está lançado para os próximos 30 dias.',
+        acao: { rotulo: 'Ver a projeção', aba: 'planejamento' },
+      })
+    else if (resumo && resumo.saldoProjetado < 0)
       out.push({
         nivel: 'alta',
         titulo: `O saldo previsto do mês fica negativo (${brl(resumo.saldoProjetado)})`,
@@ -102,7 +131,7 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
       })
     }
     return out
-  }, [resumo, contasAtrasadas, atual, anterior, parcelasAtrasadas, can])
+  }, [resumo, contasAtrasadas, atual, anterior, parcelasAtrasadas, can, negativo])
 
   const corNivel = { alta: '#B23A3A', media: '#B8720A', baixa: 'rgb(var(--c-purple))' } as const
 

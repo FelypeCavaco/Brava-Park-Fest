@@ -4,6 +4,7 @@ import { InstallmentsForecast } from '../components/InstallmentsForecast'
 import { NovoLancamento } from '../components/NovoLancamento'
 import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal'
 import { VisaoGeral, type AbaFinanceiro } from '../components/financeiro/VisaoGeral'
+import { PontoEquilibrio, ProjecaoCaixa } from '../components/financeiro/Planejamento'
 import { Profitability } from './Profitability'
 import { MonthlyResult } from './MonthlyResult'
 import { Reports } from './Reports'
@@ -1273,29 +1274,10 @@ export function Finance() {
 
       {aba === 'planejamento' && (
         <>
-          <p className="text-sm text-muted">Olhar para frente: o que ainda vai entrar e sair, as metas e a projeção do caixa.</p>
+          <p className="text-sm text-muted">Olhar para frente: quantas festas a casa precisa fazer para não ter prejuízo, como o caixa deve se comportar nos próximos dias e as metas.</p>
+          <PontoEquilibrio unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
+          <ProjecaoCaixa unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} unitDbIds={unitDbIds} />
           <InstallmentsForecast unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
-          {fluxoResumo && (
-            <Card title="Fluxo de caixa futuro (projeção)" action={<TrendingUp className="w-4 h-4 text-purple" />}>
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>Saldo do mês {currency(fluxoResumo.saldo)}</span>
-                <span className="text-muted">+</span>
-                <span className="text-teal">Recebimentos previstos {currency(fluxoResumo.recebimentosPrevistos)}</span>
-                <span className="text-muted">−</span>
-                <span className="text-danger">Contas a pagar {currency(fluxoResumo.aPagar + fluxoResumo.atrasado)}</span>
-                {fluxoResumo.custosFestasRestantes > 0 && (
-                  <>
-                    <span className="text-muted">−</span>
-                    <span className="text-danger">Custos das próximas festas do mês {currency(fluxoResumo.custosFestasRestantes)}</span>
-                  </>
-                )}
-                <span className="text-muted">=</span>
-                <span className={`font-display font-semibold text-base ${fluxoResumo.saldoProjetado >= 0 ? 'text-teal' : 'text-danger'}`}>
-                  Saldo projetado {currency(fluxoResumo.saldoProjetado)}
-                </span>
-              </div>
-            </Card>
-          )}
           {can('page:relatorios') && <Reports embutido />}
         </>
       )}

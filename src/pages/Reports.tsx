@@ -28,7 +28,8 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url)
 }
 
-export function Reports() {
+// embutido: dentro do Financeiro (aba Planejamento), sem o título próprio.
+export function Reports({ embutido = false }: { embutido?: boolean } = {}) {
   const currentUserName = useCurrentUserName()
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
   const [loading, setLoading] = useState(true)
@@ -207,18 +208,22 @@ export function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Relatórios e metas</h1>
-          <p className="text-sm text-muted mt-1">Metas de faturamento, comparativo entre unidades e projeção futura</p>
-        </div>
+        {embutido ? (
+          <h2 className="text-lg font-display font-semibold">Metas e projeção de recebimentos</h2>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-semibold">Relatórios e metas</h1>
+            <p className="text-sm text-muted mt-1">Metas de faturamento, comparativo entre unidades e projeção futura</p>
+          </div>
+        )}
         <Button variant="secondary" onClick={handleExport}>
           <Download className="w-4 h-4" /> Exportar CSV (Excel)
         </Button>
       </div>
 
       <p className="text-sm bg-purple-light/40 border border-purple/20 rounded-lg px-4 py-2.5">
-        Esta tela conta pelo critério de data do pagamento. Para o resultado por festa realizada, veja{' '}
-        <Link to="/financeiro?visao=resultado" className="text-purple font-medium underline">Financeiro → Resultado das festas</Link>.
+        Esta parte conta pelo critério de data do pagamento. Para o resultado por festa realizada, veja{' '}
+        <Link to="/financeiro?aba=resultado&sub=festas" className="text-purple font-medium underline">Financeiro → Resultado → Resultado das festas</Link>.
       </p>
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}

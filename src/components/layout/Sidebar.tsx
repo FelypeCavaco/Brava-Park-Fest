@@ -95,8 +95,8 @@ const groups: Group[] = [
     label: 'Financeiro',
     icon: Banknote,
     items: [
-      { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/financeiro', label: 'Financeiro', icon: Banknote },
+      { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/despesas-fixas-festas', label: 'Despesa fixa das festas', icon: Repeat },
       { to: '/acertos-entre-unidades', label: 'Acertos entre unidades', icon: ArrowLeftRight },
       { to: '/comissoes', label: 'Comissões', icon: BadgePercent },
@@ -158,8 +158,12 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       .then(({ count }) => setAcertosPendentes(count ?? 0))
   }, [canSeeAcertos, location.pathname])
   const visibleTopLinks = foraDaEmpresa ? [] : topLinks.filter((i) => canAccessRoute(role, can, i.to))
+  // Resultado do mês, Lucro por festa e Relatórios e metas viraram abas do
+  // Financeiro: somem do menu para quem entra no Financeiro (quem não entra
+  // continua vendo a tela antiga).
+  const dentroDoFinanceiro = can('page:financeiro') ? ['/resultado-do-mes', '/lucro-por-festa', '/relatorios'] : []
   const visibleGroups = groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => (foraDaEmpresa ? i.to === '/plataforma' : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => !dentroDoFinanceiro.includes(i.to) && (foraDaEmpresa ? i.to === '/plataforma' : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
     .filter((g) => g.items.length > 0)
 
   async function handleLogout() {

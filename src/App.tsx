@@ -1,5 +1,7 @@
 import { Suspense } from 'react'
+import type { ReactElement } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { useAuth } from './lib/AuthContext'
 import { lazyPage, PageLoading } from './lib/lazyPage'
 import { AppLayout } from './components/layout/AppLayout'
 import { RequireAuth } from './components/layout/RequireAuth'
@@ -72,8 +74,8 @@ export default function App() {
           <Route path="/pagamentos" element={<Payments />} />
           <Route path="/financeiro" element={<Finance />} />
           <Route path="/despesas-fixas-festas" element={<FestaFixedCosts />} />
-          <Route path="/resultado-do-mes" element={<MonthlyResult />} />
-          <Route path="/lucro-por-festa" element={<Profitability />} />
+          <Route path="/resultado-do-mes" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=caixa" tela={<MonthlyResult />} />} />
+          <Route path="/lucro-por-festa" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=festa" tela={<Profitability />} />} />
           <Route path="/estoque" element={<Inventory />} />
           <Route path="/consumo-por-convidado" element={<ConsumptionAverages />} />
           <Route path="/acertos-entre-unidades" element={<Settlements />} />
@@ -81,7 +83,7 @@ export default function App() {
           <Route path="/escalas" element={<Schedules />} />
           <Route path="/relatorio-aniversariantes" element={<BirthdayReport />} />
           <Route path="/fornecedores" element={<Suppliers />} />
-          <Route path="/relatorios" element={<Reports />} />
+          <Route path="/relatorios" element={<TelaOuAbaDoFinanceiro aba="planejamento" tela={<Reports />} />} />
           <Route path="/usuarios" element={<Users />} />
           <Route path="/exportar-dados" element={<ExportData />} />
           <Route path="/configuracoes" element={<Settings />} />
@@ -93,4 +95,13 @@ export default function App() {
     </Routes>
     </Suspense>
   )
+}
+
+// Resultado do mês, Lucro por festa e Relatórios e metas viraram abas do
+// Financeiro. Quem entra no Financeiro é levado para a aba; quem não entra
+// continua vendo a tela antiga.
+function TelaOuAbaDoFinanceiro({ aba, tela }: { aba: string; tela: ReactElement }) {
+  const { can, permissionsLoading } = useAuth()
+  if (permissionsLoading) return <PageLoading />
+  return can('page:financeiro') ? <Navigate to={`/financeiro?aba=${aba}`} replace /> : tela
 }

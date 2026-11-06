@@ -3,9 +3,14 @@ import { FinanceBreakdown } from '../components/FinanceBreakdown'
 import { InstallmentsForecast } from '../components/InstallmentsForecast'
 import { NovoLancamento } from '../components/NovoLancamento'
 import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal'
+import { VisaoGeral, type AbaFinanceiro } from '../components/financeiro/VisaoGeral'
+import { Profitability } from './Profitability'
+import { MonthlyResult } from './MonthlyResult'
+import { Reports } from './Reports'
+import { useAuth } from '../lib/AuthContext'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { FileText, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
+import { FileText, Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -31,6 +36,8 @@ import { friendlyDbError } from '../lib/format'
 import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFestasView } from './FinanceViews'
 
 interface ItemDetalhe { id: string; categoria: string; descricao: string; detalhe: string; data: string; valor: number }
+
+const SUB_PADRAO: Partial<Record<AbaFinanceiro, string>> = { lancamentos: 'pagar', resultado: 'festas' }
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -82,11 +89,40 @@ function effectiveStatus(status: PayableStatus, dueDate: string): PayableStatus 
 
 export function Finance() {
   const { selectedUnit, unitDbIds, unitDbIdsLoading } = useUnit()
-  // Três visões do Financeiro: Caixa (a tela de sempre), Resultado das festas e Ponte.
-  const [visao, setVisao] = useState<'caixa' | 'resultado' | 'ponte'>(() => {
-    const v = new URLSearchParams(window.location.search).get('visao')
-    return v === 'resultado' || v === 'ponte' ? v : 'caixa'
+  // Cinco abas, cada uma com um assunto: Visão geral, Lançamentos, Resultado,
+  // Planejamento e Comparativos (algumas com subabas). Fica no endereço
+  // (?aba=...&sub=...) para o link levar direto ao lugar; os endereços antigos
+  // (?visao=resultado / ?visao=ponte) continuam funcionando.
+  const { can } = useAuth()
+  const [aba, setAba] = useState<AbaFinanceiro>(() => {
+    const q = new URLSearchParams(window.location.search)
+    const a = q.get('aba')
+    if (a === 'geral' || a === 'lancamentos' || a === 'resultado' || a === 'planejamento' || a === 'comparativos') return a
+    const v = q.get('visao')
+    if (v === 'resultado' || v === 'ponte') return 'resultado'
+    return 'geral'
   })
+  const [sub, setSub] = useState<string>(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('sub')) return q.get('sub') as string
+    if (q.get('visao') === 'ponte') return 'ponte'
+    if (q.get('visao') === 'resultado') return 'festas'
+    return SUB_PADRAO[(q.get('aba') as AbaFinanceiro) ?? 'geral'] ?? ''
+  })
+  function irPara(a: AbaFinanceiro, s?: string) {
+    const novoSub = s ?? SUB_PADRAO[a] ?? ''
+    setAba(a)
+    setSub(novoSub)
+    try {
+      const q = new URLSearchParams()
+      q.set('aba', a)
+      if (novoSub) q.set('sub', novoSub)
+      window.history.replaceState(null, '', `${window.location.pathname}?${q.toString()}`)
+    } catch {
+      /* sem histórico: só não guarda no endereço */
+    }
+  }
+  const [novoAberto, setNovoAberto] = useState(false)
   const [mesVisao, setMesVisao] = useState(currentMonthValue)
   const [relatorioAberto, setRelatorioAberto] = useState(false)
   const { scheduleDelete } = useUndo()
@@ -559,6 +595,17 @@ export function Finance() {
     setEditNovaCat(null)
   }
 
+  // Contas por aba de Lançamentos: a pagar (mais antigas primeiro) e pagas.
+  const contasAPagar = useMemo(
+    () => filteredExpenses.filter((e) => e.status !== 'pago' && e.status !== 'cancelado').sort((a, b) => (a.due_date < b.due_date ? -1 : 1)),
+    [filteredExpenses],
+  )
+  const contasDaAba = sub === 'pagas' ? filteredExpenses.filter((e) => e.status === 'pago' || e.status === 'cancelado') : contasAPagar
+  const contasAtrasadas = useMemo(
+    () => contasAPagar.filter((e) => e.status === 'atrasado' && !e.covers_festa_costs).map((e) => ({ id: e.id, descricao: e.description || e.category, valor: e.amount, vencimento: e.due_date })),
+    [contasAPagar],
+  )
+
   const entradasManuaisVisiveis = useMemo(() => entradasManuais.filter((i) => unitIds.includes(i.unit_id)), [entradasManuais, unitIds])
 
   function removerEntradaManual(id: string) {
@@ -767,145 +814,495 @@ export function Finance() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Financeiro</h1>
-          <p className="text-sm text-muted mt-1">Contas a pagar, despesas fixas e fluxo de caixa do mês — sempre por unidade, já que são contas bancárias diferentes</p>
+          <p className="text-sm text-muted mt-1">Lucro, caixa, contas e planejamento. Sempre por unidade, já que são contas bancárias diferentes.</p>
         </div>
-        <Button type="button" variant="secondary" onClick={() => setRelatorioAberto(true)}>
-          <FileText className="w-4 h-4" /> Relatório (PDF ou Excel)
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => setRelatorioAberto(true)}>
+            <FileText className="w-4 h-4" /> Relatório (PDF ou Excel)
+          </Button>
+          {(can('action:financeiro.registrar_despesa') || can('action:festa.pagamentos')) && (
+            <Button type="button" onClick={() => setNovoAberto(true)}>
+              <Plus className="w-4 h-4" /> Novo lançamento
+            </Button>
+          )}
+        </div>
       </div>
       {relatorioAberto && <RelatorioFinanceiroModal onClose={() => setRelatorioAberto(false)} />}
+      {novoAberto && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setNovoAberto(false)} />
+          <div className="relative w-full max-w-3xl my-6">
+            <button type="button" onClick={() => setNovoAberto(false)} className="absolute right-3 top-3 z-10 text-muted hover:text-ink" aria-label="Fechar">
+              <X className="w-5 h-5" />
+            </button>
+            <NovoLancamento
+              unitDbIds={unitDbIds}
+              defaultUnit={selectedUnit === 'todas' ? UNITS[0]?.id ?? '' : selectedUnit}
+              categoriasUsadas={categoriasUsadas}
+              onSaved={loadAll}
+            />
+          </div>
+        </div>
+      )}
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 
       {import.meta.env.DEV && <ConferenciaPrevia summaryByUnit={summaryByUnit} unitDbIds={unitDbIds} pronto={agregadosProntos} />}
 
-      <div className="inline-flex flex-wrap rounded-xl border border-line bg-surface p-1 gap-1" role="tablist">
+      <div className="flex flex-wrap rounded-xl border border-line bg-surface p-1 gap-1" role="tablist" aria-label="Financeiro">
         {([
-          ['caixa', 'Caixa'],
-          ['resultado', 'Resultado das festas'],
-          ['ponte', 'Ponte e compromissos'],
+          ['geral', 'Visão geral'],
+          ['lancamentos', 'Lançamentos'],
+          ['resultado', 'Resultado'],
+          ['planejamento', 'Planejamento'],
+          ['comparativos', 'Comparativos'],
         ] as const).map(([k, label]) => (
           <button
             key={k}
+            type="button"
             role="tab"
-            aria-selected={visao === k}
-            onClick={() => setVisao(k)}
-            className={`px-3 h-9 rounded-lg text-sm font-medium transition-colors ${visao === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}
+            aria-selected={aba === k}
+            onClick={() => irPara(k)}
+            className={`px-3 h-9 rounded-lg text-sm font-medium transition-colors ${aba === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {visao === 'resultado' && (
-        <ResultadoFestasView
-          month={mesVisao}
-          onMonthChange={setMesVisao}
+      {aba === 'geral' && (
+        <VisaoGeral
           unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
-          unitDbIds={unitDbIds}
-          mostrarUnidade={selectedUnit === 'todas'}
-        />
-      )}
-      {visao === 'ponte' && (
-        <PonteView
-          month={mesVisao}
-          onMonthChange={setMesVisao}
-          unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
-          unitDbIds={unitDbIds}
-          mostrarUnidade={selectedUnit === 'todas'}
-          saldoProjetado={fluxoResumo ? fluxoResumo.saldoProjetado : null}
+          resumo={fluxoResumo ? {
+            entradas: fluxoResumo.entradas,
+            acertos: fluxoResumo.acertosRecebidos,
+            contasPagas: fluxoResumo.totalDespesas,
+            custosFestas: fluxoResumo.custosFestas,
+            aPagar: fluxoResumo.aPagar,
+            atrasado: fluxoResumo.atrasado,
+            recebimentosPrevistos: fluxoResumo.recebimentosPrevistos,
+            saldoProjetado: fluxoResumo.saldoProjetado,
+          } : null}
+          contasAtrasadas={contasAtrasadas}
+          onIr={irPara}
         />
       )}
 
-      {visao === 'caixa' && (
+      {aba === 'lancamentos' && (
         <>
-      <ExplainBox
-        id="caixa"
-        titulo="Caixa — o dinheiro que passou pela conta."
-        naoE="o lucro do mês."
-        exemplo={EXEMPLO_FESTA}
-      >
-        <p>Mostra o que entrou, o que saiu e o que sobrou neste mês, do jeito que o sistema sempre calculou. Os pagamentos dos clientes contam no mês em que o cliente pagou. As contas contam no mês em que foram pagas. Os custos das festas contam no mês em que a festa acontece. <strong>Por isso, num mês com muitas festas que já foram pagas antes, o saldo pode ficar baixo ou negativo sem que isso seja prejuízo.</strong></p>
-        <p>
-          Para saber se as festas deram lucro, veja{' '}
-          <button onClick={() => setVisao('resultado')} className="text-purple font-medium underline">Resultado das festas</button>. Para entender a diferença entre os dois, veja{' '}
-          <button onClick={() => setVisao('ponte')} className="text-purple font-medium underline">Ponte e compromissos</button>.
-        </p>
-      </ExplainBox>
-
-      <InstallmentsForecast unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
-
-      {fluxoResumo && (
-        <p className="text-sm bg-surface border border-line rounded-card px-4 py-3">
-          Neste mês, entraram {currency(fluxoResumo.entradas + fluxoResumo.acertosRecebidos)} e saíram {currency(fluxoResumo.totalDespesas + fluxoResumo.custosFestas)}. O saldo ficou em {currency(fluxoResumo.saldo)}. Isso mostra o movimento do caixa e não diz, sozinho, se as festas deram lucro.
-        </p>
-      )}
-
-      {visibleUnitSlugs.map((slug) => {
-        const s = summaryByUnit[slug]
-        const unitName = UNITS.find((u) => u.id === slug)?.name ?? slug
-        if (!s) return null
-        return (
-          <div key={slug} className="space-y-4">
-            {selectedUnit === 'todas' && <p className="text-sm font-display font-semibold">{unitName}</p>}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <Card>
-                <p className="text-xs text-muted">Entradas do mês</p>
-                <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
-                {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de outras entradas (lançadas à mão, acertos entre unidades, multa e juros)</p>}
-                <p className="text-[11px] text-muted mt-0.5 leading-snug">Pagamentos de clientes que você recebeu neste mês, de qualquer festa (inclusive festas de meses futuros).</p>
-              </Card>
-              <Card>
-                <p className="text-xs text-muted">Custos das festas do mês</p>
-                <p className="text-xl font-display font-semibold mt-1">{currency(s.custosFestas)}</p>
-                <p className="text-[11px] text-muted mt-0.5">
-                  Custos das festas deste mês que já aconteceram.{s.custosFestasRestantes > 0 ? ` Previstos das que ainda vão acontecer: ${currency(s.custosFestasRestantes)}.` : ''}
-                </p>
-              </Card>
-              <Card>
-                <p className="text-xs text-muted">A pagar (a vencer)</p>
-                <p className="text-xl font-display font-semibold mt-1 text-amber">{currency(s.aPagar)}</p>
-                <p className="text-[11px] text-muted mt-0.5">Contas que ainda não venceram.</p>
-              </Card>
-              <Card className={s.atrasado > 0 ? 'border-danger' : ''}>
-                <p className="text-xs text-muted">Atrasado</p>
-                <p className={`text-xl font-display font-semibold mt-1 ${s.atrasado > 0 ? 'text-danger' : ''}`}>{currency(s.atrasado)}</p>
-                <p className="text-[11px] text-muted mt-0.5">Contas vencidas e ainda não pagas.</p>
-              </Card>
-              <Card className={s.saldo >= 0 ? 'border-teal' : 'border-danger'}>
-                <p className="text-xs text-muted">Saldo do mês (caixa)</p>
-                <p className={`text-xl font-display font-semibold mt-1 ${s.saldo >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(s.saldo)}</p>
-                <p className="text-[11px] text-muted mt-0.5 leading-snug">Entradas + acertos − contas pagas − custos das festas já realizadas.</p>
-              </Card>
-            </div>
+          <p className="text-sm text-muted">Tudo o que você lança ou paga, em um lugar só. O botão <strong>+ Novo lançamento</strong>, no alto, serve para qualquer um deles.</p>
+          <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5 gap-0.5" role="tablist">
+            {([
+              ['pagar', `A pagar (${contasAPagar.length})`],
+              ['pagas', 'Pagas'],
+              ['entradas', `Entradas lançadas à mão (${entradasManuaisVisiveis.length})`],
+              ['fixas', `Despesas fixas (${filteredRecurring.length})`],
+            ] as const).map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => irPara(aba, k)} className={`px-2.5 h-8 rounded-md text-xs font-medium whitespace-nowrap ${sub === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
+                {label}
+              </button>
+            ))}
           </div>
-        )
-      })}
-
-      <FinanceBreakdown unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
-
-      {fluxoResumo && (
-        <>
-          <Card title="Fluxo de caixa futuro (projeção)" action={<TrendingUp className="w-4 h-4 text-purple" />}>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span>Saldo do mês {currency(fluxoResumo.saldo)}</span>
-              <span className="text-muted">+</span>
-              <span className="text-teal">Recebimentos previstos {currency(fluxoResumo.recebimentosPrevistos)}</span>
-              <span className="text-muted">−</span>
-              <span className="text-danger">Contas a pagar {currency(fluxoResumo.aPagar + fluxoResumo.atrasado)}</span>
-              {fluxoResumo.custosFestasRestantes > 0 && (
-                <>
-                  <span className="text-muted">−</span>
-                  <span className="text-danger">Custos das próximas festas do mês {currency(fluxoResumo.custosFestasRestantes)}</span>
-                </>
+          {(sub === 'pagar' || sub === 'pagas') && (
+            <>
+        <Card title={sub === 'pagas' ? 'Contas pagas e canceladas' : 'Contas a pagar'}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted border-b border-line">
+                {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
+                <th className="pb-3 font-medium">Vencimento</th>
+                <th className="pb-3 font-medium">Categoria</th>
+                <th className="pb-3 font-medium">Descrição</th>
+                <th className="pb-3 font-medium">Fornecedor</th>
+                <th className="pb-3 font-medium">Valor</th>
+                <th className="pb-3 font-medium">Status</th>
+                <th className="pb-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {contasDaAba.map((e) => (
+                <tr key={e.id}>
+                  {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === e.unit_id)?.name}</td>}
+                  <td className="py-3 text-muted">{new Date(e.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td className="py-3">{e.category}</td>
+                  <td className="py-3 font-medium">
+                    {e.is_stock_purchase && (
+                      <button onClick={() => setExpandedPurchase((prev) => (prev === e.id ? null : e.id))} className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold text-purple bg-purple-light rounded px-1.5 py-0.5">
+                        Compra de estoque <ChevronDown className={`w-3 h-3 transition-transform ${expandedPurchase === e.id ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+                    {(e.settlement_batch_id || e.settlement_id) && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
+                    {isEstorno(e) && <span className="mb-1 inline-flex text-[11px] font-semibold text-danger bg-danger-light rounded px-1.5 py-0.5">Estorno</span>}
+                    {e.commission_payout_id && <span className="mb-1 inline-flex text-[11px] font-semibold text-amber bg-amber-light rounded px-1.5 py-0.5">Comissão</span>}
+                    <p className={e.is_stock_purchase && expandedPurchase !== e.id ? 'line-clamp-1' : ''}>{e.description}</p>
+                    {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (!e.is_stock_purchase || expandedPurchase === e.id) && (
+                      <ul className="text-xs text-muted font-normal mt-1 space-y-0.5">
+                        {expenseItemsByExpense[e.id].map((it) => (
+                          <li key={it.id}>• {it.itemName.includes('—') ? it.itemName : `${it.quantity}x ${it.itemName}`}{it.lineValue != null ? ` — ${currency(it.lineValue)}` : ''}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                  <td className="py-3 text-muted">{e.supplier ?? '—'}</td>
+                  <td className="py-3">{currency(e.amount)}</td>
+                  <td className="py-3">
+                    <Badge tone={statusTone[e.status]}>{statusLabel[e.status]}</Badge>
+                    {e.status === 'pago' && e.payment_method && (
+                      <p className="text-xs text-muted mt-0.5">{PAYMENT_METHOD_LABEL[e.payment_method]}</p>
+                    )}
+                    {e.covers_festa_costs && (
+                      <p className="text-xs text-purple mt-0.5" title="Não entra nos totais — o valor já está nos custos das festas">
+                        Já nos custos das festas
+                      </p>
+                    )}
+                  </td>
+                  <td className="py-3 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      {e.status !== 'pago' && !(e.settlement_id && e.status === 'cancelado') && (
+                        <Can permission="action:financeiro.marcar_pago">
+                          <button onClick={() => openEditExpense(e, 'pago')} className="text-purple text-xs font-medium">
+                            Marcar pago
+                          </button>
+                        </Can>
+                      )}
+                      {e.settlement_batch_id || e.settlement_id ? (
+                        <Link to="/acertos-entre-unidades" className="text-muted hover:text-purple" title="Só muda pela tela Acertos entre unidades" aria-label="Lançamento travado — abrir Acertos entre unidades">
+                          <Lock className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : e.commission_payout_id ? (
+                        <Link to="/comissoes" className="text-muted hover:text-purple" title="Só muda pela tela Comissões" aria-label="Conta de comissão — abrir Comissões">
+                          <Lock className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : isEstorno(e) ? (
+                        <Link to={`/reservas/${e.reservation_id}`} className="text-muted hover:text-purple" title="O valor do estorno muda pela festa cancelada" aria-label="Estorno — abrir a festa">
+                          <Lock className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : (
+                        <>
+                          <Can permission="action:financeiro.registrar_despesa">
+                            {e.is_stock_purchase ? (
+                              <Link to={`/estoque?compra=${e.id}`} className="text-muted hover:text-purple" aria-label="Editar compra de estoque" title="Editar pela Entrada de compra">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Link>
+                            ) : (
+                              <button onClick={() => openEditExpense(e)} className="text-muted hover:text-purple" aria-label="Editar despesa">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </Can>
+                          <Can permission="action:financeiro.remover">
+                            <button onClick={() => handleRemove(e.id)} className="text-muted hover:text-danger" aria-label="Remover despesa">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </Can>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {contasDaAba.length === 0 && (
+                <tr>
+                  <td colSpan={selectedUnit === 'todas' ? 8 : 7} className="py-6 text-center text-muted">
+                    {sub === 'pagas' ? 'Nenhuma conta paga ainda.' : 'Nenhuma conta a pagar. Tudo em dia.'}
+                  </td>
+                </tr>
               )}
-              <span className="text-muted">=</span>
-              <span className={`font-display font-semibold text-base ${fluxoResumo.saldoProjetado >= 0 ? 'text-teal' : 'text-danger'}`}>
-                Saldo projetado {currency(fluxoResumo.saldoProjetado)}
-              </span>
-            </div>
+            </tbody>
+          </table>
+        </Card>
+            </>
+          )}
+          {sub === 'entradas' && (
+            <>
+        {entradasManuaisVisiveis.length > 0 && (
+          <Card title="Entradas lançadas à mão">
+            <p className="text-xs text-muted mb-2">Dinheiro que entrou e não era pagamento de festa (Novo lançamento → Entrada de dinheiro → Outra entrada). Pagamentos de festa ficam na própria festa.</p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted border-b border-line">
+                  {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
+                  <th className="pb-3 font-medium">Recebido em</th>
+                  <th className="pb-3 font-medium">Tipo</th>
+                  <th className="pb-3 font-medium">Descrição</th>
+                  <th className="pb-3 font-medium">Valor</th>
+                  <th className="pb-3 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {entradasManuaisVisiveis.map((i) => (
+                  <tr key={i.id}>
+                    {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === i.unit_id)?.name}</td>}
+                    <td className="py-3 text-muted">{new Date(i.received_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3">{i.category ?? 'Outras entradas'}</td>
+                    <td className="py-3">
+                      {i.description}
+                      {i.payment_method && <p className="text-xs text-muted">{PAYMENT_METHOD_LABEL[i.payment_method as PaymentMethod] ?? i.payment_method}</p>}
+                    </td>
+                    <td className="py-3 text-teal font-medium">{currency(i.amount)}</td>
+                    <td className="py-3 text-right">
+                      <Can permission="action:financeiro.remover">
+                        <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </Can>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Card>
+        )}
+              {entradasManuaisVisiveis.length === 0 && (
+                <Card>
+                  <p className="text-sm text-muted py-2">Nenhuma entrada lançada à mão. Use <strong>+ Novo lançamento → Entrada de dinheiro → Outra entrada</strong> para registrar, por exemplo, um aluguel do espaço.</p>
+                </Card>
+              )}
+            </>
+          )}
+          {sub === 'fixas' && (
+            <>
+        <Card
+          title="Despesas fixas (recorrentes)"
+          action={<span className="text-xs text-muted flex items-center gap-1"><Repeat className="w-3 h-3" /> viram pendente sozinhas todo dia 1º</span>}
+        >
+          {loading ? (
+            <p className="text-sm text-muted py-4 text-center">Carregando...</p>
+          ) : (
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="text-left text-xs text-muted border-b border-line">
+                  {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
+                  <th className="pb-3 font-medium">Categoria</th>
+                  <th className="pb-3 font-medium">Descrição</th>
+                  <th className="pb-3 font-medium">Valor</th>
+                  <th className="pb-3 font-medium">Vencimento</th>
+                  <th className="pb-3 font-medium">Status deste mês</th>
+                  <th className="pb-3 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {filteredRecurring.map((r) => {
+                  const instancia = currentExpenseByRecurringId[r.id]
+                  return (
+                  <tr key={r.id} className={r.active ? '' : 'opacity-50'}>
+                    {selectedUnit === 'todas' && <td className="py-2.5 text-muted">{UNITS.find((u) => u.id === r.unit_id)?.name}</td>}
+                    <td className="py-2.5">{r.category}</td>
+                    <td className="py-2.5 font-medium">{r.description}</td>
+                    <td className="py-2.5">{currency(r.amount)}</td>
+                    <td className="py-2.5 text-muted">
+                      {instancia ? new Date(instancia.due_date + 'T00:00:00').toLocaleDateString('pt-BR') : `dia ${r.day_of_month}`}
+                    </td>
+                    <td className="py-2.5">
+                      {!r.active ? (
+                        <Badge tone="neutral">Pausada</Badge>
+                      ) : instancia ? (
+                        <Badge tone={statusTone[instancia.status]}>{statusLabel[instancia.status]}</Badge>
+                      ) : r.first_charge_month && r.first_charge_month > `${currentMonthValue()}-01` ? (
+                        <Badge tone="neutral">Começa em {new Date(r.first_charge_month + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</Badge>
+                      ) : (
+                        <Badge tone="neutral">—</Badge>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Can permission="action:financeiro.despesas_fixas">
+                        <div className="flex items-center justify-end gap-3">
+                          {instancia && instancia.status !== 'pago' && (
+                            <button onClick={() => openEditExpense(instancia, 'pago')} className="text-purple text-xs font-medium">
+                              Marcar pago
+                            </button>
+                          )}
+                          <button onClick={() => toggleRecurring(r.id)} className="text-muted hover:text-ink" aria-label={r.active ? 'Pausar' : 'Ativar'}>
+                            {r.active ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                          </button>
+                          <button onClick={() => handleRemoveRecurring(r.id)} className="text-muted hover:text-danger" aria-label="Remover despesa fixa">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </Can>
+                    </td>
+                  </tr>
+                  )
+                })}
+                {filteredRecurring.length === 0 && (
+                  <tr>
+                    <td colSpan={selectedUnit === 'todas' ? 7 : 6} className="py-4 text-center text-muted">
+                      Nenhuma despesa fixa cadastrada.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+  
+          <p className="text-xs text-muted">Para criar uma despesa fixa, use <strong>Novo lançamento → Conta a pagar → Repete todo mês</strong>.</p>
+        </Card>
+            </>
+          )}
+        </>
+      )}
 
+      {aba === 'resultado' && (
+        <>
+          <p className="text-sm text-muted">Se a casa teve lucro ou prejuízo e por quê: o resultado das festas, o lucro de cada uma, o caixa do mês e a explicação da diferença entre caixa e lucro.</p>
+          <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5 gap-0.5" role="tablist">
+            {(([
+              ['festas', 'Resultado das festas'],
+              ...(can('page:lucro_por_festa') ? [['festa', 'Lucro por festa']] : []),
+              ['caixa', 'Caixa do mês'],
+              ['ponte', 'Caixa × resultado'],
+            ] as [string, string][])).map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => irPara(aba, k)} className={`px-2.5 h-8 rounded-md text-xs font-medium whitespace-nowrap ${sub === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {sub === 'festas' && (
+            <ResultadoFestasView
+              month={mesVisao}
+              onMonthChange={setMesVisao}
+              unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
+              unitDbIds={unitDbIds}
+              mostrarUnidade={selectedUnit === 'todas'}
+            />
+          )}
+          {sub === 'festa' && can('page:lucro_por_festa') && <Profitability embutido />}
+          {sub === 'caixa' && (
+            <>
+        <ExplainBox
+          id="caixa"
+          titulo="Caixa — o dinheiro que passou pela conta."
+          naoE="o lucro do mês."
+          exemplo={EXEMPLO_FESTA}
+        >
+          <p>Mostra o que entrou, o que saiu e o que sobrou neste mês, do jeito que o sistema sempre calculou. Os pagamentos dos clientes contam no mês em que o cliente pagou. As contas contam no mês em que foram pagas. Os custos das festas contam no mês em que a festa acontece. <strong>Por isso, num mês com muitas festas que já foram pagas antes, o saldo pode ficar baixo ou negativo sem que isso seja prejuízo.</strong></p>
+          <p>
+            Para saber se as festas deram lucro, veja{' '}
+            <button onClick={() => irPara('resultado', 'festas')} className="text-purple font-medium underline">Resultado das festas</button>. Para entender a diferença entre os dois, veja{' '}
+            <button onClick={() => irPara('resultado', 'ponte')} className="text-purple font-medium underline">Caixa × resultado</button>.
+          </p>
+        </ExplainBox>
+  
+        {fluxoResumo && (
+          <p className="text-sm bg-surface border border-line rounded-card px-4 py-3">
+            Neste mês, entraram {currency(fluxoResumo.entradas + fluxoResumo.acertosRecebidos)} e saíram {currency(fluxoResumo.totalDespesas + fluxoResumo.custosFestas)}. O saldo ficou em {currency(fluxoResumo.saldo)}. Isso mostra o movimento do caixa e não diz, sozinho, se as festas deram lucro.
+          </p>
+        )}
+  
+        {visibleUnitSlugs.map((slug) => {
+          const s = summaryByUnit[slug]
+          const unitName = UNITS.find((u) => u.id === slug)?.name ?? slug
+          if (!s) return null
+          return (
+            <div key={slug} className="space-y-4">
+              {selectedUnit === 'todas' && <p className="text-sm font-display font-semibold">{unitName}</p>}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Card>
+                  <p className="text-xs text-muted">Entradas do mês</p>
+                  <p className="text-xl font-display font-semibold mt-1 text-teal">{currency(s.entradas)}</p>
+                  {s.acertosRecebidos > 0 && <p className="text-[11px] text-muted mt-0.5">+ {currency(s.acertosRecebidos)} de outras entradas (lançadas à mão, acertos entre unidades, multa e juros)</p>}
+                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Pagamentos de clientes que você recebeu neste mês, de qualquer festa (inclusive festas de meses futuros).</p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-muted">Custos das festas do mês</p>
+                  <p className="text-xl font-display font-semibold mt-1">{currency(s.custosFestas)}</p>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    Custos das festas deste mês que já aconteceram.{s.custosFestasRestantes > 0 ? ` Previstos das que ainda vão acontecer: ${currency(s.custosFestasRestantes)}.` : ''}
+                  </p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-muted">A pagar (a vencer)</p>
+                  <p className="text-xl font-display font-semibold mt-1 text-amber">{currency(s.aPagar)}</p>
+                  <p className="text-[11px] text-muted mt-0.5">Contas que ainda não venceram.</p>
+                </Card>
+                <Card className={s.atrasado > 0 ? 'border-danger' : ''}>
+                  <p className="text-xs text-muted">Atrasado</p>
+                  <p className={`text-xl font-display font-semibold mt-1 ${s.atrasado > 0 ? 'text-danger' : ''}`}>{currency(s.atrasado)}</p>
+                  <p className="text-[11px] text-muted mt-0.5">Contas vencidas e ainda não pagas.</p>
+                </Card>
+                <Card className={s.saldo >= 0 ? 'border-teal' : 'border-danger'}>
+                  <p className="text-xs text-muted">Saldo do mês (caixa)</p>
+                  <p className={`text-xl font-display font-semibold mt-1 ${s.saldo >= 0 ? 'text-teal' : 'text-danger'}`}>{currency(s.saldo)}</p>
+                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Entradas + acertos − contas pagas − custos das festas já realizadas.</p>
+                </Card>
+              </div>
+            </div>
+          )
+        })}
+  
+        <FinanceBreakdown unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
+            <Card title="Despesas por categoria">
+              {porCategoria.length === 0 ? (
+                <p className="text-sm text-muted">Nenhuma despesa neste período.</p>
+              ) : (
+                <div className="space-y-3">
+                  {porCategoria.map(([cat, total]) => (
+                    <div key={cat}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>{cat}</span>
+                        <span className="font-medium">{currency(total)}</span>
+                      </div>
+                      <div className="h-1.5 bg-paper rounded-full overflow-hidden">
+                        <div className="h-full bg-danger rounded-full" style={{ width: `${(total / totalDespesasGeral) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+              {can('page:resultado_do_mes') && (
+                <div className="space-y-2 pt-2">
+                  <h2 className="text-lg font-display font-semibold">Lucro pelo caixa (critério de data do pagamento)</h2>
+                  <MonthlyResult embutido />
+                </div>
+              )}
+            </>
+          )}
+          {sub === 'ponte' && (
+            <PonteView
+              month={mesVisao}
+              onMonthChange={setMesVisao}
+              unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null}
+              unitDbIds={unitDbIds}
+              mostrarUnidade={selectedUnit === 'todas'}
+              saldoProjetado={fluxoResumo ? fluxoResumo.saldoProjetado : null}
+            />
+          )}
+        </>
+      )}
+
+      {aba === 'planejamento' && (
+        <>
+          <p className="text-sm text-muted">Olhar para frente: o que ainda vai entrar e sair, as metas e a projeção do caixa.</p>
+          <InstallmentsForecast unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
+          {fluxoResumo && (
+            <Card title="Fluxo de caixa futuro (projeção)" action={<TrendingUp className="w-4 h-4 text-purple" />}>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span>Saldo do mês {currency(fluxoResumo.saldo)}</span>
+                <span className="text-muted">+</span>
+                <span className="text-teal">Recebimentos previstos {currency(fluxoResumo.recebimentosPrevistos)}</span>
+                <span className="text-muted">−</span>
+                <span className="text-danger">Contas a pagar {currency(fluxoResumo.aPagar + fluxoResumo.atrasado)}</span>
+                {fluxoResumo.custosFestasRestantes > 0 && (
+                  <>
+                    <span className="text-muted">−</span>
+                    <span className="text-danger">Custos das próximas festas do mês {currency(fluxoResumo.custosFestasRestantes)}</span>
+                  </>
+                )}
+                <span className="text-muted">=</span>
+                <span className={`font-display font-semibold text-base ${fluxoResumo.saldoProjetado >= 0 ? 'text-teal' : 'text-danger'}`}>
+                  Saldo projetado {currency(fluxoResumo.saldoProjetado)}
+                </span>
+              </div>
+            </Card>
+          )}
+          {can('page:relatorios') && <Reports embutido />}
+        </>
+      )}
+
+      {aba === 'comparativos' && (
+        <>
+          <p className="text-sm text-muted">Para ver se a casa está melhorando: entradas e saídas ao longo do tempo, no período que você escolher.</p>
           <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
             <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} extra={<FiltroCategorias entradas={fluxoCats.entradas} saidas={fluxoCats.saidas} selecionadas={fluxoF.selecionadas} onChange={fluxoF.setSelecionadas} />} /></div>
             <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' O filtro de categorias vale para o gráfico e para o detalhe.'}</p>
@@ -948,261 +1345,6 @@ export function Finance() {
             })()}
           </Card>
         </>
-      )}
-        </>
-      )}
-
-      <Card
-        title="Despesas fixas (recorrentes)"
-        action={<span className="text-xs text-muted flex items-center gap-1"><Repeat className="w-3 h-3" /> viram pendente sozinhas todo dia 1º</span>}
-      >
-        {loading ? (
-          <p className="text-sm text-muted py-4 text-center">Carregando...</p>
-        ) : (
-          <table className="w-full text-sm mb-4">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
-                <th className="pb-3 font-medium">Categoria</th>
-                <th className="pb-3 font-medium">Descrição</th>
-                <th className="pb-3 font-medium">Valor</th>
-                <th className="pb-3 font-medium">Vencimento</th>
-                <th className="pb-3 font-medium">Status deste mês</th>
-                <th className="pb-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {filteredRecurring.map((r) => {
-                const instancia = currentExpenseByRecurringId[r.id]
-                return (
-                <tr key={r.id} className={r.active ? '' : 'opacity-50'}>
-                  {selectedUnit === 'todas' && <td className="py-2.5 text-muted">{UNITS.find((u) => u.id === r.unit_id)?.name}</td>}
-                  <td className="py-2.5">{r.category}</td>
-                  <td className="py-2.5 font-medium">{r.description}</td>
-                  <td className="py-2.5">{currency(r.amount)}</td>
-                  <td className="py-2.5 text-muted">
-                    {instancia ? new Date(instancia.due_date + 'T00:00:00').toLocaleDateString('pt-BR') : `dia ${r.day_of_month}`}
-                  </td>
-                  <td className="py-2.5">
-                    {!r.active ? (
-                      <Badge tone="neutral">Pausada</Badge>
-                    ) : instancia ? (
-                      <Badge tone={statusTone[instancia.status]}>{statusLabel[instancia.status]}</Badge>
-                    ) : r.first_charge_month && r.first_charge_month > `${currentMonthValue()}-01` ? (
-                      <Badge tone="neutral">Começa em {new Date(r.first_charge_month + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</Badge>
-                    ) : (
-                      <Badge tone="neutral">—</Badge>
-                    )}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <Can permission="action:financeiro.despesas_fixas">
-                      <div className="flex items-center justify-end gap-3">
-                        {instancia && instancia.status !== 'pago' && (
-                          <button onClick={() => openEditExpense(instancia, 'pago')} className="text-purple text-xs font-medium">
-                            Marcar pago
-                          </button>
-                        )}
-                        <button onClick={() => toggleRecurring(r.id)} className="text-muted hover:text-ink" aria-label={r.active ? 'Pausar' : 'Ativar'}>
-                          {r.active ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                        </button>
-                        <button onClick={() => handleRemoveRecurring(r.id)} className="text-muted hover:text-danger" aria-label="Remover despesa fixa">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </Can>
-                  </td>
-                </tr>
-                )
-              })}
-              {filteredRecurring.length === 0 && (
-                <tr>
-                  <td colSpan={selectedUnit === 'todas' ? 7 : 6} className="py-4 text-center text-muted">
-                    Nenhuma despesa fixa cadastrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-
-        <p className="text-xs text-muted">Para criar uma despesa fixa, use <strong>Novo lançamento → Conta a pagar → Repete todo mês</strong>.</p>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <NovoLancamento
-            unitDbIds={unitDbIds}
-            defaultUnit={selectedUnit === 'todas' ? UNITS[0]?.id ?? '' : selectedUnit}
-            categoriasUsadas={categoriasUsadas}
-            onSaved={loadAll}
-          />
-        </div>
-
-        <Card title="Despesas por categoria">
-          {porCategoria.length === 0 ? (
-            <p className="text-sm text-muted">Nenhuma despesa neste período.</p>
-          ) : (
-            <div className="space-y-3">
-              {porCategoria.map(([cat, total]) => (
-                <div key={cat}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>{cat}</span>
-                    <span className="font-medium">{currency(total)}</span>
-                  </div>
-                  <div className="h-1.5 bg-paper rounded-full overflow-hidden">
-                    <div className="h-full bg-danger rounded-full" style={{ width: `${(total / totalDespesasGeral) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Card title="Contas a pagar lançadas">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted border-b border-line">
-              {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
-              <th className="pb-3 font-medium">Vencimento</th>
-              <th className="pb-3 font-medium">Categoria</th>
-              <th className="pb-3 font-medium">Descrição</th>
-              <th className="pb-3 font-medium">Fornecedor</th>
-              <th className="pb-3 font-medium">Valor</th>
-              <th className="pb-3 font-medium">Status</th>
-              <th className="pb-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {filteredExpenses.map((e) => (
-              <tr key={e.id}>
-                {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === e.unit_id)?.name}</td>}
-                <td className="py-3 text-muted">{new Date(e.due_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
-                <td className="py-3">{e.category}</td>
-                <td className="py-3 font-medium">
-                  {e.is_stock_purchase && (
-                    <button onClick={() => setExpandedPurchase((prev) => (prev === e.id ? null : e.id))} className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold text-purple bg-purple-light rounded px-1.5 py-0.5">
-                      Compra de estoque <ChevronDown className={`w-3 h-3 transition-transform ${expandedPurchase === e.id ? 'rotate-180' : ''}`} />
-                    </button>
-                  )}
-                  {(e.settlement_batch_id || e.settlement_id) && <span className="mb-1 inline-flex text-[11px] font-semibold text-teal bg-teal-light rounded px-1.5 py-0.5">Acerto entre unidades</span>}
-                  {isEstorno(e) && <span className="mb-1 inline-flex text-[11px] font-semibold text-danger bg-danger-light rounded px-1.5 py-0.5">Estorno</span>}
-                  {e.commission_payout_id && <span className="mb-1 inline-flex text-[11px] font-semibold text-amber bg-amber-light rounded px-1.5 py-0.5">Comissão</span>}
-                  <p className={e.is_stock_purchase && expandedPurchase !== e.id ? 'line-clamp-1' : ''}>{e.description}</p>
-                  {expenseItemsByExpense[e.id] && expenseItemsByExpense[e.id].length > 0 && (!e.is_stock_purchase || expandedPurchase === e.id) && (
-                    <ul className="text-xs text-muted font-normal mt-1 space-y-0.5">
-                      {expenseItemsByExpense[e.id].map((it) => (
-                        <li key={it.id}>• {it.itemName.includes('—') ? it.itemName : `${it.quantity}x ${it.itemName}`}{it.lineValue != null ? ` — ${currency(it.lineValue)}` : ''}</li>
-                      ))}
-                    </ul>
-                  )}
-                </td>
-                <td className="py-3 text-muted">{e.supplier ?? '—'}</td>
-                <td className="py-3">{currency(e.amount)}</td>
-                <td className="py-3">
-                  <Badge tone={statusTone[e.status]}>{statusLabel[e.status]}</Badge>
-                  {e.status === 'pago' && e.payment_method && (
-                    <p className="text-xs text-muted mt-0.5">{PAYMENT_METHOD_LABEL[e.payment_method]}</p>
-                  )}
-                  {e.covers_festa_costs && (
-                    <p className="text-xs text-purple mt-0.5" title="Não entra nos totais — o valor já está nos custos das festas">
-                      Já nos custos das festas
-                    </p>
-                  )}
-                </td>
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    {e.status !== 'pago' && !(e.settlement_id && e.status === 'cancelado') && (
-                      <Can permission="action:financeiro.marcar_pago">
-                        <button onClick={() => openEditExpense(e, 'pago')} className="text-purple text-xs font-medium">
-                          Marcar pago
-                        </button>
-                      </Can>
-                    )}
-                    {e.settlement_batch_id || e.settlement_id ? (
-                      <Link to="/acertos-entre-unidades" className="text-muted hover:text-purple" title="Só muda pela tela Acertos entre unidades" aria-label="Lançamento travado — abrir Acertos entre unidades">
-                        <Lock className="w-3.5 h-3.5" />
-                      </Link>
-                    ) : e.commission_payout_id ? (
-                      <Link to="/comissoes" className="text-muted hover:text-purple" title="Só muda pela tela Comissões" aria-label="Conta de comissão — abrir Comissões">
-                        <Lock className="w-3.5 h-3.5" />
-                      </Link>
-                    ) : isEstorno(e) ? (
-                      <Link to={`/reservas/${e.reservation_id}`} className="text-muted hover:text-purple" title="O valor do estorno muda pela festa cancelada" aria-label="Estorno — abrir a festa">
-                        <Lock className="w-3.5 h-3.5" />
-                      </Link>
-                    ) : (
-                      <>
-                        <Can permission="action:financeiro.registrar_despesa">
-                          {e.is_stock_purchase ? (
-                            <Link to={`/estoque?compra=${e.id}`} className="text-muted hover:text-purple" aria-label="Editar compra de estoque" title="Editar pela Entrada de compra">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Link>
-                          ) : (
-                            <button onClick={() => openEditExpense(e)} className="text-muted hover:text-purple" aria-label="Editar despesa">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </Can>
-                        <Can permission="action:financeiro.remover">
-                          <button onClick={() => handleRemove(e.id)} className="text-muted hover:text-danger" aria-label="Remover despesa">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </Can>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredExpenses.length === 0 && (
-              <tr>
-                <td colSpan={selectedUnit === 'todas' ? 8 : 7} className="py-6 text-center text-muted">
-                  Nenhuma conta a pagar lançada ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
-
-      {entradasManuaisVisiveis.length > 0 && (
-        <Card title="Entradas lançadas à mão">
-          <p className="text-xs text-muted mb-2">Dinheiro que entrou e não era pagamento de festa (Novo lançamento → Entrada de dinheiro → Outra entrada). Pagamentos de festa ficam na própria festa.</p>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted border-b border-line">
-                {selectedUnit === 'todas' && <th className="pb-3 font-medium">Unidade</th>}
-                <th className="pb-3 font-medium">Recebido em</th>
-                <th className="pb-3 font-medium">Tipo</th>
-                <th className="pb-3 font-medium">Descrição</th>
-                <th className="pb-3 font-medium">Valor</th>
-                <th className="pb-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {entradasManuaisVisiveis.map((i) => (
-                <tr key={i.id}>
-                  {selectedUnit === 'todas' && <td className="py-3 text-muted">{UNITS.find((u) => u.id === i.unit_id)?.name}</td>}
-                  <td className="py-3 text-muted">{new Date(i.received_date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
-                  <td className="py-3">{i.category ?? 'Outras entradas'}</td>
-                  <td className="py-3">
-                    {i.description}
-                    {i.payment_method && <p className="text-xs text-muted">{PAYMENT_METHOD_LABEL[i.payment_method as PaymentMethod] ?? i.payment_method}</p>}
-                  </td>
-                  <td className="py-3 text-teal font-medium">{currency(i.amount)}</td>
-                  <td className="py-3 text-right">
-                    <Can permission="action:financeiro.remover">
-                      <button onClick={() => removerEntradaManual(i.id)} className="text-muted hover:text-danger" aria-label="Remover entrada">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </Can>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
       )}
 
       {purchaseDeletion && (

@@ -44,7 +44,8 @@ function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-export function Profitability() {
+// embutido: dentro do Financeiro (aba Resultado), sem o título próprio.
+export function Profitability({ embutido = false }: { embutido?: boolean } = {}) {
   const { selectedUnit, unitDbIds } = useUnit()
   const { scheduleDelete } = useUndo()
   const [festas, setFestas] = useState<Festa[]>([])
@@ -234,10 +235,12 @@ export function Profitability() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Lucro por festa</h1>
-        <p className="text-sm text-muted mt-1">Quanto cada festa realmente rendeu, descontando os custos dela</p>
-      </div>
+      {!embutido && (
+        <div>
+          <h1 className="text-2xl font-semibold">Lucro por festa</h1>
+          <p className="text-sm text-muted mt-1">Quanto cada festa realmente rendeu, descontando os custos dela</p>
+        </div>
+      )}
 
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
 

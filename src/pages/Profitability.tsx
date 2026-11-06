@@ -23,6 +23,10 @@ interface Festa {
   valorFirmado: number
   extras: number
   consumo: number
+  // Fora da conta do lucro (marcado na tela; fica gravado até desmarcar).
+  excluida: boolean
+  excluidaPor: string | null
+  excluidaEm: string | null
 }
 
 interface InsumoInfo {
@@ -65,7 +69,7 @@ export function Profitability() {
     const [{ data: reservationsData, error: resErr }, { data: costsData }, { data: consData }, { data: avgData }] = await Promise.all([
       supabase
         .from('reservations')
-        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, client:clients(name), reservation_extra_items(quantity, price_snapshot), reservation_consumption(quantity, unit_price)')
+        .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, profit_excluded, profit_excluded_by, profit_excluded_at, client:clients(name), reservation_extra_items(quantity, price_snapshot), reservation_consumption(quantity, unit_price)')
         .neq('status', 'cancelada')
         .order('event_date', { ascending: false }),
       supabase.from('reservation_costs').select('*'),
@@ -94,6 +98,9 @@ export function Profitability() {
           (Number(r.final_value) || 0) +
           (r.reservation_extra_items ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.price_snapshot), 0) +
           (r.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0),
+        excluida: !!r.profit_excluded,
+        excluidaPor: r.profit_excluded_by ?? null,
+        excluidaEm: r.profit_excluded_at ?? null,
       })),
     )
 
@@ -153,10 +160,26 @@ export function Profitability() {
     [filteredFestas, costsByFesta, insumosByFesta, averages],
   )
 
-  const lucroTotal = rows.reduce((s, r) => s + r.lucro, 0)
-  const itensSemCusto = rows.reduce((s, r) => s + r.semCusto, 0)
-  const margemMedia = rows.length > 0 ? rows.reduce((s, r) => s + r.margem, 0) / rows.length : 0
-  const maisLucrativa = rows.length > 0 ? rows.reduce((a, b) => (b.lucro > a.lucro ? b : a)) : null
+  // Só as festas que estão na conta entram nos totais.
+  const naConta = rows.filter((r) => !r.excluida)
+  const foraDaConta = rows.length - naConta.length
+  const lucroTotal = naConta.reduce((s, r) => s + r.lucro, 0)
+  const itensSemCusto = naConta.reduce((s, r) => s + r.semCusto, 0)
+  const margemMedia = naConta.length > 0 ? naConta.reduce((s, r) => s + r.margem, 0) / naConta.length : 0
+  const maisLucrativa = naConta.length > 0 ? naConta.reduce((a, b) => (b.lucro > a.lucro ? b : a)) : null
+  const [mostrarFora, setMostrarFora] = useState(true)
+  const linhasVisiveis = mostrarFora ? rows : naConta
+
+  // Tira ou devolve a festa para a conta. Fica gravado no banco (migração 088).
+  async function alternarConta(f: Festa) {
+    const novo = !f.excluida
+    setFestas((prev) => prev.map((x) => (x.id === f.id ? { ...x, excluida: novo } : x)))
+    const { error: err } = await supabase.rpc('set_profit_exclusion', { p_res: f.id, p_excluded: novo })
+    if (err) {
+      setFestas((prev) => prev.map((x) => (x.id === f.id ? { ...x, excluida: f.excluida } : x)))
+      setError(/set_profit_exclusion/.test(err.message) ? 'Falta rodar a migração 088 no banco.' : err.message)
+    }
+  }
 
   const selectedCosts = selected ? costsByFesta[selected.id] ?? [] : []
   const selectedTotalCustos = selectedCosts.reduce((s, c) => s + c.amount, 0)
@@ -232,7 +255,10 @@ export function Profitability() {
         <Card>
           <p className="text-xs text-muted">Lucro total do período</p>
           <p className="text-2xl font-display font-semibold mt-1 text-teal">{currency(lucroTotal)}</p>
-          <p className="text-xs text-muted mt-1">{rows.length} festas</p>
+          <p className="text-xs text-muted mt-1">
+            {naConta.length} festa{naConta.length === 1 ? '' : 's'} na conta
+            {foraDaConta > 0 && ` · ${foraDaConta} fora da conta`}
+          </p>
         </Card>
         <Card>
           <p className="text-xs text-muted">Margem média</p>
@@ -254,7 +280,20 @@ export function Profitability() {
         </Card>
       </div>
 
-      <Card title="Festas e sua rentabilidade">
+      <Card
+        title="Festas e sua rentabilidade"
+        action={
+          foraDaConta > 0 ? (
+            <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+              <input type="checkbox" checked={mostrarFora} onChange={(e) => setMostrarFora(e.target.checked)} />
+              Mostrar as {foraDaConta} festa{foraDaConta === 1 ? '' : 's'} fora da conta
+            </label>
+          ) : undefined
+        }
+      >
+        <p className="text-xs text-muted mb-3">
+          Festa sem os custos lançados? Clique em <strong>Tirar da conta</strong>: ela continua na lista, mas não entra no lucro total, na margem média nem na festa mais lucrativa. Fica assim até você clicar em <strong>Voltar para a conta</strong>, para todos os usuários.
+        </p>
         {loading ? (
           <p className="text-sm text-muted py-6 text-center">Carregando...</p>
         ) : (
@@ -272,9 +311,16 @@ export function Profitability() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="py-3 font-medium">{r.cliente}</td>
+            {linhasVisiveis.map((r) => (
+              <tr key={r.id} className={r.excluida ? 'opacity-50' : ''}>
+                <td className="py-3 font-medium">
+                  {r.cliente}
+                  {r.excluida && (
+                    <span className="block text-[11px] font-normal text-muted" title={r.excluidaEm ? `Tirada em ${format(parseISO(r.excluidaEm), 'dd/MM/yyyy HH:mm')}` : undefined}>
+                      Fora da conta{r.excluidaPor ? ` · por ${r.excluidaPor}` : ''}
+                    </span>
+                  )}
+                </td>
                 <td className="py-3 text-muted">{r.data}</td>
                 <td className="py-3">
                   {currency(r.valorContrato)}
@@ -302,13 +348,22 @@ export function Profitability() {
                   <Badge tone={r.margem >= 40 ? 'teal' : r.margem >= 20 ? 'amber' : 'danger'}>{r.margem.toFixed(0)}%</Badge>
                 </td>
                 <td className="py-3 text-right">
-                  <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setSelected(r)}>
-                    Ver custos
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => alternarConta(r)}
+                      className={`text-xs font-medium whitespace-nowrap ${r.excluida ? 'text-purple' : 'text-muted hover:text-danger'}`}
+                    >
+                      {r.excluida ? 'Voltar para a conta' : 'Tirar da conta'}
+                    </button>
+                    <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setSelected(r)}>
+                      Ver custos
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {linhasVisiveis.length === 0 && (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-muted">
                   Nenhuma festa encontrada para esta unidade.

@@ -11,6 +11,33 @@ const LOGO = '/marca/festou.png'
 function esc(s: unknown) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
+// O que o relatório mostra e o que NÃO entra no lucro, com os valores do período.
+function escopo(d: DadosRelatorio) {
+  const r = d.resultado
+  const fora = d.festas.filter((f) => f.foraDaConta).length
+  const mostra = [
+    'LUCRO OU PREJUÍZO: o resultado das festas que já aconteceram no período, menos as despesas gerais da casa pagas no período, com o efeito dos cancelamentos. Cada festa conta no mês em que acontece.',
+    'CAIXA: o dinheiro que realmente passou pela conta (pagamentos recebidos e contas pagas), no dia em que aconteceu. Não diz, sozinho, se houve lucro.',
+    'PONTE: explica linha por linha por que o caixa e o lucro são números diferentes.',
+    'COMPROMISSOS: o que já foi recebido de festas que ainda vão acontecer e quanto elas vão custar.',
+  ]
+  const naoEntra = [
+    'Festas que ainda vão acontecer: só aparecem em Compromissos. Contam no lucro no mês em que acontecerem.',
+    d.entradasManuais > 0
+      ? `Entradas lançadas à mão (ex.: aluguel do espaço): ${brl(d.entradasManuais)} neste período. Entram no caixa, mas NÃO entram no lucro.`
+      : 'Entradas lançadas à mão (ex.: aluguel do espaço), acertos entre unidades e multa e juros: entram no caixa, mas NÃO entram no lucro.',
+    `Compras de estoque (${brl(r.compras_estoque)} pagos no período): o lucro conta o que as festas consumiram (insumos), não a compra.`,
+    d.pagaCustosFesta.length > 0
+      ? `Contas marcadas "já nos custos das festas" (${d.pagaCustosFesta.length}, somando ${brl(d.pagaCustosFesta.reduce((t, l) => t + l.valor, 0))}): não entram nos totais para não contar o mesmo gasto duas vezes.`
+      : 'Contas marcadas "já nos custos das festas": não entram nos totais para não contar o mesmo gasto duas vezes (nenhuma neste período).',
+    'Taxa da maquininha: é uma estimativa feita pelas taxas cadastradas, não um valor cobrado de verdade.',
+    fora > 0
+      ? `${fora} festa${fora === 1 ? ' está marcada' : 's estão marcadas'} como "fora da conta" no Lucro por festa. Essa marcação vale só para aquela tela: neste relatório ${fora === 1 ? 'ela continua' : 'elas continuam'} contando no lucro (aparecem marcadas na lista de festas).`
+      : 'A marcação "fora da conta" do Lucro por festa vale só para aquela tela e não muda este relatório (nenhuma festa marcada neste período).',
+  ]
+  return { mostra, naoEntra }
+}
+
 function nomeArquivo(d: DadosRelatorio, ext: string) {
   const limpar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()
   const periodo = d.mesIni === d.mesFim ? d.mesIni : `${d.mesIni}_a_${d.mesFim}`
@@ -111,7 +138,11 @@ export function htmlRelatorio(d: DadosRelatorio): string {
       <div class="card"><div class="t">Festas realizadas</div><div class="v">${r.festas}</div></div>
     </div>
     <h3>O que tem neste relatório</h3>
-    <p>1. O resultado do período, explicado · 2. Mês a mês · 3. Visão Caixa · 4. Visão Resultado das festas · 5. Visão Ponte e compromissos · 6. Todos os lançamentos · 7. Contas em aberto · 8. Glossário</p>`
+    <p>1. O resultado do período, explicado · 2. Mês a mês · 3. Visão Caixa · 4. Visão Resultado das festas · 5. Visão Ponte e compromissos · 6. Todos os lançamentos · 7. Contas em aberto · 8. Glossário</p>
+    <h3>O que este relatório mostra</h3>
+    <div class="box">${escopo(d).mostra.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+    <h3>O que NÃO entra no lucro</h3>
+    <div class="aviso">${escopo(d).naoEntra.map((t) => `<p>${esc(t)}</p>`).join('')}</div>`
 
   const secResultado = `
     <div class="quebra"></div>${topo(d, '1. O resultado do período')}
@@ -328,6 +359,12 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
       [`(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período`, r.resultado, 'Resultado final da casa no período.'],
     ]
     linhas.forEach(([a, b, x], i) => (l = linhaDados(ws, l, [a, b, x], { moeda: [1], negrito: i === 4 || i === 7, quebra: [2] })))
+    l++
+    l = paragrafo(ws, l, 'O que este relatório mostra', 3, { negrito: true, cor: ROXO })
+    for (const t of escopo(d).mostra) l = paragrafo(ws, l, t, 3)
+    l++
+    l = paragrafo(ws, l, 'O que NÃO entra no lucro', 3, { negrito: true, cor: 'FFB23A3A' })
+    for (const t of escopo(d).naoEntra) l = paragrafo(ws, l, t, 3)
     l++
     l = paragrafo(ws, l, 'E o caixa?', 3, { negrito: true, cor: ROXO })
     l = paragrafo(ws, l, explicacaoCaixa(d), 3)

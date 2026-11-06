@@ -5,6 +5,7 @@ import { NovoLancamento } from '../components/NovoLancamento'
 import { RelatorioFinanceiroModal } from '../components/RelatorioFinanceiroModal'
 import { VisaoGeral, type AbaFinanceiro } from '../components/financeiro/VisaoGeral'
 import { PontoEquilibrio, ProjecaoCaixa } from '../components/financeiro/Planejamento'
+import { ComparaUnidades, ComparaMesAno, ComparaAnos } from '../components/financeiro/Comparativos'
 import { Profitability } from './Profitability'
 import { MonthlyResult } from './MonthlyResult'
 import { Reports } from './Reports'
@@ -38,7 +39,7 @@ import { ConferenciaPrevia, ExplainBox, EXEMPLO_FESTA, PonteView, ResultadoFesta
 
 interface ItemDetalhe { id: string; categoria: string; descricao: string; detalhe: string; data: string; valor: number }
 
-const SUB_PADRAO: Partial<Record<AbaFinanceiro, string>> = { lancamentos: 'pagar', resultado: 'festas' }
+const SUB_PADRAO: Partial<Record<AbaFinanceiro, string>> = { lancamentos: 'pagar', resultado: 'festas', comparativos: 'tempo' }
 
 function currency(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -1284,48 +1285,67 @@ export function Finance() {
 
       {aba === 'comparativos' && (
         <>
-          <p className="text-sm text-muted">Para ver se a casa está melhorando: entradas e saídas ao longo do tempo, no período que você escolher.</p>
-          <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
-            <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} extra={<FiltroCategorias entradas={fluxoCats.entradas} saidas={fluxoCats.saidas} selecionadas={fluxoF.selecionadas} onChange={fluxoF.setSelecionadas} />} /></div>
-            <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' O filtro de categorias vale para o gráfico e para o detalhe.'}</p>
-            <GraficoSerie
-              dados={fluxoChartData}
-              tipo={fluxoP.tipo}
-              formatar={currency}
-              series={[
-                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', fluxoF.selecionadas) },
-                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', fluxoF.selecionadas) },
-              ]}
-            />
-          </Card>
-
-          <Card title={`Comparativo — ${descreverPeriodo(compP.periodo)}`}>
-            <div className="mb-3"><PeriodoGrafico periodo={compP.periodo} onChange={compP.setPeriodo} tipo={compP.tipo} onTipo={compP.setTipo} extra={<FiltroCategorias entradas={compCats.entradas} saidas={compCats.saidas} selecionadas={compF.selecionadas} onChange={compF.setSelecionadas} />} /></div>
-            <p className="text-xs text-muted mb-2">Entradas, saídas e o que sobrou em cada ponto do período. A linha tracejada é o saldo somado desde o começo do período.</p>
-            <GraficoSerie
-              dados={compChartData}
-              tipo={compP.tipo}
-              formatar={currency}
-              altura={260}
-              series={[
-                { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', compF.selecionadas) },
-                { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', compF.selecionadas) },
-                { chave: 'saldo', nome: 'Saldo', cor: '#59239B', ajuda: 'Entradas menos saídas de cada ponto do gráfico. Abaixo de zero: saiu mais do que entrou naquele dia ou mês.' },
-                { chave: 'acumulado', nome: 'Saldo acumulado', cor: '#F2900C', tracejada: true, ajuda: 'O saldo somado desde o começo do período escolhido. Mostra se, no conjunto, sobrou ou faltou dinheiro até aquele ponto.' },
-              ]}
-            />
-            {compChartData.length > 0 && (() => {
-              const e = compChartData.reduce((t, r) => t + r.entradas, 0)
-              const sd = compChartData.reduce((t, r) => t + r.saidas, 0)
-              const melhor = compChartData.reduce((m, r) => (r.saldo > m.saldo ? r : m), compChartData[0])
-              const pior = compChartData.reduce((m, r) => (r.saldo < m.saldo ? r : m), compChartData[0])
-              return (
-                <p className="text-xs text-muted mt-2">
-                  No período: entraram {currency(e)}, saíram {currency(sd)}, saldo de {currency(e - sd)}. Melhor: {melhor.rotulo} ({currency(melhor.saldo)}). Pior: {pior.rotulo} ({currency(pior.saldo)}).
-                </p>
-              )
-            })()}
-          </Card>
+          <p className="text-sm text-muted">Para ver se a casa está melhorando: ao longo do tempo, uma unidade contra a outra e contra o ano passado.</p>
+          <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5 gap-0.5" role="tablist">
+            {([
+              ['tempo', 'Ao longo do tempo'],
+              ...(UNITS.length > 1 ? [['unidades', 'Unidades lado a lado']] : []),
+              ['mes', 'Mês × mesmo mês do ano passado'],
+              ['ano', 'Ano × ano passado'],
+            ] as [string, string][]).map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => irPara(aba, k)} className={`px-2.5 h-8 rounded-md text-xs font-medium whitespace-nowrap ${sub === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {sub === 'tempo' && (
+            <>
+              <Card title={`Fluxo de caixa — ${descreverPeriodo(fluxoP.periodo)}${selectedUnit === 'todas' && UNITS.length > 1 ? ` (${UNITS.map((u) => u.name).join(' + ')})` : ''}`}>
+                <div className="mb-3"><PeriodoGrafico periodo={fluxoP.periodo} onChange={fluxoP.setPeriodo} tipo={fluxoP.tipo} onTipo={fluxoP.setTipo} extra={<FiltroCategorias entradas={fluxoCats.entradas} saidas={fluxoCats.saidas} selecionadas={fluxoF.selecionadas} onChange={fluxoF.setSelecionadas} />} /></div>
+                <p className="text-xs text-muted mb-2">Clique em Entradas ou Saídas para ver o detalhe. As saídas incluem os custos das festas pela data da festa (inclusive as que ainda vão acontecer).{fluxoF.selecionadas !== null && ' O filtro de categorias vale para o gráfico e para o detalhe.'}</p>
+                <GraficoSerie
+                  dados={fluxoChartData}
+                  tipo={fluxoP.tipo}
+                  formatar={currency}
+                  series={[
+                    { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', fluxoF.selecionadas) },
+                    { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', fluxoF.selecionadas) },
+                  ]}
+                />
+              </Card>
+    
+              <Card title={`Comparativo — ${descreverPeriodo(compP.periodo)}`}>
+                <div className="mb-3"><PeriodoGrafico periodo={compP.periodo} onChange={compP.setPeriodo} tipo={compP.tipo} onTipo={compP.setTipo} extra={<FiltroCategorias entradas={compCats.entradas} saidas={compCats.saidas} selecionadas={compF.selecionadas} onChange={compF.setSelecionadas} />} /></div>
+                <p className="text-xs text-muted mb-2">Entradas, saídas e o que sobrou em cada ponto do período. A linha tracejada é o saldo somado desde o começo do período.</p>
+                <GraficoSerie
+                  dados={compChartData}
+                  tipo={compP.tipo}
+                  formatar={currency}
+                  altura={260}
+                  series={[
+                    { chave: 'entradas', nome: 'Entradas', cor: '#1F7A5C', ajuda: 'Dinheiro que entrou no caixa: pagamentos das festas (pela data em que o cliente pagou) e outras entradas, como aluguel do espaço, multa e juros e acertos entre unidades. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'entradas', compF.selecionadas) },
+                    { chave: 'saidas', nome: 'Saídas', cor: '#B23A3A', ajuda: 'Dinheiro que saiu: contas pagas (pela data do pagamento) e custos das festas (pela data da festa, inclusive as que ainda vão acontecer). Contas marcadas como "já nos custos das festas" não contam de novo. Clique para ver cada lançamento.', onClick: (row) => row?.faixa && openFluxoDetalhe(selectedUnit, row.faixa, row.rotulo, 'saidas', compF.selecionadas) },
+                    { chave: 'saldo', nome: 'Saldo', cor: '#59239B', ajuda: 'Entradas menos saídas de cada ponto do gráfico. Abaixo de zero: saiu mais do que entrou naquele dia ou mês.' },
+                    { chave: 'acumulado', nome: 'Saldo acumulado', cor: '#F2900C', tracejada: true, ajuda: 'O saldo somado desde o começo do período escolhido. Mostra se, no conjunto, sobrou ou faltou dinheiro até aquele ponto.' },
+                  ]}
+                />
+                {compChartData.length > 0 && (() => {
+                  const e = compChartData.reduce((t, r) => t + r.entradas, 0)
+                  const sd = compChartData.reduce((t, r) => t + r.saidas, 0)
+                  const melhor = compChartData.reduce((m, r) => (r.saldo > m.saldo ? r : m), compChartData[0])
+                  const pior = compChartData.reduce((m, r) => (r.saldo < m.saldo ? r : m), compChartData[0])
+                  return (
+                    <p className="text-xs text-muted mt-2">
+                      No período: entraram {currency(e)}, saíram {currency(sd)}, saldo de {currency(e - sd)}. Melhor: {melhor.rotulo} ({currency(melhor.saldo)}). Pior: {pior.rotulo} ({currency(pior.saldo)}).
+                    </p>
+                  )
+                })()}
+              </Card>
+            </>
+          )}
+          {sub === 'unidades' && <ComparaUnidades unitDbIds={unitDbIds} />}
+          {sub === 'mes' && <ComparaMesAno unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />}
+          {sub === 'ano' && <ComparaAnos unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />}
         </>
       )}
 

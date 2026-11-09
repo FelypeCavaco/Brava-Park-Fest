@@ -22,7 +22,7 @@ export function AppLayout() {
   // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
   // menos uma, então só mostra o cadastro de unidades até criar a primeira.
   // (a tela da plataforma abre mesmo assim: o administrador geral pode ser de uma empresa ainda vazia)
-  const semUnidade = units.length === 0 && location.pathname !== '/plataforma'
+  const semUnidade = units.length === 0 && !location.pathname.startsWith('/plataforma')
 
   return (
     <div className="flex min-h-screen bg-paper">

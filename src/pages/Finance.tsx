@@ -11,6 +11,8 @@ import { Profitability } from './Profitability'
 import { MonthlyResult } from './MonthlyResult'
 import { Reports } from './Reports'
 import { useAuth } from '../lib/AuthContext'
+import { useCompany } from '../lib/CompanyContext'
+import { moduloLigado } from '../lib/modules'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { FileText, Plus, Trash2, Pause, Play, Repeat, TrendingUp, Pencil, X, ChevronDown, Lock } from 'lucide-react'
@@ -97,6 +99,10 @@ export function Finance() {
   // (?aba=...&sub=...) para o link levar direto ao lugar; os endereços antigos
   // (?visao=resultado / ?visao=ponte) continuam funcionando.
   const { can } = useAuth()
+  // Funções do plano da casa (Festou): Planejamento/Comparativos e o relatório.
+  const { brand } = useCompany()
+  const finAvancado = moduloLigado('fin_avancado', brand.disabledModules)
+  const relatorioLigado = moduloLigado('relatorio', brand.disabledModules)
   const [aba, setAba] = useState<AbaFinanceiro>(() => {
     const q = new URLSearchParams(window.location.search)
     const a = q.get('aba')
@@ -112,6 +118,11 @@ export function Finance() {
     if (q.get('visao') === 'resultado') return 'festas'
     return SUB_PADRAO[(q.get('aba') as AbaFinanceiro) ?? 'geral'] ?? ''
   })
+  // Aba fora do plano (link antigo ou atalho): volta para a Visão geral.
+  useEffect(() => {
+    if (!finAvancado && (aba === 'planejamento' || aba === 'comparativos')) setAba('geral')
+  }, [finAvancado, aba])
+
   function irPara(a: AbaFinanceiro, s?: string) {
     const novoSub = s ?? SUB_PADRAO[a] ?? ''
     setAba(a)
@@ -877,9 +888,11 @@ export function Finance() {
           <p className="text-sm text-muted mt-1">Lucro, caixa, contas e planejamento. Sempre por unidade, já que são contas bancárias diferentes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => setRelatorioAberto(true)}>
-            <FileText className="w-4 h-4" /> Relatório (PDF ou Excel)
-          </Button>
+          {relatorioLigado && (
+            <Button type="button" variant="secondary" onClick={() => setRelatorioAberto(true)}>
+              <FileText className="w-4 h-4" /> Relatório (PDF ou Excel)
+            </Button>
+          )}
           {(can('action:financeiro.registrar_despesa') || can('action:festa.pagamentos')) && (
             <Button type="button" onClick={() => setNovoAberto(true)}>
               <Plus className="w-4 h-4" /> Novo lançamento
@@ -916,7 +929,7 @@ export function Finance() {
           ['resultado', 'Resultado'],
           ['planejamento', 'Planejamento'],
           ['comparativos', 'Comparativos'],
-        ] as const).map(([k, label]) => (
+        ] as const).filter(([k]) => finAvancado || (k !== 'planejamento' && k !== 'comparativos')).map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -1293,7 +1306,7 @@ export function Finance() {
         </>
       )}
 
-      {aba === 'planejamento' && (
+      {aba === 'planejamento' && finAvancado && (
         <>
           <p className="text-sm text-muted">Olhar para frente: quantas festas a casa precisa fazer para não ter prejuízo, como o caixa deve se comportar nos próximos dias e as metas.</p>
           <PontoEquilibrio unitId={selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null} />
@@ -1303,7 +1316,7 @@ export function Finance() {
         </>
       )}
 
-      {aba === 'comparativos' && (
+      {aba === 'comparativos' && finAvancado && (
         <>
           <p className="text-sm text-muted">Para ver se a casa está melhorando: ao longo do tempo, uma unidade contra a outra e contra o ano passado.</p>
           <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5 gap-0.5" role="tablist">

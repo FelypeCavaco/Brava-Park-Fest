@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, FileText, Star } from 'lucide-react'
+import { Bell, FileText, Megaphone, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
+import { useCompany } from '../../lib/CompanyContext'
 import { brl } from '../../lib/format'
 
 // Sininho no canto superior direito. Mostra:
@@ -10,6 +11,8 @@ import { brl } from '../../lib/format'
 //     tiveram o pedido de avaliação enviado (o pedido conta só se foi feito
 //     depois da festa). Clicar abre a Central da festa já no pedido.
 //   • Comprovantes de pagamento enviados pelo portal que esperam análise.
+//   • Avisos do Festou (casas clientes): mensagens do administrador geral,
+//     até a pessoa clicar em Entendi (guardado neste aparelho) ou o aviso vencer.
 // O sinal fica enquanto houver algum item.
 
 interface Pendente {
@@ -32,6 +35,21 @@ interface Avaliacao {
 }
 
 const DIAS_AVALIACAO = 3
+const CHAVE_LIDOS = 'festou-avisos-lidos'
+
+interface AvisoFestou {
+  id: string
+  texto: string
+  criado_em: string
+}
+
+function avisosLidos(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_LIDOS) ?? '[]')
+  } catch {
+    return []
+  }
+}
 
 function haQuanto(iso: string) {
   const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
@@ -55,17 +73,24 @@ function quandoFoi(dataFesta: string) {
 
 export function NotificationBell() {
   const { can } = useAuth()
+  const { brand } = useCompany()
   const navigate = useNavigate()
   const location = useLocation()
   const [pendentes, setPendentes] = useState<Pendente[]>([])
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
   const [aberto, setAberto] = useState(false)
+  const [avisosFestou, setAvisosFestou] = useState<AvisoFestou[]>([])
+  const [lidos, setLidos] = useState<string[]>(avisosLidos)
   const caixa = useRef<HTMLDivElement>(null)
   const podeComprovantes = can('page:portal_avisos') || can('action:festa.pagamentos')
   const podeAvaliacao = can('page:festa_detalhe') && (can('page:lembretes') || can('page:reservas'))
   const permitido = podeComprovantes || podeAvaliacao
 
   const carregar = useCallback(async () => {
+    if (brand.platformManaged) {
+      const { data, error } = await supabase.rpc('platform_announcements_for_me')
+      if (!error) setAvisosFestou((data ?? []) as AvisoFestou[])
+    }
     if (!permitido) return
     if (podeComprovantes) {
       const { data, error } = await supabase
@@ -129,7 +154,7 @@ export function NotificationBell() {
         )
       }
     }
-  }, [permitido, podeComprovantes, podeAvaliacao])
+  }, [permitido, podeComprovantes, podeAvaliacao, brand.platformManaged])
 
   // Atualiza ao abrir cada tela, a cada minuto e ao voltar para a aba.
   useEffect(() => {
@@ -155,8 +180,20 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', fora)
   }, [aberto])
 
-  if (!permitido) return null
-  const n = pendentes.length + avaliacoes.length
+  const avisosAbertos = avisosFestou.filter((a) => !lidos.includes(a.id))
+  function entendi(id: string) {
+    // guarda só os avisos que ainda existem, para a lista não crescer
+    const novos = [...lidos.filter((x) => avisosFestou.some((a) => a.id === x)), id]
+    setLidos(novos)
+    try {
+      localStorage.setItem(CHAVE_LIDOS, JSON.stringify(novos))
+    } catch {
+      // sem armazenamento: o aviso some só até recarregar
+    }
+  }
+
+  if (!permitido && avisosAbertos.length === 0) return null
+  const n = pendentes.length + avaliacoes.length + avisosAbertos.length
 
   return (
     <div ref={caixa} className="relative shrink-0">
@@ -180,6 +217,27 @@ export function NotificationBell() {
             <p className="px-4 py-6 text-sm text-muted text-center">Nenhum aviso agora. Tudo em dia.</p>
           ) : (
             <div className="max-h-[70vh] overflow-y-auto">
+              {avisosAbertos.length > 0 && (
+                <section>
+                  <div className="px-4 py-3 border-b border-line bg-paper/60">
+                    <p className="text-sm font-semibold">Avisos do Festou ({avisosAbertos.length})</p>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {avisosAbertos.map((a) => (
+                      <li key={a.id} className="px-4 py-3 flex gap-3">
+                        <span className="w-8 h-8 rounded-full bg-purple-light text-purple flex items-center justify-center shrink-0"><Megaphone className="w-4 h-4" /></span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm whitespace-pre-wrap break-words">{a.texto}</span>
+                          <span className="flex items-center justify-between gap-2 mt-1">
+                            <span className="text-[11px] text-muted">{haQuanto(a.criado_em)}</span>
+                            <button onClick={() => entendi(a.id)} className="text-[11px] font-medium text-purple hover:underline">Entendi</button>
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {avaliacoes.length > 0 && (
                 <section>
                   <div className="px-4 py-3 border-b border-line bg-paper/60">

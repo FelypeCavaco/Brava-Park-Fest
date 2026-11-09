@@ -57,3 +57,56 @@ export function progressoImplantacao(itens: ItensImplantacao | undefined) {
   const feitos = ITENS_AUTOMATICOS.filter((i) => itens[i.id] === true).length + ITENS_MANUAIS.filter((i) => manual[i.id]).length
   return { feitos, total: ITENS_AUTOMATICOS.length + ITENS_MANUAIS.length }
 }
+
+// ---------- Painel do Festou (migração 094) ----------
+
+export interface Empresa {
+  id: string
+  name: string
+  active: boolean
+  created_at: string
+  disabled_modules: string[]
+  usuarios: number
+  unidades: number
+  festas: number
+  festas_30d: number
+  ultima_atividade: string | null
+}
+
+export interface Plano {
+  id: string
+  nome: string
+  preco: number
+  unidades_incluidas: number
+  usuarios_incluidos: number | null
+  unidade_adicional: number
+  modulos: string[]
+  destaque: boolean
+  ordem: number
+  ativo: boolean
+  casas: number
+}
+
+export interface PlanoDaCasa {
+  plano_id: string | null
+  modulos_extras: string[]
+}
+
+export const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
+export const diasSemUso = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null)
+export const SEM_USO_ALERTA = 14
+export const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+export const mesCurto = (iso: string) => `${MESES_CURTOS[Number(iso.slice(5, 7)) - 1]}/${iso.slice(2, 4)}`
+
+// Casa em teste grátis: cobrança cadastrada com início no futuro.
+export function emTeste(m: Mensalidade | undefined) {
+  if (!m?.cadastrada || !m.inicio) return null
+  const hoje = new Date().toISOString().slice(0, 10)
+  if (m.inicio <= hoje) return null
+  return Math.round((new Date(`${m.inicio}T12:00:00`).getTime() - new Date(`${hoje}T12:00:00`).getTime()) / 86400000)
+}
+
+// Casa que paga: ativa, mensalidade maior que zero e fora do teste.
+export function pagante(c: Empresa, m: Mensalidade | undefined) {
+  return c.active && !!m?.cadastrada && Number(m.mensalidade) > 0 && emTeste(m) === null
+}

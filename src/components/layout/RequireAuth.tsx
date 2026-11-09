@@ -66,7 +66,7 @@ export function RequireAuth() {
   }
 
   // Administrador geral sem empresa aberta: tudo leva ao painel da plataforma.
-  if (isPlatformAdmin && !brand.companyId && location.pathname !== '/plataforma') {
+  if (isPlatformAdmin && !brand.companyId && !location.pathname.startsWith('/plataforma')) {
     return <Navigate to="/plataforma" replace />
   }
 

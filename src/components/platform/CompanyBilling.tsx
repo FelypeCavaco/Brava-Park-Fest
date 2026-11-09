@@ -3,7 +3,7 @@ import { Ban, Undo2, Zap, ExternalLink } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabaseClient'
 import { brl, friendlyDbError, parseDecimal, todayIso } from '../../lib/format'
-import type { Mensalidade } from './platformTypes'
+import type { Mensalidade, Plano } from './platformTypes'
 
 // Gerenciar empresa → Mensalidade: quanto a casa paga, quando vence, o que
 // já pagou e o que está em aberto.
@@ -22,7 +22,7 @@ const somaDias = (iso: string, dias: number) => {
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v).replace('.', ','))
 
 // Chama a função de servidor do painel; erro de regra volta no corpo (400).
-async function chamarServidor(body: Record<string, unknown>): Promise<{ data: Record<string, unknown> | null; erro: string | null }> {
+export async function chamarServidor(body: Record<string, unknown>): Promise<{ data: Record<string, unknown> | null; erro: string | null }> {
   const { data, error } = await supabase.functions.invoke('platform-admin', { body })
   let erro: string | null = (data as { error?: string } | null)?.error ?? null
   if (error && !erro) {
@@ -53,11 +53,14 @@ interface Props {
   m: Mensalidade | undefined
   onChanged: () => Promise<void> | void
   onSuspender: () => void
+  // planos da lista (migração 094); vazio = campo de plano escrito à mão, como antes
+  planos?: Plano[]
+  planoId?: string | null
 }
 
-export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: Props) {
+export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender, planos = [], planoId = null }: Props) {
   const [f, setF] = useState({
-    plano: m?.plano ?? '', mensalidade: num(m?.mensalidade), dia: String(m?.dia_vencimento ?? 10), inicio: m?.inicio ?? todayIso(),
+    plano: m?.plano ?? '', planoId: planoId ?? '', mensalidade: num(m?.mensalidade), dia: String(m?.dia_vencimento ?? 10), inicio: m?.inicio ?? todayIso(),
     implantacao: num(m?.implantacao), adicional: num(m?.unidade_adicional), unidades: String(m?.unidades_incluidas ?? 1),
     usuarios: m?.usuarios_incluidos ? String(m.usuarios_incluidos) : '', obs: m?.observacao ?? '',
   })
@@ -85,7 +88,7 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
     const { error } = await supabase.rpc('platform_billing_save', {
       p_company: empresaId,
       p_dados: {
-        plano: f.plano, mensalidade, dia_vencimento: Number(f.dia), inicio: f.inicio,
+        plano: f.plano, ...(planos.length ? { plano_id: f.planoId } : {}), mensalidade, dia_vencimento: Number(f.dia), inicio: f.inicio,
         implantacao: parseDecimal(f.implantacao) ?? 0, unidade_adicional: parseDecimal(f.adicional) ?? 0,
         unidades_incluidas: Number(f.unidades) || 1, usuarios_incluidos: f.usuarios.trim() ? Number(f.usuarios) : '', observacao: f.obs,
       },
@@ -260,8 +263,23 @@ export function CompanyBilling({ empresaId, ativa, m, onChanged, onSuspender }: 
 
       <form onSubmit={salvar} className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="block text-xs text-muted mb-1">Plano (opcional)</label>
-          <input value={f.plano} onChange={(e) => setF({ ...f, plano: e.target.value })} placeholder="Ex.: Completo" className={inp} />
+          <label className="block text-xs text-muted mb-1">Plano</label>
+          {planos.length > 0 ? (
+            <>
+              <select value={f.planoId} className={inp} aria-label="Plano"
+                onChange={(e) => {
+                  const p = planos.find((x) => x.id === e.target.value)
+                  // escolheu um plano da lista: preço e limites vêm dele (dá para ajustar, ex.: desconto)
+                  setF(p ? { ...f, planoId: p.id, plano: p.nome, mensalidade: num(p.preco), unidades: String(p.unidades_incluidas), usuarios: p.usuarios_incluidos ? String(p.usuarios_incluidos) : '', adicional: num(p.unidade_adicional) } : { ...f, planoId: '' })
+                }}>
+                <option value="">Sem plano da lista{f.plano && !f.planoId ? ` (atual: ${f.plano})` : ''}</option>
+                {planos.filter((p) => p.ativo || p.id === f.planoId).map((p) => <option key={p.id} value={p.id}>{p.nome} · {brl(p.preco)}/mês</option>)}
+              </select>
+              <p className="text-[11px] text-muted mt-1">O plano liga as funções da casa sozinho. Para trocar depois, use a aba Plano e funções.</p>
+            </>
+          ) : (
+            <input value={f.plano} onChange={(e) => setF({ ...f, plano: e.target.value })} placeholder="Ex.: Completo" className={inp} />
+          )}
         </div>
         <div>
           <label className="block text-xs text-muted mb-1">Mensalidade (R$) *</label>

@@ -21,7 +21,14 @@ export const MODULOS: ModuloOpcional[] = [
   { id: 'reativacao', label: 'Reativação de clientes', descricao: 'Lembrete de aniversário para chamar clientes antigos.', keys: ['page:reativacao'] },
   { id: 'satisfacao', label: 'Satisfação (NPS)', descricao: 'Pesquisa de satisfação depois da festa.', keys: ['page:satisfacao'] },
   { id: 'lucro', label: 'Lucro por festa', descricao: 'Resultado de cada festa (receita menos custos).', keys: ['page:lucro_por_festa'] },
+  // sem chave de permissão: as telas conferem com moduloLigado()
+  { id: 'fin_avancado', label: 'Financeiro: Planejamento e Comparativos', descricao: 'Ponto de equilíbrio, projeção do caixa e comparativos.', keys: [] },
+  { id: 'relatorio', label: 'Relatório financeiro (PDF e Excel)', descricao: 'Relatório detalhado do período, com a logo.', keys: [] },
 ]
+
+export function moduloLigado(id: string, desligados: string[]): boolean {
+  return !desligados.includes(id)
+}
 
 export function chaveDesligada(key: string, desligados: string[]): boolean {
   if (desligados.length === 0) return false

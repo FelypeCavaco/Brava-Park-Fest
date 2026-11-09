@@ -130,6 +130,16 @@ const groups: Group[] = [
   },
 ]
 
+// Menu do administrador geral fora das casas: as páginas do painel do Festou.
+const platformLinks = [
+  { to: '/plataforma', label: 'Visão geral', icon: LayoutDashboard, end: true },
+  { to: '/plataforma/casas', label: 'Casas (clientes)', icon: Building2 },
+  { to: '/plataforma/financeiro', label: 'Financeiro do Festou', icon: Wallet },
+  { to: '/plataforma/planos', label: 'Planos e funções', icon: BadgePercent },
+  { to: '/plataforma/interessados', label: 'Interessados', icon: Sparkles },
+  { to: '/plataforma/configuracoes', label: 'Configurações', icon: UserCog },
+]
+
 interface SidebarProps {
   mobileOpen: boolean
   onClose: () => void
@@ -157,13 +167,13 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       .eq('status', 'pendente')
       .then(({ count }) => setAcertosPendentes(count ?? 0))
   }, [canSeeAcertos, location.pathname])
-  const visibleTopLinks = foraDaEmpresa ? [] : topLinks.filter((i) => canAccessRoute(role, can, i.to))
+  const visibleTopLinks = foraDaEmpresa ? platformLinks : topLinks.filter((i) => canAccessRoute(role, can, i.to))
   // Resultado do mês, Lucro por festa e Relatórios e metas viraram abas do
   // Financeiro: somem do menu para quem entra no Financeiro (quem não entra
   // continua vendo a tela antiga).
   const dentroDoFinanceiro = can('page:financeiro') ? ['/resultado-do-mes', '/lucro-por-festa', '/relatorios'] : []
   const visibleGroups = groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => !dentroDoFinanceiro.includes(i.to) && (foraDaEmpresa ? i.to === '/plataforma' : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => !dentroDoFinanceiro.includes(i.to) && (foraDaEmpresa ? false : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
     .filter((g) => g.items.length > 0)
 
   async function handleLogout() {

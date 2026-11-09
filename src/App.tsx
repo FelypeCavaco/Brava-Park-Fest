@@ -87,7 +87,7 @@ export default function App() {
           <Route path="/usuarios" element={<Users />} />
           <Route path="/exportar-dados" element={<ExportData />} />
           <Route path="/configuracoes" element={<Settings />} />
-          <Route path="/plataforma" element={<Platform />} />
+          <Route path="/plataforma/*" element={<Platform />} />
           <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
         </Route>

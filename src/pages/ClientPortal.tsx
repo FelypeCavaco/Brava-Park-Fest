@@ -1,8 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Home, UtensilsCrossed, Users, CreditCard, Menu as MenuIcon, ChevronLeft, ChevronRight, Check, X, Info, Clock,
-  Copy, Lock, Star, MapPin, Download, Music2, AlertTriangle, PartyPopper,
+  Copy, Upload, Lock, Star, MapPin, Download, Music2, AlertTriangle, PartyPopper,
 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { brl, parseDecimal, friendlyDbError } from '../lib/format'
@@ -280,6 +280,11 @@ export function ClientPortal() {
   const [playlist, setPlaylist] = useState('')
   // pagamento
   const [copiado, setCopiado] = useState(false)
+  // "Já paguei": valor + comprovante (obrigatório), conferido pela equipe.
+  const [jaPaguei, setJaPaguei] = useState(false)
+  const [valorComprovante, setValorComprovante] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [arquivo, setArquivo] = useState<File | null>(null)
   // avaliação
   const [notas, setNotas] = useState<Record<string, number>>({})
   const [comentario, setComentario] = useState('')
@@ -341,6 +346,9 @@ export function ClientPortal() {
       setEscolhas(p.cardapio?.escolhas ?? {})
       setMusica(p.musica)
       setPlaylist(p.playlist ?? '')
+      const prox = p.cobranca?.modo === 'parcelas' ? (p.cobranca.cronograma?.parcelas ?? []).find((x) => Number(x.aberto) > 0) : undefined
+      const sugerido = prox ? Number(prox.total_hoje) : p.saldo
+      setValorComprovante(sugerido > 0 ? String(sugerido.toFixed(2)).replace('.', ',') : '')
     }
     setLoading(false)
   }
@@ -521,6 +529,30 @@ export function ClientPortal() {
       () => supabase.rpc('portal_set_music', { p_token: token, p_choice: escolha, p_url: escolha === 'cliente' ? playlist : null }),
       escolha === 'equipe' ? 'Combinado! A equipe cuida da trilha sonora.' : 'Playlist salva. A equipe já recebeu.',
     )
+  }
+
+  async function enviarComprovante(e: FormEvent) {
+    e.preventDefault()
+    const valor = parseDecimal(valorComprovante)
+    if (!valor || valor <= 0) return setAviso('Informe o valor que você pagou.')
+    if (!arquivo) return setAviso('Anexe a foto ou o PDF do comprovante do Pix.')
+    if (arquivo.size > 10 * 1024 * 1024) return setAviso('O arquivo é muito grande (máximo 10 MB).')
+    setBusy(true)
+    setAviso(null)
+    const ext = (arquivo.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const path = `${token}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error: upErr } = await supabase.storage.from('portal-comprovantes').upload(path, arquivo, { contentType: arquivo.type || undefined, upsert: false })
+    if (upErr) {
+      setBusy(false)
+      setAviso('Não foi possível enviar o arquivo. Tente uma foto (JPG ou PNG) ou um PDF.')
+      return
+    }
+    setBusy(false)
+    if (await run(() => supabase.rpc('portal_submit_receipt', { p_token: token, p_amount: valor, p_path: path }), 'Recebemos! A equipe vai conferir o Pix e o pagamento aparece aqui.')) {
+      setArquivo(null)
+      setJaPaguei(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function copiarPix() {
@@ -916,7 +948,7 @@ export function ClientPortal() {
                       {Number(proxParcela.multa) + Number(proxParcela.juros) > 0
                         ? <>Valor para pagamento hoje: <b>{brl(Number(proxParcela.total_hoje))}</b> (parcela {brl(Number(proxParcela.aberto))} + multa {brl(Number(proxParcela.multa))} + juros {brl(Number(proxParcela.juros))}, conforme o contrato).</>
                         : <>Valor: <b>{brl(Number(proxParcela.aberto))}</b>.</>}
-                      {' '}Se já pagou, o pagamento aparece aqui assim que a equipe confirmar.
+                      {' '}Se já pagou, toque em "Já paguei" e envie o comprovante.
                     </div>
                   )}
                   <section className={`${card} p-4`} style={{ borderColor: C.borda }}>
@@ -968,9 +1000,32 @@ export function ClientPortal() {
                   ) : (
                     <p className="text-sm" style={{ color: C.muted }}>Peça a chave Pix à equipe.</p>
                   )}
-                  <p className="text-xs" style={{ color: C.muted }}>
-                    Pague pelo QR code ou pelo código copia e cola. Assim que a equipe confirmar o Pix, o pagamento aparece aqui em "Pagamentos registrados". Não é preciso enviar comprovante.
-                  </p>
+                  {!jaPaguei ? (
+                    <div className="space-y-2 pt-1">
+                      <button type="button" onClick={() => setJaPaguei(true)} className="w-full h-11 rounded-xl text-white font-semibold" style={{ background: C.azul }}>
+                        Já paguei
+                      </button>
+                      <p className="text-xs" style={{ color: C.muted }}>Depois de pagar, toque em "Já paguei" e envie o comprovante. A equipe confere o Pix e o pagamento aparece aqui em "Pagamentos registrados".</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={enviarComprovante} className="space-y-2 pt-1">
+                      <p className="text-[13px] font-medium">Já paguei: envie o comprovante</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input value={valorComprovante} onChange={(e) => setValorComprovante(e.target.value)} inputMode="decimal" placeholder="Valor pago (R$)" aria-label="Valor pago"
+                          className="h-11 rounded-xl px-3 text-sm bg-white" style={{ border: `1px solid ${C.campo}` }} />
+                        <label className="h-11 rounded-xl px-3 text-sm bg-white flex items-center gap-2 cursor-pointer" style={{ border: `1px dashed ${C.tracejado}`, color: C.azul }}>
+                          <Upload className="w-4 h-4" />
+                          <span className="truncate">{arquivo ? arquivo.name : 'Anexar comprovante (foto ou PDF)'}</span>
+                          <input ref={fileRef} type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} />
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => { setJaPaguei(false); setArquivo(null) }} className="h-11 px-4 rounded-xl text-sm font-medium" style={{ border: `1px solid ${C.campo}`, color: C.muted }}>Voltar</button>
+                        <button type="submit" disabled={busy || !arquivo} className="flex-1 h-11 rounded-xl text-white font-semibold disabled:opacity-60" style={{ background: C.azul }}>{busy ? 'Enviando...' : 'Enviar comprovante'}</button>
+                      </div>
+                      <p className="text-xs" style={{ color: C.muted }}>O comprovante é obrigatório. A equipe confere o Pix no banco e confirma ou recusa o pagamento.</p>
+                    </form>
+                  )}
                 </section>
               )}
 
@@ -986,7 +1041,7 @@ export function ClientPortal() {
                             {c.status === 'lancado' ? 'Confirmado' : c.status === 'recusado' ? 'Recusado' : 'Em análise'}
                           </span>
                         </div>
-                        {c.status === 'recusado' && c.motivo && <p className="text-xs mt-0.5" style={{ color: '#B23A3A' }}>Motivo: {c.motivo}. Fale com a equipe.</p>}
+                        {c.status === 'recusado' && c.motivo && <p className="text-xs mt-0.5" style={{ color: '#B23A3A' }}>Motivo: {c.motivo}. Envie outro comprovante ou fale com a equipe.</p>}
                       </div>
                     ))}
                   </div>

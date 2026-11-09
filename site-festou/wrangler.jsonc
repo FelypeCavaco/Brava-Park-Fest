@@ -1,0 +1,11 @@
+// Página de vendas do Festou (usefestou.com.br): site estático servido por um
+// Worker da Cloudflare. Na Cloudflare: Workers → Criar → Importar repositório,
+// "Diretório raiz" = site-festou, comando de deploy = npx wrangler deploy.
+{
+  "name": "festou-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}

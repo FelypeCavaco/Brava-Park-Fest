@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festou · Sistema para casas de festas</title>
+<meta name="description" content="O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. E cada família ganha um portal da própria festa, com Pix por QR code.">
+<meta name="theme-color" content="#2A1A4E">
+<link rel="icon" href="img/festou-icone.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Festou · Menos WhatsApp. Mais festa.">
+<meta property="og:description" content="Sistema para casas de festas, com portal da família, Pix por QR code, contratos, estoque e financeiro.">
+<meta property="og:image" content="https://usefestou.com.br/img/og.png">
+<meta property="og:url" content="https://usefestou.com.br/">
+<link rel="canonical" href="https://usefestou.com.br/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Festou","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"Sistema de gestão para casas de festas, com portal da família.","offers":[{"@type":"Offer","name":"Essencial","price":"189.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Profissional","price":"279.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Master","price":"369.90","priceCurrency":"BRL"}]}
+</script>
+</head>
+<body>
+<div class="progress" aria-hidden="true"><i></i></div>
+
+<header class="nav" id="topo">
+  <a href="#inicio" class="nav-logo" aria-label="Festou, início"><img src="img/festou-branco.png" alt="Festou" width="938" height="372"></a>
+  <nav class="nav-links" aria-label="Seções">
+    <a href="#problemas">Por que o Festou</a>
+    <a href="#portal">Portal da família</a>
+    <a href="#sistema">O sistema</a>
+    <a href="#planos">Planos</a>
+    <a href="#duvidas">Dúvidas</a>
+  </nav>
+  <div class="nav-acoes">
+    <a href="https://app.usefestou.com.br" class="nav-entrar">Entrar</a>
+    <a href="#contato" class="btn btn-verde btn-sm magnet">Agendar demonstração</a>
+  </div>
+  <button class="nav-menu" aria-label="Abrir menu" aria-expanded="false"><span></span><span></span></button>
+</header>
+
+<main>
+<!-- ============ HERO ============ -->
+<section class="hero" id="inicio">
+  <canvas id="hero3d" aria-hidden="true"></canvas>
+  <div class="hero-brilho" aria-hidden="true"></div>
+  <div class="hero-conteudo">
+    <p class="selo"><span class="ponto"></span> Sistema para casas de festas</p>
+    <h1 class="hero-titulo"><span class="linha"><span>Menos WhatsApp.</span></span><span class="linha"><span class="grad">Mais festa.</span></span></h1>
+    <p class="hero-sub">O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. E cada família ganha um <strong>portal da própria festa</strong>, no celular.</p>
+    <div class="hero-ctas">
+      <a href="#contato" class="btn btn-verde btn-lg magnet">Quero ver funcionando <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="#planos" class="btn btn-vidro btn-lg">Ver planos</a>
+    </div>
+    <p class="hero-prova"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Feito dentro de uma casa de festas de verdade</p>
+  </div>
+  <div class="bolhas" aria-hidden="true">
+    <div class="bolha b1"><b>Qual é a chave Pix mesmo? 😅</b><small>mãe do aniversariante · 22:41</small></div>
+    <div class="bolha b2"><b>Quanto ainda falta pagar da festa?</b><small>pai da Bia · 07:12</small></div>
+    <div class="bolha b3"><b>Dá pra trocar o sabor do bolo? A festa é sábado</b><small>cliente · 19:05</small></div>
+    <div class="bolha b4"><b>Quantos convidados ficaram no final?</b><small>cozinha · 10:30</small></div>
+  </div>
+  <a href="#problemas" class="rolar" aria-label="Rolar para baixo"><span></span></a>
+</section>
+
+<!-- ============ FAIXA ============ -->
+<div class="faixa" aria-hidden="true">
+  <div class="faixa-trilho">
+    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i>
+    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i>
+  </div>
+</div>
+
+<!-- ============ PROBLEMAS ============ -->
+<section class="secao" id="problemas">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">Você reconhece?</p>
+    <h2>Os seis problemas que mais tiram o sono de quem tem casa de festas</h2>
+    <p class="sub">Role a página: cada problema vira a resposta que o Festou dá.</p>
+  </div>
+  <div class="cartas">
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">💸</span><p>A chave Pix enviada dez vezes por semana</p></div>
+      <div class="face verso"><span class="check">✓</span><p>QR code com o valor certo no portal de cada festa</p></div>
+    </div></div>
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">🤷</span><p>Ninguém sabe quanto cada família ainda deve</p></div>
+      <div class="face verso"><span class="check">✓</span><p>Saldo e parcelas de cada festa, também no portal da família</p></div>
+    </div></div>
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">📒</span><p>Parcelas controladas no caderno</p></div>
+      <div class="face verso"><span class="check">✓</span><p>Cronograma, vencimentos e lembrete pronto para o WhatsApp</p></div>
+    </div></div>
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">🎂</span><p>Cardápio e convidados mudando na véspera</p></div>
+      <div class="face verso"><span class="check">✓</span><p>A família escolhe no portal, dentro dos prazos da casa</p></div>
+    </div></div>
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">🥟</span><p>O salgado acabou no meio da festa</p></div>
+      <div class="face verso"><span class="check">✓</span><p>Estoque que baixa sozinho e avisa antes de faltar</p></div>
+    </div></div>
+    <div class="carta"><div class="carta-in">
+      <div class="face frente"><span class="emoji">📉</span><p>No fim do mês, ninguém sabe o lucro de cada festa</p></div>
+      <div class="face verso"><span class="check">✓</span><p>Lucro por festa, com cada real explicado</p></div>
+    </div></div>
+  </div>
+  <p class="nota-centro revelar">Se você riscou dois desses, o Festou foi feito para a sua casa.</p>
+</section>
+
+<!-- ============ PORTAL ============ -->
+<section class="portal" id="portal">
+  <div class="portal-fixo">
+    <div class="portal-texto">
+      <p class="sobretitulo claro">O grande diferencial</p>
+      <h2>Cada festa ganha o seu próprio portal</h2>
+      <p class="sub claro">Você manda um link. A família resolve tudo pelo celular, sem ligar e sem ficar mandando mensagem.</p>
+      <ol class="passos">
+        <li class="ativo" data-tela="0"><span>01</span><div><b>A festa na palma da mão</b><p>Data, contagem regressiva e o que ainda falta fazer, com os prazos da casa.</p></div></li>
+        <li data-tela="1"><span>02</span><div><b>Cardápio dentro das regras</b><p>A família escolhe só o que o pacote permite. Fora do prazo, a equipe fica sabendo.</p></div></li>
+        <li data-tela="2"><span>03</span><div><b>Lista de convidados</b><p>Vira o check-in da portaria no dia da festa. Dá até para colar vários nomes de uma vez.</p></div></li>
+        <li data-tela="3"><span>04</span><div><b>Pix com o valor certo</b><p>QR code ou copia e cola, já preenchidos. A família anexa o comprovante e a equipe confere.</p></div></li>
+      </ol>
+    </div>
+    <div class="celular-cena">
+      <div class="celular" id="celular">
+        <div class="celular-tela">
+          <img src="img/portal-inicio.png" alt="Portal da família: início da festa" class="tela ativa" width="840" height="1800">
+          <img src="img/portal-cardapio.png" alt="Portal da família: escolha do cardápio" class="tela" width="840" height="1800" loading="lazy">
+          <img src="img/portal-convidados.png" alt="Portal da família: lista de convidados" class="tela" width="840" height="1800" loading="lazy">
+          <img src="img/portal-pix.png" alt="Portal da família: pagamento por Pix" class="tela tela-topo" width="780" height="1688" loading="lazy">
+        </div>
+        <div class="celular-notch"></div>
+      </div>
+      <div class="celular-sombra"></div>
+      <span class="flutua f1">🎈</span><span class="flutua f2">🎉</span><span class="flutua f3">🎁</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SISTEMA (horizontal) ============ -->
+<section class="sistema" id="sistema">
+  <div class="sistema-fixo">
+    <div class="cabeca cabeca-esq">
+      <p class="sobretitulo">Por dentro do sistema</p>
+      <h2>O que a sua equipe vê todo dia</h2>
+    </div>
+    <div class="trilho" id="trilho">
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Central da festa</span></div><img src="img/central.png" alt="Central da festa no Festou" width="2333" height="1512" loading="lazy"></div>
+        <div class="painel-txt"><b>Central da festa</b><p>Pagamentos, cardápio, convidados, equipe, checklist e documentos de uma festa numa tela só, com o histórico de quem mudou o quê.</p></div>
+      </article>
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Lembretes do dia</span></div><img src="img/lembretes.png" alt="Lembretes do dia no Festou" width="2333" height="1512" loading="lazy"></div>
+        <div class="painel-txt"><b>Lembretes do dia</b><p>O sistema avisa quem precisa de contato hoje. A mensagem já sai pronta para o WhatsApp, é só clicar em Enviar.</p></div>
+      </article>
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Financeiro</span></div><img src="img/financeiro.png" alt="Financeiro do Festou com entradas e saídas" width="2239" height="749" loading="lazy" class="img-baixa"></div>
+        <div class="painel-txt"><b>Financeiro</b><p>Entradas por festa e saídas por categoria, com as taxas de cartão já descontadas. Clique numa linha e veja de onde veio cada real.</p></div>
+      </article>
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Estoque</span></div><img src="img/estoque.png" alt="Estoque no Festou" width="2333" height="1512" loading="lazy"></div>
+        <div class="painel-txt"><b>Estoque e lista de compras</b><p>Baixa sozinho a cada festa e avisa antes de faltar. A lista de compras sai pronta.</p></div>
+      </article>
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Marketing</span></div><img src="img/marketing.png" alt="Marketing e funil no Festou" width="2333" height="1512" loading="lazy"></div>
+        <div class="painel-txt"><b>Marketing e funil</b><p>De onde vêm os clientes, quanto custa cada festa fechada e onde as vendas param.</p></div>
+      </article>
+      <article class="painel">
+        <div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Pós-festa</span></div><img src="img/posfesta.png" alt="Pós-festa no Festou" width="2203" height="958" loading="lazy" class="img-baixa"></div>
+        <div class="painel-txt"><b>Pós-festa</b><p>Pedido de avaliação no Google e pesquisa de satisfação, para a próxima festa vir por indicação.</p></div>
+      </article>
+    </div>
+    <p class="aviso-print">Telas reais do sistema · dados fictícios</p>
+  </div>
+</section>
+
+<!-- ============ FINANCEIRO POR PLANO ============ -->
+<section class="secao perguntas" id="financeiro">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">O financeiro em cada plano</p>
+    <h2>Cada plano responde a uma pergunta</h2>
+    <p class="sub">Todos os planos têm o dia a dia do dinheiro: o que entra, o que sai e contas a pagar. O que muda é até onde você enxerga.</p>
+  </div>
+  <div class="escada">
+    <div class="degrau d1">
+      <span class="plano-chip">Essencial</span>
+      <p class="pergunta">“Quanto ganhei este mês?”</p>
+      <p>Visão geral do mês, lançamentos, contas a pagar, parcelas a receber e o resultado do mês: lucro ou prejuízo, explicado.</p>
+    </div>
+    <div class="degrau d2">
+      <span class="plano-chip">Profissional</span>
+      <p class="pergunta">“Quais festas dão mais lucro?”</p>
+      <p>Tudo do Essencial e o lucro de cada festa: quanto entrou, quanto custou e quanto sobrou, festa por festa.</p>
+    </div>
+    <div class="degrau d3">
+      <span class="plano-chip">Master</span>
+      <p class="pergunta">“Como vai ser o mês que vem?”</p>
+      <p>Tudo do Profissional, ponto de equilíbrio, projeção do caixa, comparativos entre meses e unidades e relatório em PDF e Excel.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLANOS ============ -->
+<section class="secao planos-secao" id="planos">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">Planos</p>
+    <h2>Escolha pelo momento da sua casa</h2>
+    <p class="sub">Todos incluem implantação feita por nós, treinamento da equipe, sua logo no sistema e no portal e suporte pelo WhatsApp.</p>
+  </div>
+
+  <div class="planos" id="planos-cards"></div>
+
+  <div class="calculadora revelar">
+    <div>
+      <h3>Tem mais de um salão?</h3>
+      <p>Cada unidade a mais custa só <b>R$ 49,90 por mês</b>, em qualquer plano. Simule:</p>
+    </div>
+    <div class="calc-campos">
+      <label>Plano
+        <select id="calc-plano"></select>
+      </label>
+      <label>Unidades
+        <span class="contador"><button type="button" id="calc-menos" aria-label="Menos uma unidade">−</button><output id="calc-unidades">1</output><button type="button" id="calc-mais" aria-label="Mais uma unidade">+</button></span>
+      </label>
+    </div>
+    <div class="calc-total"><small id="calc-conta">—</small><strong id="calc-valor">—</strong><span>por mês</span></div>
+  </div>
+
+  <details class="comparar revelar">
+    <summary>Comparar tudo o que cada plano tem</summary>
+    <div class="tabela-rolar"><table id="tabela-planos"></table></div>
+  </details>
+</section>
+
+<!-- ============ HISTÓRIA ============ -->
+<section class="historia">
+  <div class="historia-in revelar">
+    <p class="sobretitulo claro">Como nasceu</p>
+    <blockquote>Não encontramos um sistema que entendesse a rotina de uma casa de festas. <span>Então criamos o nosso.</span></blockquote>
+    <p class="historia-txt">Agenda, contratos, pagamentos, cardápio e lista de convidados viviam espalhados entre cadernos, planilhas e conversas de WhatsApp. Cada tela do Festou nasceu de um problema real do nosso dia a dia.</p>
+    <div class="em-uso"><span class="pulso"></span><div><b>Em uso hoje na Brava Park Fest</b><small>Casa de festas infantis em Itajaí (SC), com duas unidades. Usado todos os dias pela recepção, gerência, financeiro e equipe das festas.</small></div></div>
+  </div>
+</section>
+
+<!-- ============ COMO COMEÇA ============ -->
+<section class="secao" id="comeca">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">Do sim à primeira festa</p>
+    <h2>Você não precisa configurar nada sozinho</h2>
+  </div>
+  <div class="linha-tempo">
+    <svg class="linha-svg" viewBox="0 0 1000 20" preserveAspectRatio="none" aria-hidden="true"><path id="linha-path" d="M0 10 H1000"/></svg>
+    <div class="etapa"><span class="num">1</span><b>Demonstração</b><p>Mostramos o Festou funcionando, com uma festa de exemplo e pensando nos pacotes da sua casa.</p></div>
+    <div class="etapa"><span class="num">2</span><b>Implantação</b><p>Nós cadastramos unidades, pacotes, cardápio, contrato e usuários.</p></div>
+    <div class="etapa"><span class="num">3</span><b>Treinamento</b><p>Uma conversa online com a sua equipe para aprender o dia a dia.</p></div>
+    <div class="etapa"><span class="num">4</span><b>Acompanhamento</b><p>Suporte pelo WhatsApp e melhorias contínuas, sem custo extra.</p></div>
+  </div>
+  <div class="garantias revelar">
+    <span>📱 Funciona no celular e no computador</span>
+    <span>🎨 Sua logo no sistema e no portal</span>
+    <span>🔒 Dados de cada casa separados</span>
+    <span>⚖️ Dentro da LGPD</span>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="secao" id="duvidas">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">Dúvidas</p>
+    <h2>Perguntas frequentes</h2>
+  </div>
+  <div class="faq">
+    <details><summary>Preciso instalar alguma coisa?</summary><p>Não. O Festou funciona no navegador do computador e do celular. A família acessa o portal da festa por um link, sem baixar aplicativo.</p></details>
+    <details><summary>Como a família paga pelo portal?</summary><p>O portal mostra o QR code do Pix e o código copia e cola com o valor certo, gerados com a chave da sua casa. O dinheiro cai direto na sua conta. A família anexa o comprovante e a sua equipe confere e confirma.</p></details>
+    <details><summary>Tenho duas unidades. Como funciona?</summary><p>Cada plano já inclui unidades (o Master inclui duas) e cada unidade a mais custa R$ 49,90 por mês. Você vê cada unidade separada ou todas juntas, no financeiro e na agenda.</p></details>
+    <details><summary>Posso trocar de plano depois?</summary><p>Pode, a qualquer momento. Subir de plano vale na hora; descer vale a partir do mês seguinte. Os seus dados nunca são apagados na troca.</p></details>
+    <details><summary>Quem cadastra os pacotes, o cardápio e o contrato?</summary><p>Nós. A implantação é feita pela nossa equipe, e depois fazemos um treinamento online com a sua.</p></details>
+    <details><summary>Os meus dados ficam seguros?</summary><p>Os dados de cada casa ficam separados dos das outras, com acesso por usuário e permissões por perfil. Você pode exportar tudo quando quiser. Seguimos a LGPD.</p></details>
+  </div>
+</section>
+
+<!-- ============ CONTATO ============ -->
+<section class="contato" id="contato">
+  <div class="contato-in">
+    <div class="contato-texto revelar">
+      <p class="sobretitulo claro">Próximo passo</p>
+      <h2>Vamos colocar a sua próxima festa no Festou?</h2>
+      <p class="sub claro">Agende uma demonstração. Mostramos o sistema com uma festa de exemplo e já pensando nos pacotes da sua casa.</p>
+      <a class="whats-link" id="whats-direto" href="#" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.2-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg> Prefere falar agora? <b>(47) 99224-5959</b></a>
+      <p class="contato-email">festou.sistema@gmail.com</p>
+    </div>
+    <form class="formulario revelar" id="formulario" novalidate>
+      <div class="form-grade">
+        <label>Seu nome *<input name="nome" required autocomplete="name" maxlength="120"></label>
+        <label>Nome da casa de festas<input name="casa" autocomplete="organization" maxlength="120"></label>
+        <label>Cidade<input name="cidade" autocomplete="address-level2" maxlength="80"></label>
+        <label>WhatsApp com DDD *<input name="whatsapp" required inputmode="tel" autocomplete="tel" placeholder="(47) 99999-9999" maxlength="20"></label>
+        <label class="largo">E-mail<input name="email" type="email" autocomplete="email" maxlength="160"></label>
+        <label class="largo">Plano de interesse
+          <select name="plano"><option value="">Ainda não sei</option><option>Essencial</option><option>Profissional</option><option>Master</option></select>
+        </label>
+        <label class="largo">Quer contar algo? (opcional)<textarea name="mensagem" rows="3" maxlength="1000" placeholder="Ex.: temos 2 salões e fazemos umas 30 festas por mês"></textarea></label>
+        <label class="mel" aria-hidden="true">Não preencha<input name="site" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <button type="submit" class="btn btn-verde btn-lg btn-bloco magnet">Quero agendar a demonstração</button>
+      <p class="form-lgpd">Usamos seus dados só para falar com você sobre o Festou.</p>
+      <div class="form-retorno" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+</section>
+</main>
+
+<footer class="rodape">
+  <img src="img/festou-branco.png" alt="Festou" width="938" height="372">
+  <p>Sistema para casas de festas · prints do sistema com dados fictícios</p>
+  <nav><a href="https://app.usefestou.com.br">Entrar no sistema</a><a href="https://app.usefestou.com.br/termos">Termos de Uso e Privacidade</a><a href="#contato">Contato</a></nav>
+  <small>© <span id="ano"></span> Festou</small>
+</footer>
+
+<a class="whats-flutuante" id="whats-flutuante" href="#" target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+  <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 23.6c-2 0-4-.6-5.7-1.6l-.4-.2-3.9 1 1-3.8-.3-.4A10.6 10.6 0 1 1 16 26.6zm5.8-7.9c-.3-.2-1.9-.9-2.2-1-.3-.1-.5-.2-.7.2l-1 1.2c-.2.2-.4.2-.7.1a8.7 8.7 0 0 1-4.3-3.8c-.3-.6.3-.5.9-1.7.1-.2 0-.4 0-.5l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.9.4 3.7 3.7 0 0 0-1.1 2.7 6.4 6.4 0 0 0 1.3 3.4 14.7 14.7 0 0 0 5.6 5c2.1.9 2.9 1 4 .8.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.3-.6-.4z"/></svg>
+</a>
+
+<script src="js/config.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="js/site.js"></script>
+<script type="module" src="js/hero3d.js"></script>
+</body>
+</html>

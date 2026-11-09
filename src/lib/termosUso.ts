@@ -2,8 +2,8 @@
 // clientes aceita a versão atual antes de usar o sistema (migração 083).
 // Mudou o texto de forma importante? Troque TERMOS_VERSAO: todos aceitam de novo.
 
-export const TERMOS_VERSAO = '2026-11-04'
-export const TERMOS_DATA = '4 de novembro de 2026'
+export const TERMOS_VERSAO = '2026-11-09'
+export const TERMOS_DATA = '9 de novembro de 2026'
 
 export interface Fornecedor {
   nome?: string | null
@@ -75,8 +75,14 @@ export function termosHtml(f: Fornecedor): string {
 <p><b>9.10. Armazenamento no navegador.</b> O Festou guarda no seu navegador só o necessário para funcionar, como manter você conectado e lembrar preferências de tela. Não usamos cookies de propaganda.</p>
 <p><b>9.11. Contato sobre dados pessoais.</b> Dúvidas e pedidos sobre privacidade: ${contato}.</p>
 
-<h2>10. Limites de responsabilidade</h2>
-<p>10.1. O Festou não responde por prejuízos causados por dados errados cadastrados pela Casa, por decisões tomadas com base neles, por uso indevido de senhas, por falhas de internet, de aparelhos ou de serviços de terceiros (como WhatsApp e bancos), nem por lucros cessantes. Os demais limites seguem o contrato da Casa.</p>
+<h2>10. Disponibilidade do sistema e limitação de responsabilidade</h2>
+<p>10.1. O Festou é disponibilizado "no estado em que se encontra" e conforme sua disponibilidade. Embora empregue esforços razoáveis para mantê-lo em funcionamento contínuo, o Festou não garante que o sistema operará de forma ininterrupta, livre de erros, falhas ou lentidão.</p>
+<p>10.2. O sistema poderá ficar indisponível, lento ou apresentar comportamento inesperado, total ou parcialmente, em razão de, entre outros: (a) volume elevado de acessos ou uso simultâneo por muitos usuários; (b) manutenções, atualizações e correções, programadas ou emergenciais; (c) falhas, instabilidades ou interrupções de serviços de terceiros, como provedores de hospedagem, banco de dados, internet, energia, envio de mensagens e meios de pagamento; (d) ataques cibernéticos, acessos indevidos e outras ações maliciosas de terceiros; (e) caso fortuito ou força maior. Nessas hipóteses, o Festou não será responsável por prejuízos decorrentes da indisponibilidade, lentidão ou falha.</p>
+<p>10.3. O Festou é uma ferramenta de apoio à gestão. Cálculos, totais, relatórios, projeções, sugestões, lembretes, mensagens, códigos Pix e demais informações geradas pelo sistema dependem dos dados cadastrados pela Casa e devem ser conferidos por ela antes de qualquer decisão, cobrança, pagamento ou envio a terceiros. As decisões tomadas com base no sistema são de responsabilidade exclusiva da Casa.</p>
+<p>10.4. O Festou não se responsabiliza por erros, prejuízos ou perdas decorrentes de: (a) dados incorretos, incompletos ou desatualizados informados pela Casa ou por seus clientes, como valores, datas, chave Pix, taxas e dados de contato; (b) uso indevido do sistema ou em desacordo com estes Termos; (c) compartilhamento de senhas ou acesso por pessoas autorizadas pela Casa; (d) falhas em aparelhos, navegadores ou na conexão de internet do Usuário; (e) serviços de terceiros acessados a partir do sistema, como WhatsApp, bancos e instituições de pagamento.</p>
+<p>10.5. Identificado erro no funcionamento do sistema, o Festou se compromete a corrigi-lo em até 14 (catorze) dias úteis, contados da comunicação feita pela Casa pelos canais de suporte. A correção do erro é a única obrigação do Festou nessa hipótese.</p>
+<p>10.6. Na máxima extensão permitida pela legislação, o Festou não responderá por danos indiretos, lucros cessantes, perda de receita, perda de chance ou danos à imagem.</p>
+<p>10.7. Recomenda-se que a Casa exporte seus dados periodicamente, pela função de exportação disponível no sistema, mantendo cópia própria das informações essenciais ao seu negócio.</p>
 
 <h2>11. Mudanças nestes Termos</h2>
 <p>11.1. Podemos atualizar estes Termos. Quando a mudança for importante, mostraremos a nova versão no sistema e será preciso aceitar de novo para continuar usando. A versão em vigor fica sempre disponível no sistema.</p>

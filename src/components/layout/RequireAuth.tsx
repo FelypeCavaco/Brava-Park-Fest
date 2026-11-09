@@ -57,7 +57,8 @@ export function RequireAuth() {
   if (billing?.bloqueada && !isPlatformAdmin) return <BillingBlockedScreen billing={billing} />
 
   // Senha provisória: troca antes de qualquer outra tela.
-  if (profile?.mustChangePassword) return <ChangePasswordScreen nome={profile.name} />
+  // Nas casas do Festou, os Termos são aceitos na mesma tela (caixinha obrigatória).
+  if (profile?.mustChangePassword) return <ChangePasswordScreen nome={profile.name} pedirTermos={pedeTermos && termos !== 'aceito'} />
 
   // Termos de Uso ainda não aceitos (ou versão nova): aceite antes de entrar.
   if (pedeTermos && termos !== 'aceito') {

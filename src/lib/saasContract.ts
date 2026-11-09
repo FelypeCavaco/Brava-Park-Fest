@@ -55,7 +55,7 @@ export function faltandoNoContrato(c: DadosContratada, e: DadosEmpresaContrato):
   return f
 }
 
-export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaContrato) {
+export function contratoSaasHtml(c: DadosContratada, e: DadosEmpresaContrato): { corpo: string; estilos: string; nomeArquivo: string } {
   const p = e.plano
   const u = e.unidade
   const desligados = (e.desligados ?? []).map((id) => MODULOS.find((m) => m.id === id)?.label ?? id)
@@ -80,7 +80,7 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 
 <h2>Cláusula 2 — Implantação</h2>
 <p>2.1. A CONTRATADA fará a configuração inicial do Sistema em até 10 dias úteis após receber as informações necessárias: cadastro da empresa e das unidades, pacotes e preços, modelo de contrato da casa, cardápio, usuários iniciais e regra de cobrança.</p>
-<p>2.2. A CONTRATADA oferecerá um treinamento online de até 2 horas para a equipe da CONTRATANTE.</p>
+<p>2.2. A CONTRATADA oferecerá um treinamento online de até 2 horas para a equipe da CONTRATANTE e manterá, dentro do Sistema, materiais de ajuda com explicações e vídeos sobre o seu uso (o "Guia Festou").</p>
 <p>2.3. As informações usadas na implantação são de responsabilidade da CONTRATANTE, que deve conferi-las antes de começar a usar o Sistema com seus clientes.</p>
 <p>2.4. Se o Anexo I prever período de teste gratuito, a cobrança da mensalidade começa no fim desse período, na data de início indicada no Anexo I. A CONTRATANTE pode cancelar durante o teste sem pagar mensalidade.</p>
 
@@ -93,6 +93,8 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>3.6. Se a suspensão por falta de pagamento passar de 60 dias, a CONTRATADA poderá encerrar o contrato, seguindo o que diz a cláusula 8 sobre a devolução e a exclusão dos dados.</p>
 <p>3.7. A CONTRATADA emitirá nota fiscal de serviço de cada pagamento recebido. Os valores do Anexo I já incluem os tributos devidos pela CONTRATADA.</p>
 <p>3.8. Tarifas cobradas por terceiros que a CONTRATANTE escolher usar, como as taxas do seu banco, da sua maquininha de cartão ou do serviço de pagamento das suas festas, não fazem parte deste contrato.</p>
+<p>3.9. A CONTRATANTE pode pedir a troca de plano a qualquer momento. A mudança para um plano maior vale a partir da liberação das novas funções, e a diferença do mês em curso é cobrada de forma proporcional na fatura seguinte. A mudança para um plano menor vale a partir do mês seguinte ao pedido. Ao mudar para um plano menor, as funções que não fazem parte do novo plano deixam de ficar disponíveis, mas os dados registrados nelas continuam guardados e voltam a aparecer se a CONTRATANTE retornar a um plano que as inclua.</p>
+<p>3.10. O uso além do que o plano inclui, como unidades ou usuários adicionais, é cobrado conforme os valores do Anexo I, a partir do mês em que for liberado.</p>
 
 <h2>Cláusula 4 — Prazo e cancelamento</h2>
 <p>4.1. Este contrato vale por prazo indeterminado a partir da data de liberação do acesso.</p>
@@ -101,9 +103,9 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>4.4. A taxa de implantação não é devolvida em caso de cancelamento, já que o serviço foi prestado.</p>
 
 <h2>Cláusula 5 — Obrigações da Contratada</h2>
-<p>5.1. Manter o Sistema funcionando e acessível pela internet, buscando disponibilidade de 99% do tempo em cada mês. Não contam as manutenções programadas, avisadas com pelo menos 24 horas, nem falhas de internet, de energia ou de fornecedores de infraestrutura fora do controle da CONTRATADA.</p>
+<p>5.1. Empregar esforços razoáveis para manter o Sistema funcionando e acessível pela internet, buscando disponibilidade de 99% do tempo em cada mês. Não contam as manutenções programadas, avisadas com pelo menos 24 horas, nem as situações descritas no item 9.2.</p>
 <p>5.2. Prestar suporte ${contatoSuporte ? `pelo ${esc(contatoSuporte)}` : 'pelos contatos informados neste contrato'}, de ${esc(suporte)}, com primeira resposta em até 1 dia útil. Quando o Sistema estiver fora do ar, o atendimento terá prioridade.</p>
-<p>5.3. Corrigir os defeitos do Sistema que forem comunicados, em prazo compatível com a gravidade de cada um.</p>
+<p>5.3. Corrigir os defeitos do Sistema em até 14 (catorze) dias úteis, contados da comunicação feita pela CONTRATANTE pelos canais de suporte. Defeitos que impeçam o uso do Sistema terão prioridade.</p>
 <p>5.4. Incluir, sem custo extra, as atualizações e melhorias que forem liberadas para todos os clientes do Sistema.</p>
 <p>5.5. Manter cópias de segurança diárias dos dados.</p>
 <p>5.6. Manter os dados de cada casa de festas separados dos dados de outros clientes, de modo que um cliente não tenha acesso aos dados de outro.</p>
@@ -117,7 +119,7 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>6.4. Usar o Sistema somente para a administração da sua casa de festas, de forma lícita, sem tentar acessar dados de outros clientes, copiar o Sistema ou repassar o acesso a terceiros.</p>
 <p>6.5. Responder pelo conteúdo que cadastra e envia aos seus clientes: contratos, preços, regras da casa, multa e juros de parcelas atrasadas e mensagens de WhatsApp. O Sistema é uma ferramenta, e cabe à CONTRATANTE conferir se esse conteúdo está de acordo com a lei, em especial com o Código de Defesa do Consumidor.</p>
 <p>6.6. Cumprir a Lei Geral de Proteção de Dados (LGPD) em relação aos dados dos seus clientes, convidados e funcionários, conforme a cláusula 8.</p>
-<p>6.7. Manter corretos no Sistema a chave Pix, as taxas da maquininha e os demais dados usados nas cobranças, e conferir os lançamentos feitos de forma automática ou sugerida pelo Sistema, como o cálculo de parcelas e os lembretes de cobrança. O Sistema não recebe, não guarda e não movimenta dinheiro da CONTRATANTE ou dos seus clientes.</p>
+<p>6.7. Manter corretos no Sistema a chave Pix, as taxas da maquininha e os demais dados usados nas cobranças, e conferir os lançamentos feitos de forma automática ou sugerida pelo Sistema, como o cálculo de parcelas e os lembretes de cobrança. O Sistema não recebe, não guarda e não movimenta dinheiro da CONTRATANTE ou dos seus clientes. Os códigos Pix exibidos aos clientes são gerados com a chave informada pela CONTRATANTE, e o pagamento cai direto na conta dela; por isso o Sistema não confirma os pagamentos por Pix automaticamente, cabendo à CONTRATANTE conferi-los na sua conta e registrá-los.</p>
 <p>6.8. Enviar o link do portal de cada festa somente ao responsável pela festa.</p>
 
 <h2>Cláusula 7 — Propriedade</h2>
@@ -134,11 +136,17 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
 <p>8.6. A CONTRATADA guarda os registros de acesso ao Sistema pelo prazo exigido pelo Marco Civil da Internet (Lei nº 12.965/2014), e o registro de alterações feitas nos dados, para segurança e para esclarecer dúvidas da própria CONTRATANTE.</p>
 <p>8.7. A CONTRATADA pode usar informações estatísticas e anônimas sobre o uso do Sistema, que não identifiquem a CONTRATANTE nem nenhuma pessoa, para melhorar o Sistema.</p>
 <p>8.8. Pedidos e dúvidas sobre dados pessoais podem ser enviados aos contatos de suporte da cláusula 5.2.</p>
+<p>8.9. Para não guardar dados pessoais sem necessidade, o portal de cada festa é encerrado automaticamente 7 dias depois da festa, desde que ela esteja quitada (ou cancelada). Nesse momento, o link deixa de funcionar e são apagadas a lista de convidados e as mensagens do portal, ficando guardada apenas a quantidade de convidados. Os demais registros da festa continuam no Sistema.</p>
 
-<h2>Cláusula 9 — Limites de responsabilidade</h2>
-<p>9.1. A CONTRATADA não responde por: (a) prejuízos causados por informações erradas cadastradas pela CONTRATANTE ou por decisões tomadas com base nelas; (b) uso indevido de senhas da equipe da CONTRATANTE; (c) falhas na internet, nos aparelhos da CONTRATANTE ou em serviços de terceiros, como WhatsApp e bancos; (d) lucros cessantes ou danos indiretos.</p>
-<p>9.2. Em qualquer caso, a responsabilidade total da CONTRATADA neste contrato fica limitada ao valor das mensalidades pagas pela CONTRATANTE nos 12 meses anteriores ao fato, exceto em caso de dolo ou de culpa grave.</p>
-<p>9.3. Nenhuma das partes responde por atrasos ou falhas causados por caso fortuito ou força maior.</p>
+<h2>Cláusula 9 — Disponibilidade do Sistema e limitação de responsabilidade</h2>
+<p>9.1. O Sistema é disponibilizado no estado em que se encontra. Embora a CONTRATADA empregue esforços razoáveis para mantê-lo em funcionamento contínuo, não garante que ele operará de forma ininterrupta, livre de erros, falhas ou lentidão.</p>
+<p>9.2. O Sistema poderá ficar indisponível, lento ou apresentar comportamento inesperado, total ou parcialmente, em razão de, entre outros: (a) volume elevado de acessos ou uso simultâneo por muitos usuários; (b) manutenções, atualizações e correções, programadas ou emergenciais; (c) falhas, instabilidades ou interrupções de serviços de terceiros, como provedores de hospedagem, banco de dados, internet, energia, envio de mensagens e meios de pagamento; (d) ataques cibernéticos, acessos indevidos e outras ações maliciosas de terceiros; (e) caso fortuito ou força maior. Nessas hipóteses, a CONTRATADA não será responsável por prejuízos decorrentes da indisponibilidade, lentidão ou falha.</p>
+<p>9.3. O Sistema é uma ferramenta de apoio à gestão. Cálculos, totais, relatórios, projeções, sugestões, lembretes, mensagens, códigos Pix e demais informações geradas pelo Sistema dependem dos dados cadastrados pela CONTRATANTE e devem ser conferidos por ela antes de qualquer decisão, cobrança, pagamento ou envio a terceiros. As decisões tomadas com base no Sistema são de responsabilidade exclusiva da CONTRATANTE.</p>
+<p>9.4. A CONTRATADA não responde por erros, prejuízos ou perdas decorrentes de: (a) dados incorretos, incompletos ou desatualizados informados pela CONTRATANTE ou por seus clientes, como valores, datas, chave Pix, taxas e dados de contato; (b) uso indevido do Sistema ou em desacordo com este contrato e com os Termos de Uso; (c) compartilhamento de senhas ou acesso por pessoas autorizadas pela CONTRATANTE; (d) falhas em aparelhos, navegadores ou na conexão de internet da CONTRATANTE; (e) serviços de terceiros acessados a partir do Sistema, como WhatsApp, bancos e instituições de pagamento.</p>
+<p>9.5. Identificado defeito no funcionamento do Sistema, a obrigação da CONTRATADA é corrigi-lo no prazo do item 5.3.</p>
+<p>9.6. Na máxima extensão permitida pela legislação, a CONTRATADA não responderá por danos indiretos, lucros cessantes, perda de receita, perda de chance ou danos à imagem.</p>
+<p>9.7. Em qualquer caso, a responsabilidade total da CONTRATADA neste contrato fica limitada ao valor das mensalidades pagas pela CONTRATANTE nos 12 meses anteriores ao fato, exceto em caso de dolo ou de culpa grave.</p>
+<p>9.8. Recomenda-se que a CONTRATANTE exporte os seus dados periodicamente, pela função de exportação do Sistema, mantendo cópia própria das informações essenciais ao seu negócio.</p>
 
 <h2>Cláusula 10 — Confidencialidade</h2>
 <p>10.1. As partes manterão em sigilo as informações da outra parte a que tiverem acesso por causa deste contrato, como dados de clientes, preços, estratégias e informações técnicas do Sistema. Essa obrigação continua por 2 anos após o fim do contrato.</p>
@@ -190,5 +198,10 @@ export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaCont
     td:first-child { width: 40%; color: #6D5E8C; }
   `
   const nomeArq = (u?.razao_social || e.empresa).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()
-  await downloadPdf(corpo, estilos, `contrato-festou-${nomeArq}.pdf`)
+  return { corpo, estilos, nomeArquivo: `contrato-festou-${nomeArq}.pdf` }
+}
+
+export async function baixarContratoSaas(c: DadosContratada, e: DadosEmpresaContrato) {
+  const { corpo, estilos, nomeArquivo } = contratoSaasHtml(c, e)
+  await downloadPdf(corpo, estilos, nomeArquivo)
 }

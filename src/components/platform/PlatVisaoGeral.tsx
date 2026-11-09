@@ -61,6 +61,14 @@ export function PlatVisaoGeral({ d }: { d: PainelDados }) {
       avisos.push({ cor: 'purple', titulo: `${c.name}: usando ${c.usuarios} de ${lim} usuários${p ? ` do plano ${p.nome}` : ''}`, detalhe: 'Chegou no limite. Oportunidade de oferecer o plano acima ou usuários adicionais.', acao: 'Ver ficha', ir: `/plataforma/casas/${c.id}?aba=plano` })
     }
   }
+  for (const c of ativas) {
+    const calc = d.planosDaCasa[c.id]?.mensalidade_calculada
+    const atual = Number(M[c.id]?.mensalidade || 0)
+    if (calc != null && calc - atual > 0.009) {
+      const extras = c.unidades - (M[c.id]?.unidades_incluidas ?? 1)
+      avisos.push({ cor: 'amber', titulo: `${c.name}: ${c.unidades} unidades, mas a mensalidade não inclui ${extras > 0 ? (extras === 1 ? 'a unidade a mais' : `as ${extras} unidades a mais`) : 'o valor do plano'}`, detalhe: `Hoje paga ${brl(atual)}; pela conta do plano seria ${brl(calc)}. Se não foi um desconto combinado, recalcule na ficha.`, acao: 'Ver ficha', ir: `/plataforma/casas/${c.id}?aba=plano` })
+    }
+  }
   const semMensalidade = ativas.filter((c) => !M[c.id]?.cadastrada)
   if (semMensalidade.length) avisos.push({ cor: 'purple', titulo: `${semMensalidade.length} ${semMensalidade.length === 1 ? 'casa ativa sem mensalidade cadastrada' : 'casas ativas sem mensalidade cadastrada'}`, detalhe: semMensalidade.map((c) => c.name).join(', '), acao: 'Ver casas', ir: '/plataforma/casas' })
   if (novosInteressados) avisos.push({ cor: 'purple', titulo: `${novosInteressados} ${novosInteressados === 1 ? 'interessado novo' : 'interessados novos'} sem resposta`, detalhe: 'Quanto antes você responder, maior a chance de fechar.', acao: 'Ver interessados', ir: '/plataforma/interessados' })

@@ -97,7 +97,7 @@ export function PlatCasas({ d }: { d: PainelDados }) {
                       </td>
                       <td className="py-3 pr-2">{!c.active ? <Badge tone="danger">Suspensa</Badge> : <Badge tone={s.tom}>{s.texto}</Badge>}</td>
                       <td className="py-3 pr-2">{m?.cadastrada ? <Medidor n={c.usuarios} limite={m.usuarios_incluidos ?? null} alertaNoLimite /> : <span className="tabular-nums">{c.usuarios}</span>}</td>
-                      <td className="py-3 pr-2">{m?.cadastrada ? <Medidor n={c.unidades} limite={m.unidades_incluidas ?? null} /> : <span className="tabular-nums">{c.unidades}</span>}</td>
+                      <td className="py-3 pr-2">{m?.cadastrada ? <Medidor n={c.unidades} limite={m.unidades_incluidas ?? null} alertaNoLimite={c.unidades > (m.unidades_incluidas ?? 1)} /> : <span className="tabular-nums">{c.unidades}</span>}</td>
                       <td className="py-3 pr-4 text-right tabular-nums">{c.festas_30d}</td>
                       <td className="py-3 pr-2">{pr ? <Medidor n={pr.feitos} limite={pr.total} completo /> : <span className="text-muted">—</span>}</td>
                       <td className="py-3 pr-2">

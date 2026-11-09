@@ -158,7 +158,7 @@ function PlanoEFuncoes({ d, c }: { d: PainelDados; c: Empresa }) {
   async function trocar(id: string | null) {
     const novo = d.planos.find((p) => p.id === id)
     const texto = novo
-      ? `Trocar ${c.name} para o plano ${novo.nome}?\n\nA mensalidade passa a ser ${brl(novo.preco)}${m?.asaas ? ' (e o Asaas é atualizado)' : ''}, os limites passam a ser os do plano e as funções acompanham.\n\nPelo contrato (3.9), subir de plano vale na hora; descer vale a partir do mês seguinte.`
+      ? `Trocar ${c.name} para o plano ${novo.nome}?\n\nA mensalidade passa a ser ${brl(novo.preco)}${c.unidades > novo.unidades_incluidas ? ` + ${c.unidades - novo.unidades_incluidas} ${c.unidades - novo.unidades_incluidas === 1 ? 'unidade' : 'unidades'} a mais (${brl(novo.unidade_adicional)} cada)` : ''}${m?.asaas ? ' (e o Asaas é atualizado)' : ''}, os limites passam a ser os do plano e as funções acompanham.\n\nPelo contrato (3.9), subir de plano vale na hora; descer vale a partir do mês seguinte.`
       : `Deixar ${c.name} sem plano da lista? As funções ficam como estão agora e passam a ser escolhidas à mão.`
     if (!window.confirm(texto)) return
     setBusy(true)
@@ -172,6 +172,24 @@ function PlanoEFuncoes({ d, c }: { d: PainelDados; c: Empresa }) {
     if (novo && m?.asaas) {
       const r = await chamarServidor({ action: 'asaas_sync', company_id: c.id })
       aviso += r.erro ? ` Atenção: o Asaas não atualizou (${r.erro}). Use "Atualizar no Asaas" na aba Mensalidade.` : ' Mensalidade atualizada no Asaas.'
+    }
+    setBusy(false)
+    setMsg({ ok: true, texto: aviso })
+    await d.recarregar()
+  }
+
+  async function recalcular() {
+    if (!window.confirm(`Passar a mensalidade de ${c.name} para o valor da conta do plano?${m?.asaas ? ' O Asaas também é atualizado.' : ''}`)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc('platform_billing_recalc', { p_company: c.id })
+    if (error) {
+      setBusy(false)
+      return setMsg({ ok: false, texto: friendlyDbError(error.message) })
+    }
+    let aviso = `Mensalidade agora é ${brl(Number(data))}.`
+    if (m?.asaas) {
+      const r = await chamarServidor({ action: 'asaas_sync', company_id: c.id })
+      aviso += r.erro ? ` Atenção: o Asaas não atualizou (${r.erro}).` : ' Atualizada no Asaas.'
     }
     setBusy(false)
     setMsg({ ok: true, texto: aviso })
@@ -220,9 +238,20 @@ function PlanoEFuncoes({ d, c }: { d: PainelDados; c: Empresa }) {
                   Sem plano<span className="block text-xs font-normal text-muted">funções à mão</span>
                 </button>
               </div>
-              {plano && Number(m.mensalidade) !== plano.preco && (
-                <p className="text-xs bg-amber-light text-amber rounded-lg px-3 py-2 mt-3">A mensalidade desta casa ({brl(Number(m.mensalidade))}) está diferente do preço do plano ({brl(plano.preco)}). Se foi um desconto combinado, está tudo certo.</p>
-              )}
+              {plano && (() => {
+                const calc = pdc?.mensalidade_calculada ?? plano.preco
+                const extras = Math.max(0, c.unidades - plano.unidades_incluidas)
+                return (
+                  <div className="mt-3 text-sm bg-paper rounded-lg px-3 py-2.5 space-y-1">
+                    <p>Conta do plano: <b>{brl(plano.preco)}</b>{extras > 0 && <> + {extras} {extras === 1 ? 'unidade' : 'unidades'} a mais × {brl(plano.unidade_adicional)}</>} = <b>{brl(calc)}</b> por mês <span className="text-xs text-muted">({c.unidades} {c.unidades === 1 ? 'unidade ativa' : 'unidades ativas'}, {plano.unidades_incluidas} {plano.unidades_incluidas === 1 ? 'incluída' : 'incluídas'})</span></p>
+                    {Math.abs(Number(m.mensalidade) - calc) > 0.009 && (
+                      <p className="text-xs text-amber flex flex-wrap items-center gap-2">A mensalidade cadastrada é {brl(Number(m.mensalidade))}. Se foi um desconto combinado, está tudo certo.
+                        {pdc?.mensalidade_calculada != null && <button type="button" disabled={busy} onClick={recalcular} className="font-medium text-purple underline">Recalcular para {brl(calc)}</button>}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </>
           )}
         </Card>

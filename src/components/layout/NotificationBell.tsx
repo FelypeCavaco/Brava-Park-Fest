@@ -4,6 +4,7 @@ import { Bell, FileText, Megaphone, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { useCompany } from '../../lib/CompanyContext'
+import { moduloLigado } from '../../lib/modules'
 import { brl } from '../../lib/format'
 
 // Sininho no canto superior direito. Mostra:
@@ -83,7 +84,8 @@ export function NotificationBell() {
   const [lidos, setLidos] = useState<string[]>(avisosLidos)
   const caixa = useRef<HTMLDivElement>(null)
   const podeComprovantes = can('page:portal_avisos') || can('action:festa.pagamentos')
-  const podeAvaliacao = can('page:festa_detalhe') && (can('page:lembretes') || can('page:reservas'))
+  // pedido de avaliação: função Satisfação (plano Master no Festou)
+  const podeAvaliacao = can('page:festa_detalhe') && (can('page:lembretes') || can('page:reservas')) && moduloLigado('satisfacao', brand.disabledModules)
   const permitido = podeComprovantes || podeAvaliacao
 
   const carregar = useCallback(async () => {

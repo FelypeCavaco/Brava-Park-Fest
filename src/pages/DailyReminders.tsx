@@ -1,4 +1,5 @@
 import { useCurrentUserName } from '../lib/AuthContext'
+import { useModulo } from '../lib/useModulo'
 import { useEffect, useMemo, useState } from 'react'
 import { addDays, subDays, format, parseISO, startOfDay } from 'date-fns'
 import { MessageCircle, Wallet, CalendarClock, Star, BellRing } from 'lucide-react'
@@ -55,6 +56,8 @@ const REVIEW_REQUEST_TYPE = 'Pedido de avaliação'
 
 export function DailyReminders() {
   const currentUserName = useCurrentUserName()
+  // Pedido de avaliação faz parte da função Satisfação (plano Master no Festou).
+  const avaliacaoLigada = useModulo('satisfacao')
   const { selectedUnit, unitDbIds } = useUnit()
   const [paymentReminders, setPaymentReminders] = useState<PaymentReminder[]>([])
   const [tomorrowReminders, setTomorrowReminders] = useState<TomorrowReminder[]>([])
@@ -260,6 +263,7 @@ export function DailyReminders() {
         )}
       </Card>
 
+      {avaliacaoLigada && (
       <Card title="Pedir avaliação da festa de ontem" action={<Star className="w-4 h-4 text-muted" />}>
         {loading ? (
           <p className="text-sm text-muted py-4 text-center">Carregando...</p>
@@ -285,6 +289,7 @@ export function DailyReminders() {
           </ul>
         )}
       </Card>
+      )}
 
       {reviewModalEntry && (
         <SendReviewModal

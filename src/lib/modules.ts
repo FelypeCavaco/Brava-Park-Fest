@@ -19,7 +19,7 @@ export const MODULOS: ModuloOpcional[] = [
   { id: 'propostas', label: 'Propostas comerciais', descricao: 'Propostas em PDF para enviar aos clientes.', keys: ['page:propostas'] },
   { id: 'escalas', label: 'Escalas da equipe', descricao: 'Escala de monitores e equipe por festa.', keys: ['page:escalas'] },
   { id: 'reativacao', label: 'Reativação de clientes', descricao: 'Lembrete de aniversário para chamar clientes antigos.', keys: ['page:reativacao'] },
-  { id: 'satisfacao', label: 'Satisfação (NPS)', descricao: 'Pesquisa de satisfação depois da festa.', keys: ['page:satisfacao'] },
+  { id: 'satisfacao', label: 'Satisfação e pedido de avaliação', descricao: 'Pesquisa de satisfação (NPS) e pedido de avaliação no Google depois da festa.', keys: ['page:satisfacao'] },
   { id: 'lucro', label: 'Lucro por festa', descricao: 'Resultado de cada festa (receita menos custos).', keys: ['page:lucro_por_festa'] },
   // sem chave de permissão: as telas conferem com moduloLigado()
   { id: 'fin_avancado', label: 'Financeiro: Planejamento e Comparativos', descricao: 'Ponto de equilíbrio, projeção do caixa e comparativos.', keys: [] },

@@ -13,6 +13,7 @@ import { FestasPorMesChart } from '../components/FestasPorMesChart'
 import { useAuth } from '../lib/AuthContext'
 import { BrandLogo } from '../components/BrandLogo'
 import { useCompany } from '../lib/CompanyContext'
+import { moduloLigado } from '../lib/modules'
 import { loadLegacyMenuFields } from '../lib/menuSections'
 import { useUnit, UNITS, allUnitsLabel } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
@@ -652,7 +653,7 @@ export function Dashboard() {
             </>
           )}
 
-          {reativacoesProximas.length > 0 && (
+          {reativacoesProximas.length > 0 && moduloLigado('reativacao', brand.disabledModules) && (
             <Card className="border-purple/30 bg-purple-light">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-4 h-4 text-purple-dark" />

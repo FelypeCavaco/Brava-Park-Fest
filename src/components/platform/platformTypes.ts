@@ -90,6 +90,9 @@ export interface Plano {
 export interface PlanoDaCasa {
   plano_id: string | null
   modulos_extras: string[]
+  // migração 095: preço do plano + unidades a mais
+  mensalidade_calculada?: number | null
+  unidades_ativas?: number
 }
 
 export const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')

@@ -58,7 +58,7 @@ export function Platform() {
     setImplantacao(Object.fromEntries(((imp.data ?? []) as { company_id: string; itens: ItensImplantacao }[]).map((i) => [i.company_id, i.itens])))
     setSem094(!!pl.error)
     setPlanos(((pl.data ?? []) as Record<string, unknown>[]).map(normalizarPlano))
-    setPlanosDaCasa(Object.fromEntries(((pdc.data ?? []) as ({ company_id: string } & PlanoDaCasa)[]).map((p) => [p.company_id, { plano_id: p.plano_id, modulos_extras: p.modulos_extras ?? [] }])))
+    setPlanosDaCasa(Object.fromEntries(((pdc.data ?? []) as ({ company_id: string } & PlanoDaCasa)[]).map((p) => [p.company_id, { plano_id: p.plano_id, modulos_extras: p.modulos_extras ?? [], mensalidade_calculada: p.mensalidade_calculada == null ? null : Number(p.mensalidade_calculada), unidades_ativas: p.unidades_ativas }])))
   }, [])
 
   useEffect(() => {

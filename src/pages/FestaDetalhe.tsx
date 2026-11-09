@@ -39,6 +39,7 @@ import { Button } from '../components/ui/Button'
 import { Can } from '../components/Can'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
+import { useModulo } from '../lib/useModulo'
 import { useUndo } from '../lib/UndoContext'
 import { SendReviewModal } from '../components/SendReviewModal'
 import { monthBounds } from '../lib/monthUtils'
@@ -433,6 +434,8 @@ export function FestaDetalhe() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [costSuggestions, setCostSuggestions] = useState<{ category: string; amount: number }[]>([])
   const [showReviewModal, setShowReviewModal] = useState(false)
+  // Pedido de avaliação faz parte da função Satisfação (plano Master no Festou).
+  const avaliacaoLigada = useModulo('satisfacao')
   // Vindo do sininho (?avaliacao=1): abre a aba Geral, rola até o contato com o
   // cliente e já abre a janela de pedir avaliação.
   const [avaliacaoPedida, setAvaliacaoPedida] = useState(() => searchParams.get('avaliacao') === '1')
@@ -442,9 +445,9 @@ export function FestaDetalhe() {
     setTab('geral')
     window.setTimeout(() => {
       document.getElementById('contato-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      setShowReviewModal(true)
+      if (avaliacaoLigada) setShowReviewModal(true)
     }, 300)
-  }, [avaliacaoPedida, festa])
+  }, [avaliacaoPedida, festa, avaliacaoLigada])
   const [notes, setNotes] = useState<FestaNote[]>([])
   const [showNotes, setShowNotes] = useState(false)
   const [showPendencias, setShowPendencias] = useState(false)
@@ -2978,9 +2981,11 @@ export function FestaDetalhe() {
                   {MESSAGE_TEMPLATE_LABEL[key]}
                 </Button>
               ))}
-              <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setShowReviewModal(true)}>
-                Pedir avaliação
-              </Button>
+              {avaliacaoLigada && (
+                <Button variant="secondary" className="text-xs px-3 py-1.5" onClick={() => setShowReviewModal(true)}>
+                  Pedir avaliação
+                </Button>
+              )}
             </div>
             {contactHistory.length > 0 && (
               <ul className="text-xs text-muted space-y-1">

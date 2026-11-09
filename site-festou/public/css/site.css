@@ -328,8 +328,15 @@ blockquote span { color: var(--verde); }
   .d1, .d2, .d3 { min-height: 0; }
   .plano.destaque { transform: none; }
   .portal-fixo { grid-template-columns: 1fr; padding-top: 90px; gap: 10px; height: auto; }
-  .celular-cena { height: 560px; order: -1; }
-  .celular { width: 250px; height: 530px; aspect-ratio: auto; transform: none; }
+  .portal { overflow: clip; }
+  .celular-cena { position: sticky; top: 60px; z-index: 5; height: 400px; order: -1; margin: 0 -16px; background: linear-gradient(#1b1033 85%, rgba(27, 16, 51, 0)); }
+  .celular { width: 180px; height: 380px; aspect-ratio: auto; padding: 8px; border-radius: 34px; transform: none; }
+  .celular-tela { border-radius: 27px; }
+  .celular-tela::before { height: 22px; }
+  .tela { inset: 22px 0 0 0; height: calc(100% - 22px); }
+  .celular-notch { top: 14px; width: 56px; height: 14px; margin-left: -28px; }
+  .celular-sombra, .flutua { display: none; }
+  .passos li { min-height: 150px; }
   .passos li { transform: none !important; }
   .sistema-fixo { padding: 90px 16px 60px; height: auto; }
   .painel { min-width: 0; }

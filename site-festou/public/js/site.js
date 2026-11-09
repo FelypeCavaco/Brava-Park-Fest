@@ -325,16 +325,11 @@
 
   // celular: as telas do portal trocam sozinhas quando o portal está na tela
   mm.add('(max-width: 900px)', function () {
-    var timer = null
-    ScrollTrigger.create({
-      trigger: '.portal', start: 'top 60%', end: 'bottom 40%',
-      onToggle: function (s) {
-        clearInterval(timer)
-        if (s.isActive) timer = setInterval(function () { mostrarTela((telaAtual + 1) % telas.length) }, 3200)
-      },
+    // celular fixo no topo; a tela troca conforme cada passo chega ao meio da tela
+    passos.forEach(function (li, k) {
+      ScrollTrigger.create({ trigger: li, start: 'top 62%', end: 'bottom 62%', onToggle: function (s) { if (s.isActive) mostrarTela(k) } })
     })
     $$('.painel').forEach(function (p) { gsap.from(p, { y: 60, opacity: 0, duration: 1, ease: 'power3.out', scrollTrigger: { trigger: p, start: 'top 88%' } }) })
-    return function () { clearInterval(timer) }
   })
 
   // escada do financeiro: sobe degrau por degrau

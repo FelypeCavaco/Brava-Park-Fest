@@ -27,7 +27,7 @@
     ['Agenda de festas e visitas', 1, 1, 1], ['Reservas, clientes e Central da festa', 1, 1, 1], ['Contratos em PDF', 1, 1, 1],
     ['Portal da família com Pix por QR code', 1, 1, 1], ['Cobrança em parcelas e lembretes do dia', 1, 1, 1], ['Lista de convidados com check-in', 1, 1, 1],
     ['Financeiro: visão geral, lançamentos e resultado do mês', 1, 1, 1], ['Permissões por perfil de usuário', 1, 1, 1], ['Sua logo no sistema e no portal', 1, 1, 1],
-    ['Implantação e treinamento da equipe', 1, 1, 1], ['Suporte pelo WhatsApp', 1, 1, 1],
+    ['Treinamento da equipe e Guia Festou com vídeos', 1, 1, 1], ['Suporte pelo WhatsApp', 1, 1, 1],
     ['g', 'Vendas e equipe'],
     ['Propostas comerciais em PDF', 0, 1, 1], ['Comissões', 0, 1, 1], ['Escalas da equipe', 0, 1, 1],
     ['g', 'Operação'],

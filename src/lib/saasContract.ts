@@ -145,7 +145,7 @@ export function contratoSaasHtml(c: DadosContratada, e: DadosEmpresaContrato): {
 <p>9.4. A CONTRATADA não responde por erros, prejuízos ou perdas decorrentes de: (a) dados incorretos, incompletos ou desatualizados informados pela CONTRATANTE ou por seus clientes, como valores, datas, chave Pix, taxas e dados de contato; (b) uso indevido do Sistema ou em desacordo com este contrato e com os Termos de Uso; (c) compartilhamento de senhas ou acesso por pessoas autorizadas pela CONTRATANTE; (d) falhas em aparelhos, navegadores ou na conexão de internet da CONTRATANTE; (e) serviços de terceiros acessados a partir do Sistema, como WhatsApp, bancos e instituições de pagamento.</p>
 <p>9.5. Identificado defeito no funcionamento do Sistema, a obrigação da CONTRATADA é corrigi-lo no prazo do item 5.3.</p>
 <p>9.6. Na máxima extensão permitida pela legislação, a CONTRATADA não responderá por danos indiretos, lucros cessantes, perda de receita, perda de chance ou danos à imagem.</p>
-<p>9.7. Em qualquer caso, a responsabilidade total da CONTRATADA neste contrato fica limitada ao valor das mensalidades pagas pela CONTRATANTE nos 12 meses anteriores ao fato, exceto em caso de dolo ou de culpa grave.</p>
+<p>9.7. Em qualquer caso, a responsabilidade total da CONTRATADA neste contrato fica limitada ao valor das mensalidades pagas pela CONTRATANTE nos 3 (três) meses anteriores ao fato, exceto em caso de dolo ou de culpa grave.</p>
 <p>9.8. Recomenda-se que a CONTRATANTE exporte os seus dados periodicamente, pela função de exportação do Sistema, mantendo cópia própria das informações essenciais ao seu negócio.</p>
 
 <h2>Cláusula 10 — Confidencialidade</h2>

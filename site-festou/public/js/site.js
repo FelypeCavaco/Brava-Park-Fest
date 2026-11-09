@@ -15,10 +15,10 @@
     { id: 'essencial', nome: 'Essencial', preco: 189.90, unidades: 1, usuarios: 5, adicional: 49.90,
       para: 'Para sair do caderno e do WhatsApp', pergunta: 'Financeiro: “quanto ganhei este mês?”',
       itens: ['Agenda de festas e visitas', 'Reservas, clientes e Central da festa', 'Contratos em PDF com os dados da festa', 'Portal da família com Pix por QR code', 'Cobrança em parcelas e lembretes do dia', 'Lista de convidados com check-in', 'Financeiro do dia a dia e resultado do mês'] },
-    { id: 'profissional', nome: 'Profissional', preco: 279.90, unidades: 1, usuarios: 10, adicional: 49.90, destaque: true,
+    { id: 'profissional', nome: 'Profissional', preco: 279.90, unidades: 1, usuarios: 10, adicional: 49.90,
       para: 'Para vender mais e controlar a equipe', pergunta: 'Financeiro: “quais festas dão mais lucro?”',
       itens: ['=Tudo do Essencial, e mais:', 'Propostas comerciais em PDF', 'Comissões da equipe de vendas', 'Escalas da equipe por festa', 'Estoque, consumo e lista de compras', 'Acertos de estoque entre unidades', 'Lucro por festa'] },
-    { id: 'master', nome: 'Master', preco: 369.90, unidades: 2, usuarios: null, adicional: 49.90,
+    { id: 'master', nome: 'Master', preco: 369.90, unidades: 2, usuarios: null, adicional: 49.90, destaque: true,
       para: 'Para gerir a casa como empresa', pergunta: 'Financeiro: “como vai ser o mês que vem?”',
       itens: ['=Tudo do Profissional, e mais:', '2 unidades incluídas', 'Satisfação e pedido de avaliação no Google', 'Reativação de clientes pelo aniversário', 'Marketing: origem dos clientes, CAC e funil', 'Ponto de equilíbrio, projeção do caixa e comparativos', 'Relatório financeiro em PDF e Excel', 'Suporte prioritário no WhatsApp'] },
   ]

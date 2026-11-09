@@ -8,7 +8,8 @@
 --    Essencial    R$ 189,90 · 1 unidade · até 5 usuários
 --    Profissional R$ 279,90 · 1 unidade · até 10 usuários
 --    Master       R$ 369,90 · 2 unidades · usuários ilimitados
---    Unidade a mais: R$ 49,90 por mês em todos.
+--    Unidade a mais: R$ 49,90 por mês em todos. Plano em destaque ("mais escolhido"): Master.
+--    Pode rodar de novo sem problema (só reaplica os valores dos planos).
 --    As casas que já estão num plano ficam com os limites e as funções novas.
 --    A mensalidade delas NÃO muda sozinha (use "Recalcular" na ficha).
 -- 2) Mensalidade = preço do plano + unidades a mais × valor da unidade.
@@ -23,13 +24,13 @@ begin;
 insert into platform_plans (id, nome, preco, unidades_incluidas, usuarios_incluidos, unidade_adicional, modulos, destaque, ordem, ativo) values
   ('essencial', 'Essencial', 189.90, 1, 5, 49.90, array['agenda'], false, 1, true),
   ('profissional', 'Profissional', 279.90, 1, 10, 49.90,
-     array['agenda', 'propostas', 'comissoes', 'escalas', 'estoque', 'acertos', 'lucro'], true, 2, true),
-  ('master', 'Master', 369.90, 2, null, 49.90, platform_all_modules(), false, 3, true)
+     array['agenda', 'propostas', 'comissoes', 'escalas', 'estoque', 'acertos', 'lucro'], false, 2, true),
+  ('master', 'Master', 369.90, 2, null, 49.90, platform_all_modules(), true, 3, true)
 on conflict (id) do update set
   nome = excluded.nome, preco = excluded.preco, unidades_incluidas = excluded.unidades_incluidas,
   usuarios_incluidos = excluded.usuarios_incluidos, unidade_adicional = excluded.unidade_adicional,
   modulos = excluded.modulos, destaque = excluded.destaque, ordem = excluded.ordem, ativo = excluded.ativo;
-update platform_plans set destaque = false where id not in ('profissional') and destaque;
+update platform_plans set destaque = false where id not in ('master') and destaque;
 
 -- Limites das casas acompanham o plano; funções recalculadas.
 update platform_billing b set unidades_incluidas = p.unidades_incluidas, usuarios_incluidos = p.usuarios_incluidos,

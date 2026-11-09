@@ -195,11 +195,24 @@ interface StaffRow {
   substitutionReason: string | null
 }
 
-interface StaffMember { id: string; name: string; phone: string | null; defaultRole: string | null }
+interface StaffMember { id: string; name: string; phone: string | null; defaultRole: string | null; hourlyRate: number | null }
 
-interface StaffPayRow { assignmentId: string; name: string; role: string; amount: string; include: boolean }
+interface StaffPayRow { assignmentId: string; name: string; role: string; amount: string; include: boolean; conta: string }
 
 const DEFAULT_STAFF_PAYMENT = 150
+
+function horasDaFesta(inicio: string | undefined, fim: string | undefined): number | null {
+  if (!inicio || !fim) return null
+  const [hi, mi] = inicio.split(':').map(Number)
+  const [hf, mf] = fim.split(':').map(Number)
+  if ([hi, mi, hf, mf].some((x) => Number.isNaN(x))) return null
+  let min = hf * 60 + mf - (hi * 60 + mi)
+  if (min <= 0) min += 24 * 60
+  return min / 60
+}
+function horasTexto(h: number) {
+  return Number.isInteger(h) ? `${h}h` : `${h.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}h`
+}
 
 function mapStaffRow(s: any): StaffRow {
   return {
@@ -333,6 +346,7 @@ export function FestaDetalhe() {
   const [newMemberName, setNewMemberName] = useState('')
   const [newMemberPhone, setNewMemberPhone] = useState('')
   const [newMemberRole, setNewMemberRole] = useState('')
+  const [newMemberRate, setNewMemberRate] = useState('')
   const [selectedAssignments, setSelectedAssignments] = useState<string[]>([])
   const [payRows, setPayRows] = useState<StaffPayRow[] | null>(null)
   const [savingPay, setSavingPay] = useState(false)
@@ -1122,10 +1136,10 @@ export function FestaDetalhe() {
   async function loadStaff() {
     const [{ data }, { data: members }] = await Promise.all([
       supabase.from('staff_assignments').select('*').eq('reservation_id', id).order('created_at'),
-      supabase.from('staff_members').select('id, name, phone, default_role').eq('active', true).order('name'),
+      supabase.from('staff_members').select('*').eq('active', true).order('name'),
     ])
     setStaff((data ?? []).map(mapStaffRow))
-    setStaffMembers((members ?? []).map((m) => ({ id: m.id, name: m.name, phone: m.phone, defaultRole: m.default_role })))
+    setStaffMembers((members ?? []).map((m: any) => ({ id: m.id, name: m.name, phone: m.phone, defaultRole: m.default_role, hourlyRate: m.hourly_rate != null ? Number(m.hourly_rate) : null })))
   }
 
   async function loadContract() {
@@ -2144,6 +2158,19 @@ export function FestaDetalhe() {
   const assignedMemberIds = new Set(activeStaff.map((s) => s.staffMemberId).filter(Boolean) as string[])
   const availableMembers = staffMembers.filter((m) => !assignedMemberIds.has(m.id))
 
+  async function salvarValorHora(member: StaffMember, texto: string) {
+    const v = texto.trim() === '' ? null : parseDecimal(texto)
+    if (v !== null && (Number.isNaN(v) || v < 0)) return
+    if (v === member.hourlyRate) return
+    const anterior = member.hourlyRate
+    setStaffMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, hourlyRate: v } : m)))
+    const { error: err } = await supabase.from('staff_members').update({ hourly_rate: v }).eq('id', member.id)
+    if (err) {
+      setStaffMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, hourlyRate: anterior } : m)))
+      setError(/hourly_rate/.test(err.message) ? 'Falta rodar a migração 091 no banco para salvar o valor por hora.' : 'Não foi possível salvar o valor por hora.')
+    }
+  }
+
   function toggleRosterMember(member: StaffMember) {
     setRosterSelection((prev) => {
       if (member.id in prev) {
@@ -2176,14 +2203,14 @@ export function FestaDetalhe() {
     if (!newMemberName.trim()) return
     const { data, error } = await supabase
       .from('staff_members')
-      .insert({ name: newMemberName.trim(), phone: newMemberPhone.trim() || null, default_role: newMemberRole.trim() || null })
+      .insert({ name: newMemberName.trim(), phone: newMemberPhone.trim() || null, default_role: newMemberRole.trim() || null, ...(parseDecimal(newMemberRate) > 0 ? { hourly_rate: parseDecimal(newMemberRate) } : {}) })
       .select()
       .single()
     if (error || !data) {
       setError('Não foi possível cadastrar o funcionário.')
       return
     }
-    const member: StaffMember = { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role }
+    const member: StaffMember = { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role, hourlyRate: data.hourly_rate != null ? Number(data.hourly_rate) : null }
     setStaffMembers((prev) => [...prev, member].sort((a, b) => a.name.localeCompare(b.name)))
     // já deixa marcado pra escalar nesta festa
     setRosterSelection((prev) => ({ ...prev, [member.id]: member.defaultRole ?? '' }))
@@ -2191,6 +2218,7 @@ export function FestaDetalhe() {
     setNewMemberName('')
     setNewMemberPhone('')
     setNewMemberRole('')
+    setNewMemberRate('')
   }
 
   function toggleAssignmentSelected(assignmentId: string) {
@@ -2217,7 +2245,15 @@ export function FestaDetalhe() {
   function openPayModal(assignmentIds: string[]) {
     const rows = staff
       .filter((s) => assignmentIds.includes(s.id) && !s.paymentCostId)
-      .map((s) => ({ assignmentId: s.id, name: s.name, role: s.role, amount: String(DEFAULT_STAFF_PAYMENT), include: true }))
+      .map((s) => {
+        const membro = staffMembers.find((m) => m.id === s.staffMemberId)
+        const horas = horasDaFesta(festa?.startTimeRaw, festa?.endTimeRaw)
+        if (membro?.hourlyRate && horas) {
+          const valor = Math.round(membro.hourlyRate * horas * 100) / 100
+          return { assignmentId: s.id, name: s.name, role: s.role, amount: String(valor).replace('.', ','), include: true, conta: `${currency(membro.hourlyRate)}/h × ${horasTexto(horas)}` }
+        }
+        return { assignmentId: s.id, name: s.name, role: s.role, amount: String(DEFAULT_STAFF_PAYMENT), include: true, conta: 'sem valor por hora cadastrado: valor padrão' }
+      })
     if (rows.length > 0) setPayRows(rows)
   }
 
@@ -2316,7 +2352,7 @@ export function FestaDetalhe() {
       }
       memberId = data.id
       newName = data.name
-      setStaffMembers((prev) => [...prev, { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role }].sort((a, b) => a.name.localeCompare(b.name)))
+      setStaffMembers((prev) => [...prev, { id: data.id, name: data.name, phone: data.phone, defaultRole: data.default_role, hourlyRate: null }].sort((a, b) => a.name.localeCompare(b.name)))
     } else {
       const member = staffMembers.find((m) => m.id === subMemberId)
       if (!member) return
@@ -3561,6 +3597,20 @@ export function FestaDetalhe() {
                           placeholder="Função"
                           className="w-36 border border-line rounded-lg px-2 py-1 text-xs disabled:bg-paper disabled:text-muted"
                         />
+                        <label className="flex items-center gap-1 text-xs text-muted" title="Valor por hora deste funcionário (usado para sugerir o pagamento quando ele comparece)">
+                          R$
+                          <input
+                            key={`${m.id}-${m.hourlyRate ?? ''}`}
+                            defaultValue={m.hourlyRate != null ? String(m.hourlyRate).replace('.', ',') : ''}
+                            onBlur={(e) => salvarValorHora(m, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            aria-label={`Valor por hora de ${m.name}`}
+                            className="w-16 border border-line rounded-lg px-2 py-1 text-xs text-right"
+                          />
+                          /h
+                        </label>
                       </li>
                     )
                   })}
@@ -4217,6 +4267,11 @@ export function FestaDetalhe() {
                 <label className="block text-xs text-muted mb-1">Função mais comum (opcional)</label>
                 <input value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value)} placeholder="Ex: Garçom, Monitora" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
               </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Valor por hora (opcional)</label>
+                <input value={newMemberRate} onChange={(e) => setNewMemberRate(e.target.value)} inputMode="decimal" placeholder="Ex: 25,00" className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                <p className="text-[11px] text-muted mt-1">Quando ele comparecer, o pagamento sugerido é o valor por hora × a duração da festa. Dá para mudar na hora, se ele receber diferente.</p>
+              </div>
               <p className="text-xs text-muted">Ele fica salvo para as próximas festas e já vem marcado para esta.</p>
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="secondary" className="flex-1 justify-center" onClick={() => setShowNewMember(false)}>Cancelar</Button>
@@ -4246,6 +4301,7 @@ export function FestaDetalhe() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{r.name}</p>
                     <p className="text-xs text-muted">{r.role}</p>
+                    <p className="text-[11px] text-muted">{r.conta}</p>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-xs text-muted">R$</span>

@@ -397,8 +397,8 @@ export function ClientPortal() {
       <div className="min-h-screen flex items-center justify-center p-6 text-center" style={{ background: C.fundo }}>
         <div>
           <div className="w-16 h-16 rounded-full mx-auto mb-3" style={{ background: C.borda }} />
-          <p className="font-display font-semibold text-lg" style={{ color: C.texto }}>Link não encontrado</p>
-          <p className="text-sm mt-1" style={{ color: C.muted }}>Confira se o endereço foi copiado certinho ou peça um novo link à equipe.</p>
+          <p className="font-display font-semibold text-lg" style={{ color: C.texto }}>Link não encontrado ou encerrado</p>
+          <p className="text-sm mt-1" style={{ color: C.muted }}>Confira se o endereço foi copiado certinho. O portal é encerrado alguns dias depois da festa; se precisar de algo, fale com a equipe.</p>
         </div>
       </div>
     )

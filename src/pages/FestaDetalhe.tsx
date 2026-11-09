@@ -66,6 +66,10 @@ interface FestaDetalhada {
   unidadePix: string | null
   unidadeWhatsappGroupLink: string | null
   googleReviewLink: string | null
+  // Portal encerrado automaticamente (7 dias depois da festa quitada, migração 092).
+  portalEncerradoEm: string | null
+  convidadosNaLista: number | null
+  convidadosChegaram: number | null
   cliente: string
   clientId: string
   clientPhone: string | null
@@ -701,6 +705,9 @@ export function FestaDetalhe() {
       unidadePix: data.unit?.pix_key ?? null,
       unidadeWhatsappGroupLink: data.unit?.staff_whatsapp_group_link ?? null,
       googleReviewLink: data.unit?.google_review_link ?? null,
+      portalEncerradoEm: data.portal_encerrado_em ?? null,
+      convidadosNaLista: data.convidados_na_lista ?? null,
+      convidadosChegaram: data.convidados_chegaram ?? null,
       cliente: data.client?.name ?? '—',
       clientId: data.client_id,
       clientPhone: data.client?.phone ?? null,
@@ -2814,7 +2821,11 @@ export function FestaDetalhe() {
           </Card>
 
           <Card title="Portal do cliente" className="md:col-span-2">
-            {!guestListToken ? (
+            {!guestListToken && festa.portalEncerradoEm ? (
+              <p className="text-sm text-muted">
+                Portal encerrado em {new Date(festa.portalEncerradoEm).toLocaleDateString('pt-BR')}. Os portais são encerrados sozinhos 7 dias depois da festa quitada: o link deixa de funcionar e a lista de convidados e as mensagens são apagadas. Pagamentos, contrato, documentos e avaliação continuam aqui.
+              </p>
+            ) : !guestListToken ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm text-muted flex-1">O cliente escolhe o cardápio, envia a lista de convidados, acompanha os pagamentos e fala com a equipe por um link só.</p>
                 <Can permission="action:festa.lista_convidados">
@@ -2935,7 +2946,15 @@ export function FestaDetalhe() {
               </div>
             }
           >
-            {!guestListToken ? (
+            {!guestListToken && festa.portalEncerradoEm ? (
+              <div className="text-sm">
+                <p>
+                  <strong>{festa.convidadosNaLista ?? 0}</strong> convidado{festa.convidadosNaLista === 1 ? '' : 's'} na lista
+                  {' · '}<strong>{festa.convidadosChegaram ?? 0}</strong> chegaram (check-in)
+                </p>
+                <p className="text-xs text-muted mt-1">Os nomes foram apagados quando o portal foi encerrado. Ficaram guardados só os números.</p>
+              </div>
+            ) : !guestListToken ? (
               <div>
                 <p className="text-sm text-muted mb-3">
                   Gere um link para o contratante enviar a lista de convidados direto, sem precisar de login — os

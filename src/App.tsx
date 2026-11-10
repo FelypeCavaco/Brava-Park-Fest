@@ -18,6 +18,7 @@ const Reactivation = lazyPage(() => import('./pages/Reactivation').then((m) => (
 const Agenda = lazyPage(() => import('./pages/Agenda').then((m) => ({ default: m.Agenda })))
 const Settings = lazyPage(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 const Platform = lazyPage(() => import('./pages/Platform').then((m) => ({ default: m.Platform })))
+const GuiaFestou = lazyPage(() => import('./pages/GuiaFestou').then((m) => ({ default: m.GuiaFestou })))
 const Packages = lazyPage(() => import('./pages/Packages').then((m) => ({ default: m.Packages })))
 const Contracts = lazyPage(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
 const Payments = lazyPage(() => import('./pages/Payments').then((m) => ({ default: m.Payments })))
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/exportar-dados" element={<ExportData />} />
           <Route path="/configuracoes" element={<Settings />} />
           <Route path="/plataforma/*" element={<Platform />} />
+          <Route path="/guia" element={<GuiaFestou />} />
           <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
         </Route>

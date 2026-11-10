@@ -11,6 +11,7 @@ import { useUnit } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
 import { Settings } from '../../pages/Settings'
 import { BillingBanner } from './BillingNotice'
+import { GuiaAjuda } from '../guia/GuiaAjuda'
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -40,6 +41,7 @@ export function AppLayout() {
             <>
               <QuickActionsBar className="flex-1 min-w-0" />
               <GlobalSearch />
+              {brand.platformManaged && <GuiaAjuda />}
               <NotificationBell />
             </>
           )}

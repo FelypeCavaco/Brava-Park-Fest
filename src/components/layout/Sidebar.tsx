@@ -33,6 +33,7 @@ import {
   X,
   Building2,
   Download,
+  BookOpen,
 } from 'lucide-react'
 import { useUnit, UNITS, allUnitsLabel } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
@@ -167,7 +168,9 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       .eq('status', 'pendente')
       .then(({ count }) => setAcertosPendentes(count ?? 0))
   }, [canSeeAcertos, location.pathname])
-  const visibleTopLinks = foraDaEmpresa ? platformLinks : topLinks.filter((i) => canAccessRoute(role, can, i.to))
+  // Guia Festou: só nas casas do Festou (a Brava não usa)
+  const guiaLinks = brand.platformManaged ? [{ to: '/guia', label: 'Guia Festou', icon: BookOpen, end: false }] : []
+  const visibleTopLinks = foraDaEmpresa ? platformLinks : [...topLinks.filter((i) => canAccessRoute(role, can, i.to)), ...guiaLinks]
   // Resultado do mês, Lucro por festa e Relatórios e metas viraram abas do
   // Financeiro: somem do menu para quem entra no Financeiro (quem não entra
   // continua vendo a tela antiga).

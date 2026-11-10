@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapPin, Play, Lightbulb, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { MapPin, Lightbulb, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { useCompany } from '../../lib/CompanyContext'
 import { moduloLigado } from '../../lib/modules'
 import { useFornecedor } from '../TermosTexto'
@@ -62,20 +62,15 @@ export function EtiquetaPlano({ artigo }: { artigo: ArtigoGuia }) {
   )
 }
 
-// O vídeo do artigo (sem texto e sem áudio). Enquanto não existe, mostra o espaço reservado.
+// O vídeo do artigo (sem texto e sem áudio), quando existe.
 function Video({ artigo }: { artigo: ArtigoGuia }) {
   if (artigo.video) {
     return (
       <video className="w-full aspect-video rounded-card bg-ink" src={`/guia/videos/${artigo.id}.mp4`} controls playsInline muted preload="metadata" />
     )
   }
-  return (
-    <div className="w-full aspect-video rounded-card grid place-items-center text-white relative overflow-hidden"
-      style={{ background: 'radial-gradient(500px 300px at 70% 30%, rgba(140,90,210,.5), transparent 60%), linear-gradient(150deg, #2a1a4e, #1b1033)' }}>
-      <span className="w-16 h-16 rounded-full border-2 border-white/50 bg-white/10 grid place-items-center"><Play className="w-7 h-7 ml-1" /></span>
-      <span className="absolute bottom-3 left-4 text-xs font-medium text-white/80">Vídeo em produção</span>
-    </div>
-  )
+  // sem vídeo: o artigo mostra só o passo a passo
+  return null
 }
 
 export function CorpoArtigo({ artigo, compacto = false }: { artigo: ArtigoGuia; compacto?: boolean }) {

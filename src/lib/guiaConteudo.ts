@@ -195,6 +195,7 @@ export const GUIA: ArtigoGuia[] = [
       "Peça para o seu advogado revisar o texto do contrato antes de usar.",
       "Cada unidade pode ter o seu próprio modelo."
     ],
+    "video": true,
     "telas": [
       "/contratos"
     ]
@@ -216,6 +217,7 @@ export const GUIA: ArtigoGuia[] = [
       "Esses valores entram no custo de cada festa cadastrada, para o lucro por festa ficar certo.",
       "Use \"Ver por plano\" para conferir quanto cada pacote custa em despesas fixas."
     ],
+    "video": true,
     "telas": [
       "/despesas-fixas-festas"
     ]
@@ -238,6 +240,7 @@ export const GUIA: ArtigoGuia[] = [
       "A meta de faturamento do mês aparece no Painel depois que você define a meta em Relatórios e metas.",
       "Cada pessoa vê no Painel só o que o perfil dela permite."
     ],
+    "video": true,
     "telas": [
       "/"
     ]
@@ -352,7 +355,8 @@ export const GUIA: ArtigoGuia[] = [
     ],
     "dicas": [
       "O número entre parênteses no nome da aba mostra quantas tarefas já foram feitas."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "equipe-festa",
@@ -370,7 +374,8 @@ export const GUIA: ArtigoGuia[] = [
     ],
     "dicas": [
       "Use \"Exportar escala\" para mandar a equipe da festa para o grupo de WhatsApp."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "consumo-pos-festa",
@@ -388,6 +393,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Lançar o consumo de todas as festas deixa a média de \"Consumo por convidado\" cada vez mais certa."
     ],
+    "video": true,
     "modulo": "estoque"
   },
   {
@@ -423,7 +429,8 @@ export const GUIA: ArtigoGuia[] = [
     ],
     "dicas": [
       "Os motivos de cancelamento aparecem no Marketing, para você entender por que as festas caem."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "lembretes",
@@ -442,6 +449,7 @@ export const GUIA: ArtigoGuia[] = [
       "O pedido de avaliação da festa de ontem também aparece aqui no plano Master.",
       "As mensagens prontas podem ser editadas (\"Editar mensagem padrão\" na Central da festa)."
     ],
+    "video": true,
     "telas": [
       "/lembretes"
     ]
@@ -463,6 +471,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Os motivos de visitas que não avançaram aparecem no Marketing."
     ],
+    "video": true,
     "modulo": "agenda",
     "telas": [
       "/visitas",
@@ -617,6 +626,7 @@ export const GUIA: ArtigoGuia[] = [
       "De onde o cliente veio alimenta o funil e o Marketing (canais que mais trazem festas).",
       "O telefone com DDD é o usado no WhatsApp das mensagens prontas."
     ],
+    "video": true,
     "telas": [
       "/clientes"
     ]
@@ -639,6 +649,7 @@ export const GUIA: ArtigoGuia[] = [
       "Os motivos das propostas recusadas aparecem no Marketing.",
       "É preciso ter pelo menos um pacote cadastrado."
     ],
+    "video": true,
     "modulo": "propostas",
     "telas": [
       "/propostas"
@@ -662,6 +673,7 @@ export const GUIA: ArtigoGuia[] = [
       "Festas cadastradas depois do último domingo ficam na \"Semana em andamento\" e entram no repasse seguinte.",
       "Lançou errado? Use \"Desfazer\" em Repasses feitos."
     ],
+    "video": true,
     "modulo": "comissoes",
     "telas": [
       "/comissoes"
@@ -703,6 +715,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "O link de avaliação do Google de cada unidade é cadastrado pelo suporte do Festou. Se ainda não tiver, mande o link pelo WhatsApp do suporte."
     ],
+    "video": true,
     "modulo": "satisfacao",
     "telas": [
       "/satisfacao"
@@ -726,6 +739,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Quanto mais completo o cadastro (origem do cliente, motivos), melhores os números."
     ],
+    "video": true,
     "modulo": "marketing",
     "telas": [
       "/marketing",
@@ -810,6 +824,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "As taxas de cada forma de pagamento são configuradas uma vez e descontadas sozinhas."
     ],
+    "video": true,
     "telas": [
       "/pagamentos"
     ]
@@ -849,6 +864,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Quanto mais completos os custos (despesa fixa, ficha técnica, consumo pós-festa), mais certo o lucro."
     ],
+    "video": true,
     "modulo": "lucro",
     "telas": [
       "/lucro-por-festa"
@@ -871,6 +887,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Atualize o saldo informado de vez em quando para a projeção ficar certa."
     ],
+    "video": true,
     "modulo": "fin_avancado",
     "telas": [
       "/relatorios"
@@ -888,6 +905,7 @@ export const GUIA: ArtigoGuia[] = [
       "Compare uma unidade com a outra, um mês com o mesmo mês do ano anterior, ou ano contra ano."
     ],
     "dicas": [],
+    "video": true,
     "modulo": "fin_avancado"
   },
   {
@@ -968,6 +986,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Transferência entre CNPJs pode exigir nota fiscal: confirme com o seu contador."
     ],
+    "video": true,
     "modulo": "acertos",
     "telas": [
       "/acertos-entre-unidades"
@@ -988,6 +1007,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "A avaliação média ajuda a decidir com quem continuar trabalhando."
     ],
+    "video": true,
     "telas": [
       "/fornecedores"
     ]
@@ -1007,6 +1027,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "A equipe de cada festa é montada na Central da festa, aba Equipe."
     ],
+    "video": true,
     "modulo": "escalas",
     "telas": [
       "/escalas"

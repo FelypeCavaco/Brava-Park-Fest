@@ -423,7 +423,7 @@ export function Proposals() {
       {decliningId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setDecliningId(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Motivo da recusa</h2>
             <p className="text-sm text-muted mb-4">Ajuda a entender por que essa proposta não avançou.</p>
             <form onSubmit={handleConfirmDecline} className="space-y-3">

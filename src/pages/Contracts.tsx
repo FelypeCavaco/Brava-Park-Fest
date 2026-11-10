@@ -338,7 +338,7 @@ export function Contracts() {
       {editingUnitId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setEditingUnitId(null)} />
-          <div className="relative w-full max-w-2xl bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-2xl bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-4">
               Template — {units.find((u) => u.id === editingUnitId)?.name}
             </h2>

@@ -461,7 +461,7 @@ export function Packages() {
       {showPackageForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowPackageForm(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-display font-semibold">{editingPackageId ? 'Editar pacote' : 'Novo pacote'}</h2>
               <button onClick={() => setShowPackageForm(false)} className="text-muted hover:text-ink">
@@ -600,7 +600,7 @@ export function Packages() {
       {showExtraForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowExtraForm(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-display font-semibold">Novo item extra</h2>
               <button onClick={() => setShowExtraForm(false)} className="text-muted hover:text-ink">
@@ -645,7 +645,7 @@ export function Packages() {
       {fichaPackage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setFichaPackageId(null)} />
-          <div className="relative w-full max-w-lg bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-lg bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-display font-semibold">Ficha técnica — {fichaPackage.name}</h2>
               <button onClick={() => setFichaPackageId(null)} className="text-muted hover:text-ink">

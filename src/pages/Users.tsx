@@ -526,7 +526,7 @@ export function Users() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowForm(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-display font-semibold">Adicionar funcionário</h2>
               <button onClick={() => setShowForm(false)} className="text-muted hover:text-ink">

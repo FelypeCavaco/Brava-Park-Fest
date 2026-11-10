@@ -794,7 +794,7 @@ export function Inventory() {
       {pendingAdjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setPendingAdjust(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Diminuir estoque</h2>
             <p className="text-sm text-muted mb-4">
               {pendingAdjust.item.name}: de {qtd(pendingAdjust.item.quantity)} para {qtd(pendingAdjust.newQuantity)} {pendingAdjust.item.unit_of_measure}. Qual o motivo?
@@ -821,7 +821,7 @@ export function Inventory() {
       {costItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setCostItem(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">{costItem.has_cost ? 'Editar custo' : 'Definir custo inicial'}</h2>
             <p className="text-sm text-muted mb-4">
               {costItem.name} — {qtd(costItem.quantity)} {costItem.unit_of_measure} em estoque. O novo custo vale para o estoque atual (valor em estoque = quantidade × custo), sem mudar a quantidade e sem criar lançamento no Financeiro. Consumos já lançados nas festas mantêm o custo da época.
@@ -898,7 +898,7 @@ export function Inventory() {
       {editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setEditingItem(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-4">Editar item</h2>
             <form onSubmit={handleSaveEditItem} className="space-y-3">
               <div>
@@ -952,7 +952,7 @@ export function Inventory() {
       {transferringItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setTransferringItem(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Transferir item</h2>
             <p className="text-sm text-muted mb-4">
               "{transferringItem.name}" — tem {qtd(transferringItem.quantity)} {transferringItem.unit_of_measure} em {UNITS.find((u) => u.id === transferringItem.unit_id)?.name}

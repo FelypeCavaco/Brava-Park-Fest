@@ -91,43 +91,38 @@ export const GUIA: ArtigoGuia[] = [
     "id": "empresa",
     "cat": "inicio",
     "plano": "todos",
-    "onde": "Configurações → Empresa e unidades",
+    "onde": "Pedido ao suporte do Festou",
     "titulo": "Nome, logo e WhatsApp da casa",
-    "resumo": "Os dados que aparecem no menu, na tela de login e no portal da família.",
+    "resumo": "Os dados que aparecem no menu, na tela de login, no portal da família e nos PDFs. Quem altera é o suporte do Festou.",
     "passos": [
-      "No menu, abra Configurações → Empresa e unidades. Só administradores veem essa tela.",
-      "Em \"Dados da empresa\", preencha o nome da casa. Ele aparece no menu, no login e na aba do navegador.",
-      "Se quiser, escreva a frase da marca (aparece embaixo do nome, no login).",
-      "Em \"WhatsApp da equipe\", coloque o número que a família vai chamar pelo portal da festa.",
-      "Em \"Logo\", envie a imagem (PNG, JPG ou WEBP, até 2 MB). Prefira uma imagem quadrada.",
-      "Clique em Salvar."
+      "O nome da casa, a frase da marca, a logo e o WhatsApp da equipe ficam guardados nos dados da empresa.",
+      "Para proteger esses dados, quem altera é o suporte do Festou.",
+      "Para mudar, fale com o suporte pelo botão de WhatsApp aqui embaixo e diga o que quer mudar.",
+      "Para trocar a logo, mande a imagem pelo WhatsApp (PNG, JPG ou WEBP, de preferência quadrada).",
+      "Assim que o suporte alterar, a mudança aparece para toda a equipe e no portal das famílias."
     ],
     "dicas": [
       "Sem logo, o sistema mostra as iniciais do nome.",
-      "A logo também aparece no portal da família e nos PDFs (contratos e propostas)."
+      "O WhatsApp da equipe é o número que a família chama pelo portal da festa."
     ]
   },
   {
     "id": "unidades",
     "cat": "inicio",
     "plano": "todos",
-    "onde": "Configurações → Empresa e unidades → Unidades",
-    "titulo": "Cadastrar e configurar as unidades",
-    "resumo": "Cada salão é uma unidade, com os próprios dados, preços, regras do portal e cardápio.",
+    "onde": "Pedido ao suporte do Festou",
+    "titulo": "Dados e regras das unidades",
+    "resumo": "Chave Pix, regras do portal, roteiro da festa e outros ajustes de cada salão. Quem altera é o suporte do Festou.",
     "passos": [
-      "Em Configurações → Empresa e unidades, desça até \"Unidades\" e clique em \"Nova unidade\" (ou em Editar numa que já existe).",
-      "Preencha o nome da unidade e escolha a cor dela nos gráficos.",
-      "Informe o valor da hora extra e o sinal padrão (%) cobrado para reservar uma data.",
-      "Preencha os dados da unidade: razão social, CNPJ, endereço e a chave Pix. A chave Pix é a usada no QR code do portal; confira com cuidado.",
-      "Cole o link de avaliação do Google da unidade, usado no pedido de avaliação depois da festa.",
-      "Em \"Portal do cliente\", ajuste as regras que a família vê (prazos, idade que conta como convidado e outras). A unidade nova já vem com regras padrão.",
-      "Se quiser, ligue \"Mostrar a programação sugerida no portal\" e monte o roteiro da festa (ex.: chegada, parabéns, show de mágica), com os minutos de cada parte.",
-      "Ligue \"Cliente pode enviar playlist do Spotify\" se a família puder mandar a música da festa.",
-      "Clique em Salvar."
+      "Cada salão é uma unidade, com os próprios dados e regras.",
+      "O que fica em cada unidade: razão social, CNPJ e endereço; a chave Pix usada no QR code do portal; o link de avaliação do Google; o valor da hora extra e o sinal padrão.",
+      "Também ficam na unidade as regras que a família vê no portal: prazos do cardápio e da lista, idade que conta como convidado, o roteiro sugerido da festa e se a família pode mandar playlist.",
+      "Para proteger esses dados (principalmente a chave Pix), quem altera é o suporte do Festou.",
+      "Para mudar algo ou abrir uma unidade nova, fale com o suporte pelo botão de WhatsApp aqui embaixo."
     ],
     "dicas": [
-      "A unidade a mais tem custo na mensalidade (veja \"Planos e unidades\").",
-      "Destaque um item do roteiro (ex.: o parabéns) para ele aparecer com uma bolinha colorida no portal."
+      "Cada unidade a mais custa R$ 49,90 por mês (veja \"Planos, unidades e o que cada um inclui\").",
+      "Confira a chave Pix no portal de uma festa (\"Abrir como o cliente vê\") antes de mandar o link para as famílias."
     ],
     "telas": [
       "/configuracoes"
@@ -155,6 +150,7 @@ export const GUIA: ArtigoGuia[] = [
       "Na \"Ficha técnica de custo\" do pacote você lança quanto ele custa para a casa. Isso alimenta o lucro por festa.",
       "Mudar o preço do pacote não altera festas já cadastradas."
     ],
+    "video": true,
     "telas": [
       "/pacotes"
     ]
@@ -163,23 +159,24 @@ export const GUIA: ArtigoGuia[] = [
     "id": "cardapio",
     "cat": "inicio",
     "plano": "todos",
-    "onde": "Configurações → Empresa e unidades → (unidade) → Cardápio",
+    "onde": "Comercial → Pacotes e itens → Cardápio do portal do cliente",
     "titulo": "Cardápio do portal",
     "resumo": "As opções que a família escolhe no portal: sabor do bolo, salgados, sucos, pratos quentes.",
     "passos": [
-      "Em Configurações → Empresa e unidades, abra a unidade e vá até \"Cardápio do portal do cliente\".",
+      "Abra Comercial → Pacotes e itens e desça até \"Cardápio do portal do cliente\".",
       "Clique em \"Nova seção\" e dê um nome (ex.: Sabor do bolo, Salgados, Suco).",
       "Se quiser, escreva uma explicação para a família (ex.: \"Servidos depois do parabéns\").",
       "Defina quantas opções a família escolhe nessa seção.",
       "Adicione as opções, uma a uma, em \"Nova opção\".",
       "Em cada opção, escolha em quais pacotes ela aparece. \"Todos os pacotes\" vale também para pacotes criados depois.",
       "Se quiser, ligue \"Aceitar uma opção outro\": a família escreve o que quer e combina com a equipe.",
-      "Salve."
+      "Em \"Vale para\", escolha se a seção vale para todas as unidades ou só para uma. Salve."
     ],
     "dicas": [
       "A família só consegue escolher dentro do prazo da unidade. Depois do prazo, ela ainda pode enviar, mas a equipe é avisada de que foi fora do prazo.",
       "O número de pratos quentes vem do pacote (e dos itens extras de prato quente)."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "contrato-modelo",
@@ -262,6 +259,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "As cores das festas seguem a cor de cada unidade."
     ],
+    "video": true,
     "telas": [
       "/reservas"
     ]
@@ -288,7 +286,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "A situação vira \"Quitada\" sozinha quando o total for pago.",
       "Preencher o aniversariante com a data ativa o aviso de reativação perto do próximo aniversário (plano Master)."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "central-festa",
@@ -311,6 +310,7 @@ export const GUIA: ArtigoGuia[] = [
       "Toda alteração fica registrada com quem mudou e quando.",
       "As abas Financeiro, Checklist, Equipe e Consumo pós-festa têm artigos próprios aqui no Guia."
     ],
+    "video": true,
     "telas": [
       "/reservas/"
     ]
@@ -334,7 +334,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Se aparecer \"Já existe uma despesa parecida este mês\", confira se não é a mesma compra lançada duas vezes.",
       "Comprovantes enviados pelo portal aparecem aqui, em \"Comprovantes enviados pelo portal\" (veja o artigo \"Conferir um comprovante\")."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "checklist",
@@ -470,7 +471,6 @@ export const GUIA: ArtigoGuia[] = [
   },
   {
     "id": "portal-o-que-e",
-    "video": true,
     "cat": "portal",
     "plano": "todos",
     "onde": "Central da festa → Portal do cliente",
@@ -486,7 +486,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "O link é secreto: só quem recebeu consegue abrir.",
       "O portal usa a logo, as regras e o cardápio da unidade da festa."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "portal-cardapio",
@@ -503,7 +504,8 @@ export const GUIA: ArtigoGuia[] = [
     ],
     "dicas": [
       "O prazo do cardápio é definido nas regras do portal de cada unidade."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "portal-convidados",
@@ -522,7 +524,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "A idade a partir da qual a criança conta como convidado é uma regra da unidade.",
       "Use \"Ordem alfabética\" para achar os nomes mais rápido na portaria."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "portal-musica",
@@ -532,7 +535,7 @@ export const GUIA: ArtigoGuia[] = [
     "titulo": "Música da festa (playlist)",
     "resumo": "A família manda a playlist do Spotify ou deixa a equipe escolher.",
     "passos": [
-      "A opção só aparece se a unidade permitir playlist (Configurações da unidade).",
+      "A opção só aparece se a unidade permitir playlist. Para ligar ou desligar, fale com o suporte do Festou.",
       "No portal, a família cola o link da playlist do Spotify ou escolhe \"a equipe escolhe\".",
       "Na Central da festa, em \"Música\", a equipe clica em \"Abrir playlist\" ou \"Abrir no Spotify\"."
     ],
@@ -556,7 +559,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "O dinheiro cai direto na conta da casa: o Festou não passa pelo pagamento.",
       "O sistema não confirma o Pix sozinho. Sempre confira no extrato antes de aprovar."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "conferir-comprovante",
@@ -575,7 +579,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "Foto de comprovante pode ser montada. Só aprove depois de ver o dinheiro na conta.",
       "Cada festa pode ter no máximo 5 comprovantes esperando conferência."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "portal-encerrado",
@@ -696,7 +701,7 @@ export const GUIA: ArtigoGuia[] = [
       "Também dá para registrar à mão uma nota que o cliente deu por telefone, em \"Registrar resposta\"."
     ],
     "dicas": [
-      "Cadastre o link de avaliação do Google em cada unidade (Configurações)."
+      "O link de avaliação do Google de cada unidade é cadastrado pelo suporte do Festou. Se ainda não tiver, mande o link pelo WhatsApp do suporte."
     ],
     "modulo": "satisfacao",
     "telas": [
@@ -745,6 +750,7 @@ export const GUIA: ArtigoGuia[] = [
       "Essencial responde \"quanto ganhei este mês?\"; Profissional, \"quais festas dão mais lucro?\"; Master, \"como vai ser o mês que vem?\".",
       "Nos gráficos, escolha o período e alterne entre barras e linhas. Passe o mouse na legenda para ver a explicação."
     ],
+    "video": true,
     "telas": [
       "/financeiro"
     ]
@@ -768,7 +774,8 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "O sistema avisa se existe um lançamento parecido (até 5 dias de diferença). Confira se não é o mesmo.",
       "Compra de estoque? Use Estoque → Entrada de compra: assim o estoque e a conta saem juntos."
-    ]
+    ],
+    "video": true
   },
   {
     "id": "entradas",
@@ -918,6 +925,7 @@ export const GUIA: ArtigoGuia[] = [
       "Itens sem custo deixam o lucro por festa incompleto: use \"Definir custo\".",
       "Toda movimentação fica no histórico do item."
     ],
+    "video": true,
     "modulo": "estoque",
     "telas": [
       "/estoque"
@@ -1039,6 +1047,7 @@ export const GUIA: ArtigoGuia[] = [
     "dicas": [
       "O número de usuários depende do plano: Essencial até 5, Profissional até 10, Master ilimitados."
     ],
+    "video": true,
     "telas": [
       "/usuarios"
     ]

@@ -3865,7 +3865,7 @@ export function FestaDetalhe() {
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowCancelModal(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Cancelar festa</h2>
             <p className="text-sm text-muted mb-4">
               Já foi pago {currency(totalPago)} até agora. Defina a multa retida para calcular o valor a devolver.
@@ -3964,7 +3964,7 @@ export function FestaDetalhe() {
       {showRefundEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowRefundEdit(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">{refundExpense ? 'Editar estorno' : 'Lançar estorno'}</h2>
             <p className="text-sm text-muted mb-4">Atualiza o mesmo lançamento "Estorno" no Financeiro — nunca cria outro. Valor zero remove o estorno.</p>
             <form onSubmit={handleSaveRefund} className="space-y-3">
@@ -3998,7 +3998,7 @@ export function FestaDetalhe() {
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowDeleteModal(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Excluir festa</h2>
             <p className="text-sm text-muted mb-4">
               Isso apaga essa festa e tudo relacionado a ela (pagamentos, checklist, contrato) para sempre — não pode
@@ -4020,7 +4020,7 @@ export function FestaDetalhe() {
       {showSwapPackage && festa && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowSwapPackage(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-4">Trocar pacote</h2>
             <div className="space-y-3">
               <div>
@@ -4099,7 +4099,7 @@ export function FestaDetalhe() {
       {fornecedoresMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setFornecedoresMessage(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-display font-semibold">Confirmar com fornecedores</h2>
               <button onClick={() => setFornecedoresMessage(null)} className="text-muted hover:text-ink">
@@ -4276,7 +4276,7 @@ export function FestaDetalhe() {
       {showNewMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowNewMember(false)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-4">Cadastrar funcionário</h2>
             <form onSubmit={handleCreateMember} className="space-y-3">
               <div>
@@ -4357,7 +4357,7 @@ export function FestaDetalhe() {
       {undoAttendance && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setUndoAttendance(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Desfazer presença de {undoAttendance.name}?</h2>
             <p className="text-sm text-muted mb-4">
               O pagamento de {currency(costs.find((c) => c.id === undoAttendance.paymentCostId)?.amount ?? 0)} que já foi lançado
@@ -4374,7 +4374,7 @@ export function FestaDetalhe() {
       {substituting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setSubstituting(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Substituir {substituting.name}</h2>
             <p className="text-sm text-muted mb-4">Fica registrado quem substituiu e o motivo.</p>
             <form onSubmit={handleConfirmSubstitute} className="space-y-3">
@@ -4540,7 +4540,7 @@ export function FestaDetalhe() {
       {showClientData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setShowClientData(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-display font-semibold">Dados do contratante</h2>
               <button onClick={() => setShowClientData(false)} className="text-muted hover:text-danger" aria-label="Fechar">

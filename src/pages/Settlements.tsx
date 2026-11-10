@@ -301,7 +301,7 @@ export function Settlements() {
       {confirming && selectedRows.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => !processing && setConfirming(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Confirmar acerto</h2>
             <p className="text-sm text-muted mb-3">
               {unitName(selectedRows[0].toSlug)} enviou <strong className="text-ink">{brl(selectedTotal)}</strong> para {unitName(selectedRows[0].fromSlug)}.
@@ -337,7 +337,7 @@ export function Settlements() {
       {cancelling && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setCancelling(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Cancelar acerto nº {cancelling.numero}</h2>
             <p className="text-sm text-muted mb-3">A transferência de estoque continua valendo — só a cobrança de {brl(cancelling.amount)} é anulada, e a conta a pagar dela fica cancelada.</p>
             <form onSubmit={handleCancel} className="space-y-3">
@@ -354,7 +354,7 @@ export function Settlements() {
       {undoing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setUndoing(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Desfazer confirmação</h2>
             <p className="text-sm text-muted mb-4">A conta a pagar volta a ficar em aberto, o recebimento da outra unidade é removido e o acerto volta a Pendente.</p>
             <div className="flex gap-2">

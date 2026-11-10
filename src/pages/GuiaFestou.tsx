@@ -8,7 +8,7 @@ import { AjudaWhatsApp, CorpoArtigo, EtiquetaPlano, useArtigosVisiveis } from '.
 // Guia Festou: como usar cada parte do sistema, passo a passo e com vídeo.
 // Endereços: /guia, /guia?c=<assunto>, /guia?a=<artigo>.
 
-const COMECE = ['primeiro-acesso', 'unidades', 'pacotes', 'nova-reserva', 'portal-o-que-e', 'conferir-comprovante']
+const COMECE = ['primeiro-acesso', 'pacotes', 'cardapio', 'nova-reserva', 'portal-o-que-e', 'conferir-comprovante']
 
 function semAcento(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()

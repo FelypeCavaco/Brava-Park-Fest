@@ -1385,7 +1385,7 @@ export function Finance() {
       {purchaseDeletion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setPurchaseDeletion(null)} />
-          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-md bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Excluir compra já consumida</h2>
             <p className="text-sm text-muted mb-3">{purchaseDeletion.error}</p>
             <p className="text-sm mb-3">Se continuar, o estoque desse item vai a zero (nunca fica negativo) e a justificativa fica registrada no histórico.</p>

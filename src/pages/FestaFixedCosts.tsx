@@ -377,7 +377,7 @@ export function FestaFixedCosts() {
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-ink/40" onClick={() => setDeleting(null)} />
-          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl">
+          <div className="relative w-full max-w-sm bg-surface rounded-card p-6 shadow-xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-display font-semibold mb-1">Excluir "{deleting.description}"?</h2>
             <p className="text-sm text-muted mb-4">
               Ela sai das festas de hoje em diante e para de entrar nas festas novas. As festas que já passaram continuam

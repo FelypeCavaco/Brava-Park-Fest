@@ -470,6 +470,7 @@ export const GUIA: ArtigoGuia[] = [
   },
   {
     "id": "portal-o-que-e",
+    "video": true,
     "cat": "portal",
     "plano": "todos",
     "onde": "Central da festa → Portal do cliente",

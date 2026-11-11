@@ -44,6 +44,7 @@ import { useUndo } from '../lib/UndoContext'
 import { SendReviewModal } from '../components/SendReviewModal'
 import { monthBounds } from '../lib/monthUtils'
 import { downloadPdf } from '../lib/pdfExport'
+import { escHtml } from '../lib/format'
 import { describeAudit, type AuditEntry } from '../lib/auditLabels'
 import { todayIso, friendlyDbError, brl } from '../lib/format'
 import { openWhatsApp, buildMessage, MESSAGE_TEMPLATES, MESSAGE_TEMPLATE_LABEL, type MessageTemplateKey } from '../lib/whatsapp'
@@ -1881,7 +1882,7 @@ export function FestaDetalhe() {
     if (!festa) return
     const escalados = staff.filter((s) => s.status === 'escalado')
     const rows = escalados.length
-      ? escalados.map((s) => `<tr><td>${s.name}</td><td>${s.role}</td></tr>`).join('')
+      ? escalados.map((s) => `<tr><td>${escHtml(s.name)}</td><td>${escHtml(s.role)}</td></tr>`).join('')
       : '<tr><td colspan="2">Nenhum funcionário escalado ainda.</td></tr>'
     const styles = `
       .pdf-body { font-family: Arial, Helvetica, sans-serif; color: #241B33; padding: 32px; }
@@ -1891,8 +1892,8 @@ export function FestaDetalhe() {
       th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #E2DBEE; font-size: 14px; }
     `
     const bodyHtml = `
-      <h1>${festa.unidadeNome} — ${festa.tipoEvento} de ${festa.cliente}</h1>
-      <p class="subtitle">${festa.data} · ${festa.horario}</p>
+      <h1>${escHtml(festa.unidadeNome)} — ${escHtml(festa.tipoEvento)} de ${escHtml(festa.cliente)}</h1>
+      <p class="subtitle">${escHtml(festa.data)} · ${escHtml(festa.horario)}</p>
       <table>
         <thead><tr><th>Nome</th><th>Função</th></tr></thead>
         <tbody>${rows}</tbody>

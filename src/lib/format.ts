@@ -27,3 +27,9 @@ export function friendlyDbError(message: string | undefined | null) {
   if (!message) return 'Não foi possível concluir.'
   return message.replace(/^[A-Z_]+: /, '')
 }
+
+// Escapa texto digitado (nomes, temas...) antes de colocar dentro de um HTML
+// de PDF. Sem isso, um nome com "<" poderia virar código na tela de quem gera o PDF.
+export function escHtml(v: unknown) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}

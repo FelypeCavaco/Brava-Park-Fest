@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button'
 import { useUnit } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { downloadPdf } from '../lib/pdfExport'
+import { escHtml } from '../lib/format'
 
 interface StaffRow { name: string; role: string }
 interface FestaEscala {
@@ -98,14 +99,14 @@ export function Schedules() {
           .map(
             (f) => `
               <div class="festa">
-                <h3>${f.data} · ${f.horario} — ${f.unidadeNome}</h3>
-                <p class="subtitle">${f.tipoEvento} de ${f.cliente}</p>
+                <h3>${escHtml(f.data)} · ${escHtml(f.horario)} — ${escHtml(f.unidadeNome)}</h3>
+                <p class="subtitle">${escHtml(f.tipoEvento)} de ${escHtml(f.cliente)}</p>
                 <table>
                   <thead><tr><th>Nome</th><th>Função</th></tr></thead>
                   <tbody>
                     ${
                       f.staff.length
-                        ? f.staff.map((s) => `<tr><td>${s.name}</td><td>${s.role}</td></tr>`).join('')
+                        ? f.staff.map((s) => `<tr><td>${escHtml(s.name)}</td><td>${escHtml(s.role)}</td></tr>`).join('')
                         : '<tr><td colspan="2">Sem equipe escalada ainda</td></tr>'
                     }
                   </tbody>

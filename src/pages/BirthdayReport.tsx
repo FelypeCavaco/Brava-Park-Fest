@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { supabase } from '../lib/supabaseClient'
 import { downloadPdf } from '../lib/pdfExport'
+import { escHtml } from '../lib/format'
 
 interface BirthdayRow {
   id: string
@@ -139,16 +140,16 @@ export function BirthdayReport() {
               .map(
                 (r) => `
                   <tr>
-                    <td>${r.data}</td>
-                    <td>${r.horarioFornecedores}</td>
-                    <td>${r.horarioFesta}</td>
-                    <td>${r.unidadeNome}</td>
-                    <td>${r.aniversariante}</td>
-                    <td>${r.idade}</td>
-                    <td>${r.convidados}</td>
-                    <td>${r.tema}</td>
-                    <td>${r.pratoQuente}</td>
-                    ${cardapioGenerico ? '' : `<td>${r.bolo}</td>`}
+                    <td>${escHtml(r.data)}</td>
+                    <td>${escHtml(r.horarioFornecedores)}</td>
+                    <td>${escHtml(r.horarioFesta)}</td>
+                    <td>${escHtml(r.unidadeNome)}</td>
+                    <td>${escHtml(r.aniversariante)}</td>
+                    <td>${escHtml(r.idade)}</td>
+                    <td>${escHtml(r.convidados)}</td>
+                    <td>${escHtml(r.tema)}</td>
+                    <td>${escHtml(r.pratoQuente)}</td>
+                    ${cardapioGenerico ? '' : `<td>${escHtml(r.bolo)}</td>`}
                   </tr>`,
               )
               .join('')}

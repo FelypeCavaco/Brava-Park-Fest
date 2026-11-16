@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, FileText, Megaphone, Star } from 'lucide-react'
+import { Bell, FileText, Megaphone, QrCode, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { useCompany } from '../../lib/CompanyContext'
@@ -12,6 +12,7 @@ import { brl } from '../../lib/format'
 //     tiveram o pedido de avaliação enviado (o pedido conta só se foi feito
 //     depois da festa). Clicar abre a Central da festa já no pedido.
 //   • Comprovantes de pagamento enviados pelo portal que esperam análise.
+//   • Pix gerados no portal (QR code) cujo comprovante ainda não foi enviado.
 //   • Avisos do Festou (casas clientes): mensagens do administrador geral,
 //     até a pessoa clicar em Entendi (guardado neste aparelho) ou o aviso vencer.
 // O sinal fica enquanto houver algum item.
@@ -20,6 +21,18 @@ interface Pendente {
   id: string
   valor: number
   enviadoEm: string
+  festaId: string
+  cliente: string
+  dataFesta: string
+  aniversariante: string | null
+  unidade: string | null
+}
+
+// Pix gerado no portal (QR code) sem comprovante enviado.
+interface PixGerado {
+  id: string
+  valor: number
+  geradoEm: string
   festaId: string
   cliente: string
   dataFesta: string
@@ -79,6 +92,7 @@ export function NotificationBell() {
   const location = useLocation()
   const [pendentes, setPendentes] = useState<Pendente[]>([])
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
+  const [pixGerados, setPixGerados] = useState<PixGerado[]>([])
   const [aberto, setAberto] = useState(false)
   const [avisosFestou, setAvisosFestou] = useState<AvisoFestou[]>([])
   const [lidos, setLidos] = useState<string[]>(avisosLidos)
@@ -115,6 +129,31 @@ export function NotificationBell() {
           })),
         )
       }
+    }
+    if (podeComprovantes) {
+      // Pix gerados nos últimos 7 dias sem comprovante. Se o banco ainda não tem a tabela, não mostra nada.
+      const desde = new Date(Date.now() - 7 * 86400000).toISOString()
+      const { data, error } = await supabase
+        .from('portal_pix_generated')
+        .select('id, amount, created_at, reservation:reservations(id, event_date, child_name, client:clients(name), unit:units(name))')
+        .eq('status', 'aguardando')
+        .gte('created_at', desde)
+        .order('created_at', { ascending: false })
+        .limit(30)
+      setPixGerados(
+        error
+          ? []
+          : ((data ?? []) as any[]).map((r) => ({
+              id: r.id,
+              valor: Number(r.amount),
+              geradoEm: r.created_at,
+              festaId: r.reservation?.id,
+              cliente: r.reservation?.client?.name ?? 'Cliente',
+              dataFesta: r.reservation?.event_date ?? '',
+              aniversariante: r.reservation?.child_name ?? null,
+              unidade: r.reservation?.unit?.name ?? null,
+            })),
+      )
     }
     if (podeAvaliacao) {
       const hoje = new Date()
@@ -195,7 +234,7 @@ export function NotificationBell() {
   }
 
   if (!permitido && avisosAbertos.length === 0) return null
-  const n = pendentes.length + avaliacoes.length + avisosAbertos.length
+  const n = pendentes.length + pixGerados.length + avaliacoes.length + avisosAbertos.length
 
   return (
     <div ref={caixa} className="relative shrink-0">
@@ -275,6 +314,42 @@ export function NotificationBell() {
                   </ul>
                 </section>
               )}
+              {pixGerados.length > 0 && (
+                <section>
+                  <div className="px-4 py-3 border-b border-t border-line bg-paper/60">
+                    <p className="text-sm font-semibold">Pix gerado, comprovante não enviado ({pixGerados.length})</p>
+                    <p className="text-xs text-muted">O cliente gerou o QR code no portal e ainda não mandou o comprovante.</p>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {pixGerados.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          onClick={() => {
+                            setAberto(false)
+                            navigate('/')
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-paper flex gap-3"
+                        >
+                          <span className="w-8 h-8 rounded-full bg-amber-light text-amber flex items-center justify-center shrink-0"><QrCode className="w-4 h-4" /></span>
+                          <span className="flex-1 min-w-0">
+                            <span className="flex justify-between gap-2">
+                              <span className="text-sm font-medium truncate">{p.cliente}</span>
+                              <span className="text-sm font-semibold tabular-nums">{brl(p.valor)}</span>
+                            </span>
+                            <span className="block text-xs text-muted truncate">
+                              {p.aniversariante ? `Festa de ${p.aniversariante} · ` : 'Festa · '}
+                              {p.dataFesta ? p.dataFesta.split('-').reverse().join('/') : ''}
+                              {p.unidade ? ` · ${p.unidade}` : ''}
+                            </span>
+                            <span className="block text-[11px] text-muted">Gerou o Pix {haQuanto(p.geradoEm)} · comprovante ainda não enviado</span>
+                            <span className="block text-[11px] font-medium text-purple mt-0.5">Ver no Painel para lançar ou excluir →</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {pendentes.length > 0 && (
                 <section>
                   <div className="px-4 py-3 border-b border-t border-line bg-paper/60">
@@ -312,7 +387,7 @@ export function NotificationBell() {
               )}
             </div>
           )}
-          {n > 0 && <p className="px-4 py-2 text-[11px] text-muted border-t border-line">Clique para abrir a festa. O aviso some depois que o pedido é enviado ou o comprovante é analisado.</p>}
+          {n > 0 && <p className="px-4 py-2 text-[11px] text-muted border-t border-line">Clique para abrir a festa. O aviso some depois que o pedido é enviado, o comprovante é analisado ou o Pix é lançado ou excluído.</p>}
         </div>
       )}
     </div>

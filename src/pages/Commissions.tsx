@@ -88,6 +88,7 @@ export function Commissions() {
   const [acaoData, setAcaoData] = useState(todayIso())
   const [acaoForma, setAcaoForma] = useState<PaymentMethod>('pix')
   const [acaoTexto, setAcaoTexto] = useState('')
+  const [erroAcao, setErroAcao] = useState<string | null>(null)
 
   const hoje = todayIso()
   const nomeUnidade = useMemo(() => {
@@ -188,6 +189,7 @@ export function Commissions() {
       p_rule: ruleId, p_until: ultimoDomingo, p_paid_date: dataPagamento, p_payment_method: forma, p_launch: !jaLancado, p_reservations: null, p_note: null,
     })
     setSalvando(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     if (error) {
       setErro(friendlyDbError(error.message))
       return
@@ -213,6 +215,7 @@ export function Commissions() {
     setAcaoData(todayIso())
     setAcaoForma('pix')
     setAcaoTexto('')
+    setErroAcao(null)
   }
 
   async function confirmarAcao(e: FormEvent) {
@@ -227,10 +230,11 @@ export function Commissions() {
         : await supabase.rpc('cancel_commission', { p_rule: acao.ruleId, p_reservation: acao.resId, p_reason: acaoTexto.trim() || null })
     setSalvando(false)
     if (error) {
-      setErro(friendlyDbError(error.message))
-      setAcao(null)
+      // o erro aparece dentro da janela (o topo da tela fica longe da linha clicada)
+      setErroAcao(friendlyDbError(error.message))
       return
     }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     setAviso(
       acao.tipo === 'paga'
         ? `Comissão de ${acao.pessoa} (${acao.cliente}) marcada como paga, sem lançar no Financeiro.`
@@ -633,6 +637,7 @@ export function Commissions() {
                 </label>
               </>
             )}
+            {erroAcao && <p className="text-sm bg-danger-light text-danger rounded-lg px-3 py-2" role="alert">{erroAcao}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="secondary" onClick={() => setAcao(null)}>Voltar</Button>
               <Button type="submit" disabled={salvando}>{salvando ? 'Salvando...' : acao.tipo === 'paga' ? 'Marcar como paga' : 'Cancelar comissão'}</Button>

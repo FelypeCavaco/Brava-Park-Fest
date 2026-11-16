@@ -35,7 +35,16 @@ interface Commitments {
   festas: { id: string; data: string; cliente: string; contratado: number; devido: number; recebido: number; a_receber: number; custos_previstos: number }[]
 }
 
-export interface Lancamento { data: string; categoria: string; descricao: string; detalhe: string; valor: number }
+// origem: de onde veio a entrada (pagamento de festa, lançada à mão, multa e juros, acerto entre unidades).
+export interface Lancamento { data: string; categoria: string; descricao: string; detalhe: string; valor: number; origem?: string }
+
+export const ORIGEM_MANUAL = 'Lançada à mão'
+function origemDaEntrada(kind?: string | null) {
+  if (kind === 'manual') return ORIGEM_MANUAL
+  if (kind === 'multa_juros') return 'Multa e juros'
+  if (kind === 'acerto_unidades') return 'Acerto entre unidades'
+  return 'Outra entrada'
+}
 export interface ContaAberta { vencimento: string; categoria: string; descricao: string; fornecedor: string; valor: number; atrasada: boolean }
 
 export interface DadosRelatorio {
@@ -205,6 +214,7 @@ export async function carregarRelatorio(op: {
       descricao: `${r?.client?.name ?? 'Cliente'}${r?.child_name ? ` — festa de ${r.child_name}` : ''}${r?.event_date ? ` (${dataBr(r.event_date)})` : ''}`,
       detalhe: [metodo(p.payment_method), p.notes].filter(Boolean).join(' · '),
       valor: n(p.amount),
+      origem: 'Pagamento de festa',
     })
   }
   // Entradas lançadas à mão: contam no 2º cenário do resultado (festas + entradas à mão).
@@ -216,9 +226,9 @@ export async function carregarRelatorio(op: {
       entradasManuais += n(o.amount)
       const pm = porMes.find((m) => m.mes === String(o.received_date).slice(0, 7))
       if (pm) pm.manuais += n(o.amount)
-      entradasManuaisLista.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount) })
+      entradasManuaisLista.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount), origem: ORIGEM_MANUAL })
     }
-    entradas.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount) })
+    entradas.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount), origem: origemDaEntrada(o.kind) })
   }
   const saidas: Lancamento[] = []
   const pagaCustosFesta: Lancamento[] = []

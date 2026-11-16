@@ -283,6 +283,8 @@ export function ClientPortal() {
   // "Já paguei": valor + comprovante (obrigatório), conferido pela equipe.
   const [jaPaguei, setJaPaguei] = useState(false)
   const [valorComprovante, setValorComprovante] = useState('')
+  // Pix que o cliente gerou e ainda não mandou comprovante (aviso no portal).
+  const [pixPendentes, setPixPendentes] = useState<{ id: string; amount: number; created_at: string }[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const [arquivo, setArquivo] = useState<File | null>(null)
   // avaliação
@@ -295,10 +297,13 @@ export function ClientPortal() {
 
   async function load(first = false) {
     if (first) setLoading(true)
-    const [{ data: d, error }, { data: gs }] = await Promise.all([
+    const [{ data: d, error }, { data: gs }, pend] = await Promise.all([
       supabase.rpc('portal_get', { p_token: token }),
       supabase.rpc('portal_list_guests', { p_token: token }),
+      // se o banco ainda não tem essa função, o portal segue normal, sem o aviso
+      supabase.rpc('portal_pending_pix', { p_token: token }),
     ])
+    setPixPendentes(pend.error ? [] : ((pend.data ?? []) as { id: string; amount: number | string; created_at: string }[]).map((x) => ({ id: x.id, amount: Number(x.amount), created_at: x.created_at })))
     if (error || !d) {
       setNotFound(true)
       setLoading(false)
@@ -553,6 +558,23 @@ export function ClientPortal() {
       setJaPaguei(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  // Cliente tocou em "Gerar Pix": registra para a equipe achar a festa pelo valor e horário.
+  // Se o registro falhar, o Pix continua valendo (nunca bloqueia o pagamento).
+  async function registrarPix(valor: number, rotulo: string) {
+    try {
+      await supabase.rpc('portal_register_pix', { p_token: token, p_amount: valor, p_label: rotulo })
+    } catch {
+      // segue sem registro
+    }
+    const { data } = await supabase.rpc('portal_pending_pix', { p_token: token })
+    if (data) setPixPendentes((data as { id: string; amount: number | string; created_at: string }[]).map((x) => ({ id: x.id, amount: Number(x.amount), created_at: x.created_at })))
+  }
+
+  function jaPagueiDe(valor: number) {
+    setValorComprovante(String(valor.toFixed(2)).replace('.', ','))
+    setJaPaguei(true)
   }
 
   async function copiarPix() {
@@ -984,6 +1006,17 @@ export function ClientPortal() {
               {d.saldo > 0.005 && (
                 <section className={`${card} p-4 space-y-3`} style={{ borderColor: C.borda }}>
                   <p className="font-semibold">Pagar com Pix</p>
+                  {pixPendentes.length > 0 && !jaPaguei && (
+                    <div className="rounded-xl px-3 py-2.5 text-[13px] space-y-2" style={{ background: '#FFF3CD', color: '#6B4A00' }} role="status">
+                      <p>
+                        <b>Você gerou um Pix de {brl(pixPendentes[0].amount)}</b> em {new Date(pixPendentes[0].created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} e ainda não enviou o comprovante.
+                        {pixPendentes.length > 1 ? ` Há mais ${pixPendentes.length - 1} Pix gerado${pixPendentes.length > 2 ? 's' : ''} sem comprovante.` : ''} Já pagou? Envie a foto do comprovante para a equipe localizar o seu pagamento.
+                      </p>
+                      <button type="button" onClick={() => jaPagueiDe(pixPendentes[0].amount)} className="h-9 px-3 rounded-lg text-[13px] font-semibold text-white" style={{ background: C.azul }}>
+                        Já paguei, enviar comprovante
+                      </button>
+                    </div>
+                  )}
                   {d.pix ? (
                     <PixPagamento
                       chave={d.pix}
@@ -996,6 +1029,7 @@ export function ClientPortal() {
                       ]}
                       copiado={copiado}
                       onCopiarChave={copiarPix}
+                      onGerar={registrarPix}
                     />
                   ) : (
                     <p className="text-sm" style={{ color: C.muted }}>Peça a chave Pix à equipe.</p>
@@ -1278,7 +1312,7 @@ export function ClientPortal() {
 
 // Pix com o valor já preenchido: QR code para ler com a câmera do banco e o
 // mesmo código para "copia e cola" (quem abre o portal no próprio celular).
-function PixPagamento({ chave, nome, cidade, identificador, opcoes, copiado, onCopiarChave }: {
+function PixPagamento({ chave, nome, cidade, identificador, opcoes, copiado, onCopiarChave, onGerar }: {
   chave: string
   nome: string
   cidade: string
@@ -1286,13 +1320,18 @@ function PixPagamento({ chave, nome, cidade, identificador, opcoes, copiado, onC
   opcoes: { label: string; valor: number }[]
   copiado: boolean
   onCopiarChave: () => void
+  onGerar: (valor: number, rotulo: string) => Promise<void>
 }) {
   const [escolha, setEscolha] = useState(0)
   const [outro, setOutro] = useState('')
   const [svg, setSvg] = useState('')
   const [codigoCopiado, setCodigoCopiado] = useState(false)
+  // O QR code só aparece depois de "Gerar Pix": é nesse toque que o sistema registra o Pix para a equipe.
+  const [geradoEm, setGeradoEm] = useState<{ valor: number; hora: string } | null>(null)
+  const [gerando, setGerando] = useState(false)
   const valor = escolha < opcoes.length ? opcoes[escolha].valor : parseDecimal(outro) ?? 0
-  const codigo = valor > 0 ? gerarPixCopiaECola({ chave, valor, nome, cidade, identificador }) : ''
+  const valorGerado = geradoEm !== null && Math.abs(geradoEm.valor - valor) < 0.005
+  const codigo = valor > 0 && valorGerado ? gerarPixCopiaECola({ chave, valor, nome, cidade, identificador }) : ''
 
   useEffect(() => {
     if (!codigo) return setSvg('')
@@ -1336,8 +1375,22 @@ function PixPagamento({ chave, nome, cidade, identificador, opcoes, copiado, onC
           className="w-full h-11 rounded-xl px-3 text-sm bg-white" style={{ border: `1px solid ${C.campo}` }} />
       )}
 
+      {valor > 0 && !valorGerado && (
+        <button type="button" disabled={gerando} onClick={async () => {
+          setGerando(true)
+          await onGerar(valor, escolha < opcoes.length ? opcoes[escolha].label : 'Outro valor')
+          setGeradoEm({ valor, hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) })
+          setGerando(false)
+        }} className="w-full h-11 rounded-xl text-white font-semibold disabled:opacity-60" style={{ background: C.azul }}>
+          {gerando ? 'Gerando...' : `Gerar Pix de ${brl(valor)}`}
+        </button>
+      )}
+
       {codigo && (
         <div className="flex flex-col items-center gap-3 rounded-xl p-3" style={{ border: `1px solid ${C.borda}` }}>
+          <p className="text-[13px] text-center rounded-lg px-3 py-2 w-full" style={{ background: '#FFF3CD', color: '#6B4A00' }}>
+            <b>Pix gerado às {geradoEm?.hora}.</b> Depois de pagar, volte aqui e toque em "Já paguei" para enviar o comprovante.
+          </p>
           {svg
             ? <div className="w-48 h-48" role="img" aria-label={`QR code do Pix de ${brl(valor)}`} dangerouslySetInnerHTML={{ __html: svg }} />
             : <div className="w-48 h-48 rounded-lg" style={{ background: C.linha }} />}

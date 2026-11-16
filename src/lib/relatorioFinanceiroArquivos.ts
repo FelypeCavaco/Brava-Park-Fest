@@ -3,7 +3,7 @@
 import { downloadPdf } from './pdfExport'
 import {
   brl, dataBr, nomeMesLongo, veredito, vereditoComManuais, resultadoComManuais, explicacaoResultado, explicacaoCaixa, explicacaoPonte,
-  somaPorCategoria, PONTE_TEXTO, GLOSSARIO, type DadosRelatorio, type Lancamento,
+  somaPorCategoria, PONTE_TEXTO, GLOSSARIO, ORIGEM_MANUAL, type DadosRelatorio, type Lancamento,
 } from './relatorioFinanceiro'
 
 const LOGO = '/marca/festou.png'
@@ -86,6 +86,7 @@ export const ESTILOS_RELATORIO = `
   .box { border: 1px solid #E2D6F1; border-radius: 10px; padding: 10px 12px; background: #FBF8FE; margin: 6px 0 10px; }
   .aviso { border-left: 3px solid #E0A100; background: #FFF8E5; padding: 7px 10px; border-radius: 6px; margin: 6px 0; }
   .tag { display: inline-block; font-size: 8.5px; font-weight: 700; border-radius: 4px; padding: 1px 5px; }
+  .tag.manual { background: #FFF1CC; color: #8A6100; }
   .tag.parcial { background: #FFF1CC; color: #8A6100; } .tag.fora { background: #EEE8F7; color: #6D5E8C; } .tag.atrasada { background: #FBE3E3; color: #B23A3A; }
   .rodape { color: #9A8FB0; font-size: 9px; text-align: center; margin-top: 16px; }
 `
@@ -98,9 +99,11 @@ const cls = (v: number) => (v >= 0 ? 'pos' : 'neg')
 function tabelaLancamentos(lista: Lancamento[], cor: 'pos' | 'neg') {
   if (lista.length === 0) return '<p class="exp">Nenhum lançamento no período.</p>'
   const total = lista.reduce((s, l) => s + l.valor, 0)
-  return `<table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th class="n">Valor</th></tr></thead><tbody>
-    ${lista.map((l) => `<tr><td>${dataBr(l.data)}</td><td>${esc(l.categoria)}</td><td>${esc(l.descricao)}${l.detalhe ? `<div class="exp">${esc(l.detalhe)}</div>` : ''}</td><td class="n ${cor}">${brl(l.valor)}</td></tr>`).join('')}
-    <tr class="total"><td colspan="3">Total (${lista.length} lançamento${lista.length === 1 ? '' : 's'})</td><td class="n ${cor}">${brl(total)}</td></tr>
+  const comOrigem = lista.some((l) => l.origem)
+  const marca = (l: Lancamento) => (l.origem === ORIGEM_MANUAL ? `<span class="tag manual">${esc(l.origem)}</span>` : l.origem ? `<span class="exp">${esc(l.origem)}</span>` : '')
+  return `<table><thead><tr><th>Data</th>${comOrigem ? '<th>Origem</th>' : ''}<th>Categoria</th><th>Descrição</th><th class="n">Valor</th></tr></thead><tbody>
+    ${lista.map((l) => `<tr><td>${dataBr(l.data)}</td>${comOrigem ? `<td>${marca(l)}</td>` : ''}<td>${esc(l.categoria)}</td><td>${esc(l.descricao)}${l.detalhe ? `<div class="exp">${esc(l.detalhe)}</div>` : ''}</td><td class="n ${cor}">${brl(l.valor)}</td></tr>`).join('')}
+    <tr class="total"><td colspan="${comOrigem ? 4 : 3}">Total (${lista.length} lançamento${lista.length === 1 ? '' : 's'})</td><td class="n ${cor}">${brl(total)}</td></tr>
   </tbody></table>`
 }
 
@@ -325,13 +328,14 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     row.height = 20
     return linha + 1
   }
-  function linhaDados(ws: any, linha: number, valores: (string | number | null)[], op: { moeda?: number[]; negrito?: boolean; quebra?: number[] } = {}) {
+  function linhaDados(ws: any, linha: number, valores: (string | number | null)[], op: { moeda?: number[]; negrito?: boolean; quebra?: number[]; fundo?: string } = {}) {
     const row = ws.getRow(linha)
     valores.forEach((v, i) => {
       const c = row.getCell(i + 1)
       c.value = v
       if (op.moeda?.includes(i)) c.numFmt = MOEDA
       if (op.negrito) c.font = { bold: true }
+      if (op.fundo) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: op.fundo } }
       if (op.quebra?.includes(i)) c.alignment = { wrapText: true, vertical: 'top' }
       else c.alignment = { vertical: 'top' }
     })
@@ -480,15 +484,27 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
 
   // ---- Lançamentos ----
   function abaLancamentos(nome: string, titulo: string, lista: Lancamento[], explica: string) {
-    const { ws, linha: l0 } = aba(nome, titulo, [12, 26, 60, 16, 34])
-    let l = paragrafo(ws, l0, explica, 5)
+    // Entradas trazem a coluna "Origem": as lançadas à mão ficam marcadas e em destaque.
+    const comOrigem = lista.some((x) => x.origem)
+    const { ws, linha: l0 } = aba(nome, titulo, comOrigem ? [12, 24, 26, 60, 16, 34] : [12, 26, 60, 16, 34])
+    const cols = comOrigem ? 6 : 5
+    let l = paragrafo(ws, l0, explica, cols)
     l++
-    l = cabecalho(ws, l, ['Data', 'Categoria', 'Descrição', 'Valor', 'Detalhe'])
-    for (const x of lista) l = linhaDados(ws, l, [dataBr(x.data), x.categoria, x.descricao, x.valor, x.detalhe], { moeda: [3] })
-    linhaDados(ws, l, ['Total', `${lista.length} lançamentos`, '', lista.reduce((s, x) => s + x.valor, 0), ''], { moeda: [3], negrito: true })
-    ws.autoFilter = { from: { row: l0 + 2, column: 1 }, to: { row: l0 + 2, column: 5 } }
+    l = cabecalho(ws, l, comOrigem ? ['Data', 'Origem', 'Categoria', 'Descrição', 'Valor', 'Detalhe'] : ['Data', 'Categoria', 'Descrição', 'Valor', 'Detalhe'])
+    const moeda = comOrigem ? [4] : [3]
+    for (const x of lista) {
+      const manual = x.origem === ORIGEM_MANUAL
+      l = linhaDados(ws, l, comOrigem ? [dataBr(x.data), x.origem ?? '', x.categoria, x.descricao, x.valor, x.detalhe] : [dataBr(x.data), x.categoria, x.descricao, x.valor, x.detalhe], { moeda, negrito: manual, fundo: manual ? 'FFFFF1CC' : undefined })
+    }
+    const soma = lista.reduce((s, x) => s + x.valor, 0)
+    l = linhaDados(ws, l, comOrigem ? ['Total', `${lista.length} lançamentos`, '', '', soma, ''] : ['Total', `${lista.length} lançamentos`, '', soma, ''], { moeda, negrito: true })
+    if (comOrigem) {
+      const manuais = lista.filter((x) => x.origem === ORIGEM_MANUAL)
+      linhaDados(ws, l, ['', `Lançadas à mão: ${manuais.length}`, '', '', manuais.reduce((s, x) => s + x.valor, 0), 'Linhas em destaque amarelo acima'], { moeda, negrito: true, fundo: 'FFFFF1CC' })
+    }
+    ws.autoFilter = { from: { row: l0 + 2, column: 1 }, to: { row: l0 + 2, column: cols } }
   }
-  abaLancamentos('Entradas', 'Todas as entradas do período', d.entradas, 'Cada pagamento de cliente e cada outra entrada do período. Use o filtro do cabeçalho para ver uma categoria só.')
+  abaLancamentos('Entradas', 'Todas as entradas do período', d.entradas, 'Cada pagamento de cliente e cada outra entrada do período. A coluna Origem diz de onde veio; as entradas lançadas à mão aparecem em negrito, com fundo amarelo. Use o filtro do cabeçalho para ver só uma origem ou uma categoria.')
   abaLancamentos('Saídas', 'Todas as saídas do período', d.saidas, 'Cada conta paga e cada custo de festa do período. Use o filtro do cabeçalho para ver uma categoria só.')
   if (d.pagaCustosFesta.length > 0)
     abaLancamentos('Já nos custos das festas', 'Contas que já estão nos custos das festas', d.pagaCustosFesta, 'Contas pagas marcadas como "já nos custos das festas". Não entram nos totais, para não contar duas vezes.')

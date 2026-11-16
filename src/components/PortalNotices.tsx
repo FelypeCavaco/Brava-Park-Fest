@@ -7,6 +7,7 @@ import { useAuth, useCurrentUserName } from '../lib/AuthContext'
 import { useUnit, UNITS } from '../lib/UnitContext'
 import { brl, todayIso, friendlyDbError } from '../lib/format'
 import { openWhatsApp } from '../lib/whatsapp'
+import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../types'
 
 // Painel: tudo o que os clientes fazem no portal (avisos até alguém marcar
 // como visto) e os prazos do portal que vencem sem a ação feita.
@@ -38,6 +39,19 @@ interface Prazo {
   mensagem: string
 }
 
+// Pix que o cliente gerou no portal e ainda não mandou comprovante.
+interface PixGerado {
+  id: string
+  amount: number
+  label: string | null
+  createdAt: string
+  reservationId: string
+  eventDate: string
+  unitId: string
+  crianca: string | null
+  cliente: string
+}
+
 const SIGLA: Record<string, string> = { cardapio: 'CA', convidados: 'LC', musica: 'MU', comprovante: 'R$', mensagem: 'MS', avaliacao: 'AV' }
 
 const antes = (n: number) => (n === 0 ? 'no dia da festa' : n === 7 ? '1 semana antes da festa' : `${n} ${n === 1 ? 'dia' : 'dias'} antes da festa`)
@@ -61,6 +75,12 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
   const [prazos, setPrazos] = useState<Prazo[]>([])
   const [lembrados, setLembrados] = useState<Record<string, boolean>>({})
   const [recusando, setRecusando] = useState<{ id: string; reason: string } | null>(null)
+  const [pixGerados, setPixGerados] = useState<PixGerado[]>([])
+  const [pixBusca, setPixBusca] = useState('')
+  const [pixTodos, setPixTodos] = useState(false)
+  const [pixLancando, setPixLancando] = useState<{ id: string; valor: string; data: string; forma: string } | null>(null)
+  const [pixExcluindo, setPixExcluindo] = useState<string | null>(null)
+  const [pixBusy, setPixBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const allowed = can('page:portal_avisos')
 
@@ -146,6 +166,25 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
       if (aviso.ids.length === 1) continue
       const partes = [add > 0 ? `adicionou ${add} ${add === 1 ? 'nome' : 'nomes'}` : '', rem > 0 ? `removeu ${rem} ${rem === 1 ? 'nome' : 'nomes'}` : ''].filter(Boolean)
       aviso.description = `Mexeu na lista de convidados: ${partes.join(' e ')}`
+    }
+
+    // Pix gerados no portal sem comprovante (últimos 45 dias). Se o banco ainda não
+    // tem a tabela, a lista simplesmente não aparece.
+    if (mode !== 'operacao') {
+      const desde = new Date(Date.now() - 45 * 86400000).toISOString()
+      const { data: pg, error: pgErr } = await supabase
+        .from('portal_pix_generated')
+        .select('id, amount, label, created_at, reservation_id, reservation:reservations(event_date, unit_id, child_name, client:clients(name))')
+        .eq('status', 'aguardando')
+        .gte('created_at', desde)
+        .order('created_at', { ascending: false })
+        .limit(200)
+      setPixGerados(pgErr ? [] : ((pg ?? []) as any[])
+        .map((x) => ({
+          id: x.id, amount: Number(x.amount), label: x.label, createdAt: x.created_at, reservationId: x.reservation_id,
+          eventDate: x.reservation?.event_date ?? '', unitId: x.reservation?.unit_id ?? '', crianca: x.reservation?.child_name ?? null, cliente: x.reservation?.client?.name ?? '—',
+        }))
+        .filter((x) => !unitFilter || x.unitId === unitFilter))
     }
 
     setAvisos(lista.filter((a) => (mode === 'financeiro' ? a.kind === 'comprovante' : mode === 'operacao' ? a.kind !== 'comprovante' : true)))
@@ -252,6 +291,43 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
     await load()
   }
 
+  async function lancarPix() {
+    if (!pixLancando) return
+    const valor = Number(pixLancando.valor.replace(/\./g, '').replace(',', '.'))
+    if (!valor || valor <= 0) return setError('Informe o valor recebido.')
+    setPixBusy(true)
+    setError(null)
+    const { error: err } = await supabase.rpc('launch_portal_pix', { p_pix: pixLancando.id, p_amount: valor, p_date: pixLancando.data, p_method: pixLancando.forma })
+    setPixBusy(false)
+    if (err) return setError(friendlyDbError(err.message))
+    setPixLancando(null)
+    await load()
+  }
+
+  async function excluirPix(id: string) {
+    setPixBusy(true)
+    setError(null)
+    const { error: err } = await supabase.rpc('delete_portal_pix', { p_pix: id })
+    setPixBusy(false)
+    setPixExcluindo(null)
+    if (err) return setError(friendlyDbError(err.message))
+    await load()
+  }
+
+  const pixIdade = (iso: string) => {
+    const h = (Date.now() - new Date(iso).getTime()) / 3600000
+    if (h < 1) return { texto: 'Aguardando comprovante', atrasado: false }
+    if (h < 24) return { texto: `Sem comprovante há ${Math.floor(h)} h`, atrasado: false }
+    const dias = Math.floor(h / 24)
+    return { texto: `Sem comprovante há ${dias} ${dias === 1 ? 'dia' : 'dias'}`, atrasado: true }
+  }
+  const pixFiltrados = useMemo(() => {
+    const n = Number(pixBusca.replace(/\./g, '').replace(',', '.'))
+    if (!pixBusca.trim() || !n) return pixGerados
+    return pixGerados.filter((x) => Math.abs(x.amount - n) <= Math.max(1, n * 0.01))
+  }, [pixGerados, pixBusca])
+  const pixVisiveis = pixTodos || pixBusca.trim() ? pixFiltrados : pixFiltrados.slice(0, 6)
+
   async function lembrar(p: Prazo) {
     openWhatsApp(p.phone, p.mensagem)
     setLembrados((prev) => ({ ...prev, [p.key]: true }))
@@ -263,6 +339,75 @@ export function PortalNotices({ mode = 'all' }: { mode?: 'all' | 'financeiro' | 
   return (
     <>
       {error && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{error}</div>}
+
+      {mode !== 'operacao' && pixGerados.length > 0 && (
+        <Card title={`Pix gerados sem comprovante · ${pixGerados.length}`}>
+          <p className="text-xs text-muted mb-3">O cliente gerou o Pix no portal e ainda não enviou o comprovante. Se um Pix caiu no banco sem comprovante, procure pelo valor para achar a festa.</p>
+          <div className="mb-3">
+            <input value={pixBusca} onChange={(e) => setPixBusca(e.target.value)} inputMode="decimal" placeholder="Procurar pelo valor que caiu no banco (ex.: 1200)" aria-label="Procurar Pix gerado pelo valor" className="w-full sm:w-80 border border-line rounded-lg px-3 h-9 text-sm bg-surface" />
+          </div>
+          {pixVisiveis.length === 0 ? (
+            <p className="text-sm text-muted">Nenhum Pix gerado com esse valor. O pagamento pode ser de alguém que não usou o portal.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {pixVisiveis.map((x) => {
+                const idade = pixIdade(x.createdAt)
+                const lancando = pixLancando?.id === x.id ? pixLancando : null
+                return (
+                  <li key={x.id} className="py-3 flex flex-wrap gap-3 items-start">
+                    <span className={`shrink-0 text-[11px] font-semibold rounded px-2 py-1 whitespace-nowrap ${idade.atrasado ? 'bg-danger-light text-danger' : 'bg-amber-light text-amber'}`}>{idade.texto}</span>
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="text-sm"><strong className="font-semibold">{x.cliente}</strong> — {brl(x.amount)}{x.label ? ` (${x.label})` : ''}</p>
+                      <p className="text-xs text-muted">
+                        Festa {x.crianca ? `de ${x.crianca} ` : ''}· {x.eventDate ? dm(x.eventDate) : ''} · gerado em {new Date(x.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                      </p>
+                      {lancando && (
+                        <div className="flex flex-wrap items-end gap-2 mt-2">
+                          <label className="text-xs text-muted">Valor recebido
+                            <input value={lancando.valor} onChange={(e) => setPixLancando({ ...lancando, valor: e.target.value })} inputMode="decimal" className="block w-28 border border-line rounded-lg px-2 h-8 text-sm text-ink" />
+                          </label>
+                          <label className="text-xs text-muted">Data
+                            <input type="date" value={lancando.data} onChange={(e) => setPixLancando({ ...lancando, data: e.target.value })} className="block border border-line rounded-lg px-2 h-8 text-sm text-ink" />
+                          </label>
+                          <label className="text-xs text-muted">Forma
+                            <select value={lancando.forma} onChange={(e) => setPixLancando({ ...lancando, forma: e.target.value })} className="block border border-line rounded-lg px-2 h-8 text-sm text-ink bg-surface">
+                              {(['pix', 'transferencia', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'outro'] as PaymentMethod[]).map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m] ?? m}</option>)}
+                            </select>
+                          </label>
+                          <Button className="text-xs px-3 py-1.5" disabled={pixBusy} onClick={lancarPix}>{pixBusy ? 'Lançando…' : 'Confirmar pagamento'}</Button>
+                          <button onClick={() => setPixLancando(null)} className="text-xs text-muted">Voltar</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {pixExcluindo === x.id ? (
+                        <>
+                          <span className="text-xs text-muted">Excluir este Pix da lista?</span>
+                          <button disabled={pixBusy} onClick={() => excluirPix(x.id)} className="text-xs border border-danger/30 text-danger rounded-lg px-2.5 py-1.5">Sim, excluir</button>
+                          <button onClick={() => setPixExcluindo(null)} className="text-xs text-muted">Voltar</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => navigate(`/reservas/${x.reservationId}`)} className="text-xs border border-line rounded-lg px-2.5 py-1.5">Abrir festa</button>
+                          {can('action:festa.pagamentos') && (
+                            <>
+                              <button onClick={() => { setPixExcluindo(x.id); setPixLancando(null) }} className="text-xs border border-danger/30 text-danger rounded-lg px-2.5 py-1.5">Excluir</button>
+                              <Button className="text-xs px-3 py-1.5" onClick={() => { setPixExcluindo(null); setPixLancando({ id: x.id, valor: x.amount.toFixed(2).replace('.', ','), data: todayIso(), forma: 'pix' }) }}>Lançar pagamento</Button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {!pixBusca.trim() && pixFiltrados.length > 6 && (
+            <button onClick={() => setPixTodos(!pixTodos)} className="mt-2 text-xs font-medium text-purple">{pixTodos ? 'Mostrar menos' : `Ver todos os ${pixFiltrados.length}`}</button>
+          )}
+        </Card>
+      )}
 
       {(mode !== 'financeiro' || avisos.length > 0) && (
       <Card

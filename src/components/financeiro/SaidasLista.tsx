@@ -5,6 +5,7 @@ import { Card } from '../ui/Card'
 import { supabase } from '../../lib/supabaseClient'
 import { UNITS } from '../../lib/UnitContext'
 import { currentMonthValue, monthBounds } from '../../lib/monthUtils'
+import { CAT_CUSTOS_FESTAS } from '../../lib/financeAggregates'
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../../types'
 
 // Lançamentos › Saídas: todo dinheiro que saiu no mês escolhido, num lugar só.
@@ -16,7 +17,7 @@ import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../../types'
 //     conferência, mas não somam de novo (senão o custo contaria duas vezes).
 
 type Origem = 'conta' | 'fixa' | 'equipe' | 'festa' | 'quitacao'
-interface Linha { id: string; origem: Origem; data: string; quem: string; detalhe: string; forma: string | null; valor: number; unidade: string; reservationId: string | null }
+interface Linha { id: string; origem: Origem; categoria: string; data: string; quem: string; detalhe: string; forma: string | null; valor: number; unidade: string; reservationId: string | null }
 
 const ROTULO: Record<Origem, string> = {
   conta: 'Conta paga',
@@ -49,6 +50,7 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
   const [mes, setMes] = useState(currentMonthValue)
   const [filtro, setFiltro] = useState<'todas' | Origem>('todas')
   const [busca, setBusca] = useState('')
+  const [categoria, setCategoria] = useState('todas')
   const [linhas, setLinhas] = useState<Linha[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -97,6 +99,7 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
         lista.push({
           id: `e-${x.id}`,
           origem: quitacao ? 'quitacao' : 'conta',
+          categoria: x.category || 'Outros',
           data: x.paid_date,
           quem: x.description || x.category || 'Conta',
           detalhe: [x.category, x.supplier].filter(Boolean).join(' · '),
@@ -115,6 +118,7 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
         lista.push({
           id: `c-${x.id}`,
           origem,
+          categoria: CAT_CUSTOS_FESTAS,
           data: r.event_date,
           quem: desc || ROTULO[origem],
           detalhe: festa,
@@ -132,10 +136,28 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
     }
   }, [mes, ids.join(','), recarga])
 
-  const visiveis = useMemo(() => {
+  // Lista pelo tipo e pela busca; as categorias disponíveis saem dela.
+  const base = useMemo(() => {
     const t = busca.trim().toLowerCase()
-    return (linhas ?? []).filter((l) => (filtro === 'todas' || l.origem === filtro) && (!t || `${l.quem} ${l.detalhe}`.toLowerCase().includes(t)))
+    return (linhas ?? []).filter((l) => (filtro === 'todas' || l.origem === filtro) && (!t || `${l.quem} ${l.detalhe} ${l.categoria}`.toLowerCase().includes(t)))
   }, [linhas, filtro, busca])
+
+  // a quitação de custo de festa não soma: o custo já está na linha da festa
+  const conta = (l: Linha) => (l.origem === 'quitacao' && filtro !== 'quitacao' ? 0 : l.valor)
+
+  const categorias = useMemo(() => {
+    const m = new Map<string, { n: number; v: number }>()
+    for (const l of base) {
+      const c = m.get(l.categoria) ?? { n: 0, v: 0 }
+      c.n++
+      c.v += conta(l)
+      m.set(l.categoria, c)
+    }
+    return [...m.entries()].sort((a, b) => b[1].v - a[1].v)
+  }, [base, filtro])
+  const categoriaAtiva = categoria !== 'todas' && categorias.some(([c]) => c === categoria) ? categoria : 'todas'
+
+  const visiveis = useMemo(() => base.filter((l) => categoriaAtiva === 'todas' || l.categoria === categoriaAtiva), [base, categoriaAtiva])
 
   const totais = useMemo(() => {
     const t = Object.fromEntries(FILTROS.map((k) => [k, { n: 0, v: 0 }])) as Record<'todas' | Origem, { n: number; v: number }>
@@ -148,8 +170,7 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
     return t
   }, [linhas])
 
-  // a quitação de custo de festa não soma: o custo já está na linha da festa
-  const totalVisivel = visiveis.reduce((s, l) => s + (l.origem === 'quitacao' && filtro !== 'quitacao' ? 0 : l.valor), 0)
+  const totalVisivel = visiveis.reduce((s, l) => s + conta(l), 0)
   const temQuitacao = visiveis.some((l) => l.origem === 'quitacao')
   const varias = slugs.length > 1
 
@@ -171,6 +192,15 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
             </button>
           ))}
         </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="text-muted">Categoria</span>
+          <select value={categoriaAtiva} onChange={(e) => setCategoria(e.target.value)} className="border border-line rounded-lg px-2 h-8 text-sm bg-surface max-w-[240px]" aria-label="Filtrar por categoria">
+            <option value="todas">Todas as categorias ({categorias.length})</option>
+            {categorias.map(([c, x]) => (
+              <option key={c} value={c}>{c} — {brl(x.v)} ({x.n})</option>
+            ))}
+          </select>
+        </label>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar descrição, fornecedor ou cliente…" className="border border-line rounded-lg px-3 h-8 text-sm bg-surface flex-1 min-w-[180px]" aria-label="Buscar" />
       </div>
 
@@ -179,7 +209,7 @@ export function ListaDeSaidas({ slugs, unitDbIds, recarga, onVerPagas }: {
       {linhas === null ? (
         <p className="text-sm text-muted py-6 text-center">Carregando…</p>
       ) : visiveis.length === 0 ? (
-        <p className="text-sm text-muted py-6 text-center">Nenhuma saída {filtro === 'todas' ? '' : 'deste tipo '}neste mês{busca ? ' com essa busca' : ''}.</p>
+        <p className="text-sm text-muted py-6 text-center">Nenhuma saída {filtro === 'todas' && categoriaAtiva === 'todas' ? '' : 'com esse filtro '}neste mês{busca ? ' com essa busca' : ''}.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

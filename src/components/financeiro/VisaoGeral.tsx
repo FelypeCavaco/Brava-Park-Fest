@@ -5,7 +5,7 @@ import { Card } from '../ui/Card'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { currentMonthValue, addMonthsToValue } from '../../lib/monthUtils'
-import { loadMonthViews, type MonthViews } from '../../pages/FinanceViews'
+import { loadMonthViews, loadEntradasManuais, type MonthViews } from '../../pages/FinanceViews'
 
 // Aba "Visão geral" do Financeiro: o que a pessoa precisa saber hoje, em uma
 // tela. Lucro parcial do mês, os números principais e o que pede atenção.
@@ -41,6 +41,7 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
   const mes = currentMonthValue()
   const [atual, setAtual] = useState<MonthViews | null>(null)
   const [anterior, setAnterior] = useState<MonthViews | null>(null)
+  const [manuais, setManuais] = useState<number | null>(null)
   const [parcelasAtrasadas, setParcelasAtrasadas] = useState<{ cliente: string; aberto: number; dias: number }[]>([])
 
   useEffect(() => {
@@ -81,6 +82,15 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
     }
   }, [mes, unitId])
   const [negativo, setNegativo] = useState<{ dia: string; saldo: number } | null>(null)
+  // 2º cenário do lucro do mês: soma as entradas lançadas à mão (até hoje)
+  useEffect(() => {
+    if (!atual) return setManuais(null)
+    let vivo = true
+    loadEntradasManuais(mes, unitId, atual.corte).then((m) => vivo && setManuais(m.total)).catch(() => vivo && setManuais(null))
+    return () => {
+      vivo = false
+    }
+  }, [atual, mes, unitId])
 
   const r = atual?.resultado
   const lucro = r ? Number(r.resultado) : null
@@ -148,6 +158,12 @@ export function VisaoGeral({ unitId, resumo, contasAtrasadas, onIr }: {
             <p className={`text-3xl font-display font-semibold mt-1 ${lucro === null ? '' : lucro >= 0 ? 'text-teal' : 'text-danger'}`}>
               {lucro === null ? '…' : brl(Math.abs(lucro))}
             </p>
+            {lucro !== null && manuais !== null && (
+              <p className="text-sm mt-2">
+                <span className="text-muted">Com as entradas lançadas à mão ({brl(manuais)}): </span>
+                <strong className={lucro + manuais >= 0 ? 'text-teal' : 'text-danger'}>{lucro + manuais >= 0 ? 'lucro' : 'prejuízo'} de {brl(Math.abs(lucro + manuais))}</strong>
+              </p>
+            )}
           </div>
           {r && (
             <p className="text-sm text-muted max-w-xl">

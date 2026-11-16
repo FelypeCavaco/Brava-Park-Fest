@@ -661,16 +661,19 @@ export const GUIA: ArtigoGuia[] = [
     "plano": "pro",
     "onde": "Financeiro → Comissões",
     "titulo": "Comissões da equipe de vendas",
-    "resumo": "Um valor por festa cadastrada, com repasse semanal.",
+    "resumo": "Valor fixo ou porcentagem por festa, para cada pessoa, com repasse semanal.",
     "passos": [
-      "Abra Financeiro → Comissões e vá em \"Configuração\".",
-      "Informe o nome de quem recebe, desde quando contar as festas e de quem são as festas (ou qualquer pessoa).",
-      "Defina o valor por festa. Para mudar depois, use \"Mudar o valor da comissão\" com a data a partir de quando vale.",
-      "Toda segunda, o \"Próximo repasse\" soma as festas cadastradas até o domingo anterior.",
-      "Informe a data e a forma de pagamento e lance o repasse. Ele entra como despesa no Financeiro."
+      "Abra Financeiro → Comissões e vá em \"Configuração\", no fim da tela.",
+      "Em \"Adicionar pessoa\", informe o nome, se ela recebe sobre as festas que cadastrou ou sobre todas, e como recebe: valor fixo por festa (ex.: R$ 150) ou porcentagem do valor da festa (ex.: 5%).",
+      "Para mudar depois, use \"Mudar o valor\" da pessoa, com a data a partir de quando vale.",
+      "Toda segunda, o \"Próximo repasse\" de cada pessoa soma as festas cadastradas até o domingo anterior.",
+      "Informe a data e a forma de pagamento e lance o repasse. Ele entra como despesa no Financeiro, uma por unidade."
     ],
     "dicas": [
       "Festas cadastradas depois do último domingo ficam na \"Semana em andamento\" e entram no repasse seguinte.",
+      "Esse pagamento já foi lançado no Financeiro? Marque \"já está lançado\" ao pagar, ou use \"Já foi paga\" na festa: fica como pago aqui, sem criar a conta de novo.",
+      "Para tirar a comissão de uma festa de uma pessoa, use \"Cancelar\" na linha da festa. Se ela já tinha sido paga, o valor é abatido no próximo repasse. Dá para restaurar depois.",
+      "Para parar de pagar uma pessoa, mude o valor dela para R$ 0 a partir de uma data.",
       "Lançou errado? Use \"Desfazer\" em Repasses feitos."
     ],
     "video": true,

@@ -57,6 +57,9 @@ const ENTITY_LABEL: Record<string, string> = {
   commission_rates: 'o valor da comissão',
   commission_settings: 'a configuração das comissões',
   commission_payouts: 'um repasse de comissões',
+  commission_rules: 'uma pessoa que recebe comissão',
+  commission_rule_versions: 'o valor da comissão de uma pessoa',
+  commission_cancellations: 'o cancelamento de uma comissão',
   reservation: 'a festa',
 }
 

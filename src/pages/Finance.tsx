@@ -8,6 +8,7 @@ import { PontoEquilibrio, ProjecaoCaixa } from '../components/financeiro/Planeja
 import { ComparaUnidades, ComparaMesAno, ComparaAnos } from '../components/financeiro/Comparativos'
 import { ListaDeEntradas } from '../components/financeiro/EntradasLista'
 import { ListaDeSaidas } from '../components/financeiro/SaidasLista'
+import { ContasFuturas } from '../components/financeiro/ContasFuturas'
 import { Profitability } from './Profitability'
 import { MonthlyResult } from './MonthlyResult'
 import { Reports } from './Reports'
@@ -971,6 +972,7 @@ export function Finance() {
               ['pagas', 'Pagas'],
               ['entradas', 'Entradas'],
               ['saidas', 'Saídas'],
+              ['futuras', 'Contas futuras'],
               ['fixas', `Despesas fixas (${filteredRecurring.length})`],
             ] as const).map(([k, label]) => (
               <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => irPara(aba, k)} className={`px-2.5 h-8 rounded-md text-xs font-medium whitespace-nowrap ${sub === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
@@ -1096,6 +1098,9 @@ export function Finance() {
               onEditar={abrirEdicaoEntrada}
               onRemover={(e) => removerEntradaManual(e.id, e)}
             />
+          )}
+          {sub === 'futuras' && (
+            <ContasFuturas slugs={visibleUnitSlugs} unitDbIds={unitDbIds} recarga={recarga} onVerAPagar={() => irPara('lancamentos', 'pagar')} />
           )}
           {sub === 'saidas' && (
             <ListaDeSaidas slugs={visibleUnitSlugs} unitDbIds={unitDbIds} recarga={recarga} onVerPagas={() => irPara('lancamentos', 'pagas')} />

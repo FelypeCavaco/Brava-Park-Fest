@@ -6,6 +6,7 @@ import { Can } from '../Can'
 import { supabase } from '../../lib/supabaseClient'
 import { UNITS } from '../../lib/UnitContext'
 import { currentMonthValue, monthBounds } from '../../lib/monthUtils'
+import { CAT_PAGAMENTOS_FESTAS, categoriaDaEntrada } from '../../lib/financeAggregates'
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../../types'
 
 // Lançamentos › Entradas: todo dinheiro que entrou no mês escolhido.
@@ -15,7 +16,7 @@ import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../../types'
 
 export interface EntradaManual { id: string; unit_id: string; category: string | null; description: string; amount: number; received_date: string; payment_method: string | null }
 type Origem = 'festa' | 'manual' | 'acerto' | 'multa'
-interface Linha { id: string; origem: Origem; data: string; quem: string; detalhe: string; forma: string | null; valor: number; unidade: string; reservationId: string | null; manual: EntradaManual | null }
+interface Linha { id: string; origem: Origem; categoria: string; data: string; quem: string; detalhe: string; forma: string | null; valor: number; unidade: string; reservationId: string | null; manual: EntradaManual | null }
 
 const ROTULO: Record<Origem, string> = { festa: 'Pagamento de festa', manual: 'Lançada à mão', acerto: 'Acerto entre unidades', multa: 'Multa e juros' }
 const COR: Record<Origem, string> = { festa: 'bg-teal-light text-teal', manual: 'bg-purple-light text-purple', acerto: 'bg-paper text-ink/70', multa: 'bg-amber-light text-amber' }
@@ -35,6 +36,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
   const [mes, setMes] = useState(currentMonthValue)
   const [filtro, setFiltro] = useState<'todas' | Origem>('todas')
   const [busca, setBusca] = useState('')
+  const [categoria, setCategoria] = useState('todas')
   const [linhas, setLinhas] = useState<Linha[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -82,6 +84,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
         lista.push({
           id: `p-${x.id}`,
           origem: 'festa',
+          categoria: CAT_PAGAMENTOS_FESTAS,
           data: x.payment_date,
           quem: `${r?.client?.name ?? 'Cliente'}${r?.child_name ? ` — festa de ${r.child_name}` : ''}`,
           detalhe: [r?.event_date ? `festa em ${dataBr(r.event_date)}` : '', x.notes].filter(Boolean).join(' · '),
@@ -97,6 +100,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
         lista.push({
           id: `o-${x.id}`,
           origem,
+          categoria: categoriaDaEntrada(x),
           data: x.received_date,
           quem: x.description || ROTULO[origem],
           detalhe: origem === 'manual' && x.category ? x.category : '',
@@ -117,10 +121,25 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
     }
   }, [mes, ids.join(','), recarga])
 
-  const visiveis = useMemo(() => {
+  // Lista pelo tipo e pela busca; as categorias disponíveis saem dela.
+  const base = useMemo(() => {
     const t = busca.trim().toLowerCase()
-    return (linhas ?? []).filter((l) => (filtro === 'todas' || l.origem === filtro) && (!t || `${l.quem} ${l.detalhe}`.toLowerCase().includes(t)))
+    return (linhas ?? []).filter((l) => (filtro === 'todas' || l.origem === filtro) && (!t || `${l.quem} ${l.detalhe} ${l.categoria}`.toLowerCase().includes(t)))
   }, [linhas, filtro, busca])
+
+  const categorias = useMemo(() => {
+    const m = new Map<string, { n: number; v: number }>()
+    for (const l of base) {
+      const c = m.get(l.categoria) ?? { n: 0, v: 0 }
+      c.n++
+      c.v += l.valor
+      m.set(l.categoria, c)
+    }
+    return [...m.entries()].sort((a, b) => b[1].v - a[1].v)
+  }, [base])
+  const categoriaAtiva = categoria !== 'todas' && categorias.some(([c]) => c === categoria) ? categoria : 'todas'
+
+  const visiveis = useMemo(() => base.filter((l) => categoriaAtiva === 'todas' || l.categoria === categoriaAtiva), [base, categoriaAtiva])
 
   const totais = useMemo(() => {
     const t: Record<'todas' | Origem, { n: number; v: number }> = { todas: { n: 0, v: 0 }, festa: { n: 0, v: 0 }, manual: { n: 0, v: 0 }, acerto: { n: 0, v: 0 }, multa: { n: 0, v: 0 } }
@@ -154,6 +173,15 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
             </button>
           ))}
         </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="text-muted">Categoria</span>
+          <select value={categoriaAtiva} onChange={(e) => setCategoria(e.target.value)} className="border border-line rounded-lg px-2 h-8 text-sm bg-surface max-w-[240px]" aria-label="Filtrar por categoria">
+            <option value="todas">Todas as categorias ({categorias.length})</option>
+            {categorias.map(([c, x]) => (
+              <option key={c} value={c}>{c} — {brl(x.v)} ({x.n})</option>
+            ))}
+          </select>
+        </label>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente ou descrição…" className="border border-line rounded-lg px-3 h-8 text-sm bg-surface flex-1 min-w-[180px]" aria-label="Buscar" />
       </div>
 
@@ -162,7 +190,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
       {linhas === null ? (
         <p className="text-sm text-muted py-6 text-center">Carregando…</p>
       ) : visiveis.length === 0 ? (
-        <p className="text-sm text-muted py-6 text-center">Nenhuma entrada {filtro === 'todas' ? '' : 'deste tipo '}neste mês{busca ? ' com essa busca' : ''}.</p>
+        <p className="text-sm text-muted py-6 text-center">Nenhuma entrada {filtro === 'todas' && categoriaAtiva === 'todas' ? '' : 'com esse filtro '}neste mês{busca ? ' com essa busca' : ''}.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

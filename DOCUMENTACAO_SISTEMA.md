@@ -202,10 +202,12 @@ São regras de banco (gatilhos e funções), por isso valem para qualquer tela e
 - Cancelar uma festa com valor devolvido cria (uma única) saída **"Estorno"** no Financeiro — já paga ou como conta a vencer. Alterar o valor devolvido atualiza o mesmo lançamento; descancelar a festa cancela o estorno.
 - Antes de cancelar, o sistema avisa se já existe uma conta parecida no mesmo mês (para não duplicar).
 
-### 6.7 Comissão da gerente (064)
-- Cada festa **cadastrada** a partir da data de início (19/10/2026) gera a comissão no valor vigente no dia do cadastro (hoje R$ 150; o valor pode mudar com data de vigência e fica o histórico).
-- O repasse de segunda paga as festas cadastradas até o domingo anterior. Festa cancelada **depois** de paga é **abatida** no próximo repasse; cancelada **antes** não gera comissão; se voltar, a comissão volta a ser devida. Unidade com saldo da semana não positivo não é paga (o abatimento espera).
-- O repasse cria uma conta **paga** por unidade (categoria "Comissão"), travada. Desfazer repasse: só Administrador.
+### 6.7 Comissões (064, 066 e 096)
+- **Várias pessoas** (096): cada pessoa que recebe é uma regra (`commission_rules`) com nome, data de início e de quais festas recebe (as que ela cadastrou, ou todas). O valor tem histórico de vigência (`commission_rule_versions`): **valor fixo por festa** (ex.: R$ 150) ou **porcentagem do valor firmado da festa** (`final_value`, já com desconto, sem extras nem consumo). Cada festa usa o valor que valia no dia do cadastro; se o valor da festa mudar depois de a comissão ser paga, a diferença entra como "ajuste" no próximo repasse.
+- Cada festa **cadastrada** a partir da data de início da pessoa gera a comissão. O repasse de segunda paga as festas cadastradas até o domingo anterior, **por pessoa**. Festa cancelada **depois** de paga é **abatida** no próximo repasse; cancelada **antes** não gera comissão; se voltar, a comissão volta a ser devida. Unidade com saldo da semana não positivo não é paga (o abatimento espera).
+- **Cancelar uma comissão** (`commission_cancellations`): tira a festa só daquela pessoa; se já estava paga, vira abatimento no próximo repasse; dá para restaurar.
+- **Já foi paga, sem lançar no Financeiro**: o repasse (inteiro ou de festas escolhidas) pode ser registrado com `finance_launched = false`: fica como pago na tela de Comissões, mas **não cria conta** no Financeiro (para o que já foi lançado por fora). Desfazer esse repasse não mexe no Financeiro.
+- O repasse lançado cria uma conta **paga** por unidade (categoria "Comissão"), travada. Desfazer repasse: só Administrador.
 
 ### 6.8 Três visões do Financeiro (063)
 - Funções só de leitura (`finance_month_views`, `finance_commitments`) calculam Caixa, Resultado das festas, a Ponte entre os dois e os compromissos com festas futuras (seção 7.14). Não criam nem alteram lançamentos.
@@ -283,7 +285,7 @@ Custos que toda festa tem, com valor padrão e valor por plano.
 Lista dos acertos gerados por transferência de estoque (pendente / pago / cancelado), confirmação de pagamento, cancelamento e desfazer (só Administrador).
 
 ### 7.17 Comissões
-Valor por festa, próximo repasse (festas cadastradas até domingo, por unidade, com comissões, abatimentos e ajustes), semana em andamento, repasses feitos (com os itens) e configuração (valor com vigência, data de início, quem recebe).
+Uma visão por pessoa (ou todas): valor de hoje (fixo ou %), próximo repasse (festas cadastradas até domingo, por unidade, com comissões, abatimentos e ajustes), semana em andamento, histórico por festa (com "Já foi paga", "Cancelar" e "Restaurar"), repasses feitos (com os itens e a marca "sem lançar no Financeiro") e configuração (pessoas, valor com vigência, data de início, de quais festas recebe).
 
 ### 7.18 Resultado do mês
 Receita recebida − estornos − taxas − despesas pagas − custos das festas do mês + recuperação de acertos = lucro, com margem e 6 meses. Conta **pela data do pagamento**; um aviso fixo leva ao Resultado das festas.
@@ -442,3 +444,6 @@ Analise como um consultor externo que entende de sistemas para negócios de even
 6. **Prioridades:** se você escolhesse as próximas 5 coisas a construir ou corrigir, quais seriam e por quê? Para cada uma: o problema, a solução proposta e o impacto esperado.
 
 Seja direto e crítico — o objetivo é achar buraco, não validar o que já existe.
+
+### Dois cenários do resultado do mês (13/11/2026)
+O resultado do mês aparece em dois cenários: (1) só festas realizadas e despesas (o de sempre) e (2) somando as **entradas do mês lançadas à mão** (`other_incomes` com `kind = 'manual'`, por data de entrada; no mês em andamento, até hoje). Aparece na Visão geral, em Resultado das festas e no relatório (PDF e Excel: capa, seção 1, Mês a mês, Visão Resultado das festas). Só leitura, sem migração.

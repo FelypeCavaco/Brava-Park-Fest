@@ -49,7 +49,7 @@ export interface DadosRelatorio {
   meses: string[]
   caixa: MonthViews['caixa']
   resultado: MonthViews['resultado']
-  porMes: { mes: string; entradas: number; saidas: number; saldo: number; resultado: number; festas: number }[]
+  porMes: { mes: string; entradas: number; saidas: number; saldo: number; resultado: number; festas: number; manuais: number }[]
   festas: (FestaRealizada & { mes: string; foraDaConta: boolean })[]
   cancelamentos: Cancelamento[]
   ponte: LinhaPonte[]
@@ -59,7 +59,8 @@ export interface DadosRelatorio {
   saidas: Lancamento[]
   pagaCustosFesta: Lancamento[] // contas marcadas "já nos custos das festas" (não entram nos totais)
   contasAbertas: ContaAberta[]
-  entradasManuais: number // entradas lançadas à mão (não entram no resultado das festas)
+  entradasManuais: number // entradas lançadas à mão (não entram no resultado das festas; entram no 2º cenário)
+  entradasManuaisLista: Lancamento[]
   mesAtualIncluido: boolean
   corteMesAtual: string | null
 }
@@ -128,7 +129,7 @@ export async function carregarRelatorio(op: {
   const festas: DadosRelatorio['festas'] = []
   const cancelamentos: Cancelamento[] = []
   const porMes: DadosRelatorio['porMes'] = []
-  let corteMesAtual: string | null = null
+  let corteMesAtual = null as string | null
 
   views.forEach((v, i) => {
     for (const k of Object.keys(caixa) as (keyof typeof caixa)[]) caixa[k] += n(v.caixa[k])
@@ -150,6 +151,7 @@ export async function carregarRelatorio(op: {
       saldo: n(v.caixa.saldo),
       resultado: n(v.resultado.resultado),
       festas: n(v.resultado.festas),
+      manuais: 0,
     })
   })
 
@@ -205,9 +207,17 @@ export async function carregarRelatorio(op: {
       valor: n(p.amount),
     })
   }
+  // Entradas lançadas à mão: contam no 2º cenário do resultado (festas + entradas à mão).
+  // No mês atual valem só até hoje, igual ao resto do relatório.
   let entradasManuais = 0
+  const entradasManuaisLista: Lancamento[] = []
   for (const o of outras) {
-    if (o.kind === 'manual') entradasManuais += n(o.amount)
+    if (o.kind === 'manual' && (!corteMesAtual || String(o.received_date).slice(0, 10) <= corteMesAtual || String(o.received_date).slice(0, 7) !== meses[meses.length - 1])) {
+      entradasManuais += n(o.amount)
+      const pm = porMes.find((m) => m.mes === String(o.received_date).slice(0, 7))
+      if (pm) pm.manuais += n(o.amount)
+      entradasManuaisLista.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount) })
+    }
     entradas.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount) })
   }
   const saidas: Lancamento[] = []
@@ -269,6 +279,7 @@ export async function carregarRelatorio(op: {
     pagaCustosFesta,
     contasAbertas,
     entradasManuais,
+    entradasManuaisLista,
     mesAtualIncluido: corteMesAtual !== null,
     corteMesAtual,
   }
@@ -295,6 +306,15 @@ export const PONTE_TEXTO: Record<string, { titulo: string; explica: (v: number) 
 
 export function veredito(d: DadosRelatorio) {
   const r = d.resultado.resultado
+  return { lucro: r >= 0, valor: Math.abs(r), palavra: r >= 0 ? 'LUCRO' : 'PREJUÍZO' }
+}
+
+// Segundo cenário: resultado das festas + entradas do período lançadas à mão.
+export function resultadoComManuais(d: DadosRelatorio) {
+  return d.resultado.resultado + d.entradasManuais
+}
+export function vereditoComManuais(d: DadosRelatorio) {
+  const r = resultadoComManuais(d)
   return { lucro: r >= 0, valor: Math.abs(r), palavra: r >= 0 ? 'LUCRO' : 'PREJUÍZO' }
 }
 
@@ -326,8 +346,11 @@ export function explicacaoResultado(d: DadosRelatorio): string[] {
     const semElas = r.resultado - fora.reduce((s, f) => s + n(f.lucro), 0)
     linhas.push(`${fora.length} festa${fora.length === 1 ? ' está marcada' : 's estão marcadas'} como "fora da conta" no Lucro por festa. Sem ${fora.length === 1 ? 'ela' : 'elas'}, o resultado seria ${brl(semElas)}.`)
   }
-  if (d.entradasManuais > 0)
-    linhas.push(`${brl(d.entradasManuais)} de entradas lançadas à mão (ex.: aluguel do espaço) entraram no caixa, mas não estão no resultado das festas, que conta só festas e despesas.`)
+  linhas.push(
+    d.entradasManuais > 0
+      ? `Segundo cenário: ${brl(d.entradasManuais)} de entradas lançadas à mão (ex.: aluguel do espaço) entraram no período. Elas não fazem parte do resultado das festas acima (que conta só festas e despesas), mas, somadas a ele, o resultado do período fica em ${brl(resultadoComManuais(d))}.`
+      : 'Segundo cenário: nenhuma entrada foi lançada à mão no período; por isso o resultado com as entradas lançadas à mão é igual ao das festas.',
+  )
   if (d.mesAtualIncluido && d.corteMesAtual) linhas.push(`O mês atual entra até ${dataBr(d.corteMesAtual)}: festas e custos dos próximos dias ainda não contam.`)
   return linhas
 }
@@ -360,6 +383,7 @@ export function somaPorCategoria(lista: Lancamento[]) {
 export const GLOSSARIO: [string, string][] = [
   ['Caixa', 'O dinheiro que entrou e saiu da conta no período, pela data do pagamento. Custos das festas contam pela data da festa.'],
   ['Resultado das festas', 'Se a casa teve lucro ou prejuízo: valor das festas realizadas menos os custos delas, as despesas gerais e o efeito dos cancelamentos.'],
+  ['Resultado com entradas à mão', 'O resultado das festas somado às entradas do período lançadas à mão (ex.: aluguel do espaço). É o segundo cenário: o primeiro conta só festas e despesas.'],
   ['Ponte', 'Explica, linha por linha, por que o saldo do caixa é diferente do resultado (pagamentos adiantados, a receber, compras de estoque etc.).'],
   ['Compromissos', 'O que já foi recebido de festas que ainda vão acontecer e quanto vai custar realizá-las. É dinheiro que está no caixa, mas já tem destino.'],
   ['Insumos', 'Produtos do estoque consumidos nas festas, pelo custo de compra.'],

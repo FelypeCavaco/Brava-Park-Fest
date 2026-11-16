@@ -2,7 +2,7 @@
 
 import { downloadPdf } from './pdfExport'
 import {
-  brl, dataBr, nomeMesLongo, veredito, explicacaoResultado, explicacaoCaixa, explicacaoPonte,
+  brl, dataBr, nomeMesLongo, veredito, vereditoComManuais, resultadoComManuais, explicacaoResultado, explicacaoCaixa, explicacaoPonte,
   somaPorCategoria, PONTE_TEXTO, GLOSSARIO, type DadosRelatorio, type Lancamento,
 } from './relatorioFinanceiro'
 
@@ -17,6 +17,7 @@ function escopo(d: DadosRelatorio) {
   const fora = d.festas.filter((f) => f.foraDaConta).length
   const mostra = [
     'LUCRO OU PREJUÍZO: o resultado das festas que já aconteceram no período, menos as despesas gerais da casa pagas no período, com o efeito dos cancelamentos. Cada festa conta no mês em que acontece.',
+    'LUCRO COM AS ENTRADAS LANÇADAS À MÃO: o mesmo resultado das festas, somado às entradas do período lançadas à mão (ex.: aluguel do espaço). Os dois números aparecem lado a lado.',
     'CAIXA: o dinheiro que realmente passou pela conta (pagamentos recebidos e contas pagas), no dia em que aconteceu. Não diz, sozinho, se houve lucro.',
     'PONTE: explica linha por linha por que o caixa e o lucro são números diferentes.',
     'COMPROMISSOS: o que já foi recebido de festas que ainda vão acontecer e quanto elas vão custar.',
@@ -24,8 +25,8 @@ function escopo(d: DadosRelatorio) {
   const naoEntra = [
     'Festas que ainda vão acontecer: só aparecem em Compromissos. Contam no lucro no mês em que acontecerem.',
     d.entradasManuais > 0
-      ? `Entradas lançadas à mão (ex.: aluguel do espaço): ${brl(d.entradasManuais)} neste período. Entram no caixa, mas NÃO entram no lucro.`
-      : 'Entradas lançadas à mão (ex.: aluguel do espaço), acertos entre unidades e multa e juros: entram no caixa, mas NÃO entram no lucro.',
+      ? `Entradas lançadas à mão (ex.: aluguel do espaço): ${brl(d.entradasManuais)} neste período. Não entram no lucro das festas; aparecem somadas à parte, no lucro com as entradas lançadas à mão.`
+      : 'Entradas lançadas à mão (ex.: aluguel do espaço): nenhuma neste período. Se houver, não entram no lucro das festas e aparecem somadas à parte. Acertos entre unidades e multa e juros entram no caixa, mas não no lucro.',
     `Compras de estoque (${brl(r.compras_estoque)} pagos no período): o lucro conta o que as festas consumiram (insumos), não a compra.`,
     d.pagaCustosFesta.length > 0
       ? `Contas marcadas "já nos custos das festas" (${d.pagaCustosFesta.length}, somando ${brl(d.pagaCustosFesta.reduce((t, l) => t + l.valor, 0))}): não entram nos totais para não contar o mesmo gasto duas vezes.`
@@ -65,6 +66,10 @@ export const ESTILOS_RELATORIO = `
   .veredito .rot { font-size: 11px; letter-spacing: 2px; font-weight: 800; opacity: .9; }
   .veredito .val { font-size: 30px; font-weight: 900; margin-top: 2px; }
   .veredito .obs { font-size: 11px; opacity: .95; margin-top: 4px; }
+  .veredito.sec { margin-top: -4px; padding: 11px 18px; }
+  .veredito.sec .val { font-size: 22px; }
+  .veredito.sec.lucro { background: #1F6E8C; }
+  .veredito.sec.prejuizo { background: #8C3A5A; }
   .cards { display: flex; gap: 8px; margin: 8px 0 12px; }
   .card { flex: 1; border: 1px solid #E2D6F1; border-radius: 10px; padding: 8px 10px; background: #FBF8FE; }
   .card .t { color: #6D5E8C; font-size: 9.5px; }
@@ -111,6 +116,8 @@ function tabelaCategorias(lista: Lancamento[], cor: 'pos' | 'neg') {
 
 export function htmlRelatorio(d: DadosRelatorio): string {
   const v = veredito(d)
+  const v2 = vereditoComManuais(d)
+  const r2 = resultadoComManuais(d)
   const r = d.resultado
   const c = d.caixa
   const entrou = c.entradas + c.acertos_recebidos
@@ -127,9 +134,14 @@ export function htmlRelatorio(d: DadosRelatorio): string {
       <p class="sub" style="font-size:11px;margin-top:14px">Gerado em ${esc(d.geradoEm)}${d.geradoPor ? ` por ${esc(d.geradoPor)}` : ''}</p>
     </div>
     <div class="veredito ${v.lucro ? 'lucro' : 'prejuizo'}">
-      <div class="rot">${v.palavra} NO PERÍODO</div>
+      <div class="rot">${v.palavra} DAS FESTAS NO PERÍODO</div>
       <div class="val">${brl(v.valor)}</div>
-      <div class="obs">Resultado das festas e da casa em ${esc(d.periodoTexto)}. Explicação completa na próxima página.</div>
+      <div class="obs">Festas realizadas, menos custos e despesas gerais, em ${esc(d.periodoTexto)}. Explicação completa na próxima página.</div>
+    </div>
+    <div class="veredito sec ${v2.lucro ? 'lucro' : 'prejuizo'}">
+      <div class="rot">${v2.palavra} COM AS ENTRADAS LANÇADAS À MÃO</div>
+      <div class="val">${brl(v2.valor)}</div>
+      <div class="obs">${d.entradasManuais > 0 ? `Resultado das festas + ${brl(d.entradasManuais)} de entradas lançadas à mão no período (ex.: aluguel do espaço).` : 'Nenhuma entrada foi lançada à mão no período, então é igual ao resultado das festas.'}</div>
     </div>
     <div class="cards">
       <div class="card"><div class="t">Entrou no caixa</div><div class="v pos">${brl(entrou)}</div></div>
@@ -147,7 +159,8 @@ export function htmlRelatorio(d: DadosRelatorio): string {
   const secResultado = `
     <div class="quebra"></div>${topo(d, '1. O resultado do período')}
     <h2>1. Teve lucro ou prejuízo?</h2>
-    <div class="veredito ${v.lucro ? 'lucro' : 'prejuizo'}"><div class="rot">${v.palavra}</div><div class="val">${brl(v.valor)}</div></div>
+    <div class="veredito ${v.lucro ? 'lucro' : 'prejuizo'}"><div class="rot">${v.palavra} DAS FESTAS (festas, custos e despesas gerais)</div><div class="val">${brl(v.valor)}</div></div>
+    <div class="veredito sec ${v2.lucro ? 'lucro' : 'prejuizo'}"><div class="rot">${v2.palavra} COM AS ENTRADAS LANÇADAS À MÃO</div><div class="val">${brl(v2.valor)}</div></div>
     <h3>Como chegamos nesse número</h3>
     <div class="box">${explicacaoResultado(d).map((l) => `<p>${esc(l)}</p>`).join('')}</div>
     <table><tbody>
@@ -158,18 +171,21 @@ export function htmlRelatorio(d: DadosRelatorio): string {
       <tr class="sub"><td>(=) O que sobrou das festas</td><td class="n ${cls(r.resultado_direto)}">${brl(r.resultado_direto)}</td></tr>
       <tr><td>(−) Despesas gerais da casa pagas</td><td class="n neg">${brl(-r.despesas_gerais)}</td></tr>
       <tr><td>(±) Efeito dos cancelamentos</td><td class="n ${cls(r.efeito_cancelamentos)}">${brl(r.efeito_cancelamentos)}</td></tr>
-      <tr class="total"><td>(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td></tr>
+      <tr class="total"><td>(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período (só festas e despesas)</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td></tr>
+      <tr><td>(+) Entradas lançadas à mão no período (ex.: aluguel do espaço)</td><td class="n pos">${brl(d.entradasManuais)}</td></tr>
+      <tr class="total"><td>(=) ${v2.lucro ? 'Lucro' : 'Prejuízo'} do período com as entradas lançadas à mão</td><td class="n ${cls(r2)}">${brl(r2)}</td></tr>
     </tbody></table>
+    ${d.entradasManuaisLista.length > 0 ? `<h3>Entradas lançadas à mão no período</h3>${tabelaLancamentos(d.entradasManuaisLista, 'pos')}` : ''}
     <h3>E o caixa?</h3>
     <p>${esc(explicacaoCaixa(d))}</p>
     <p>${esc(explicacaoPonte(d))}</p>`
 
   const secMeses = `
     <h2 style="margin-top:16px">2. Mês a mês</h2>
-    <p class="exp">Como cada mês do período contribuiu. "Saldo do caixa" é o dinheiro; "Resultado" é o lucro ou prejuízo.</p>
-    <table><thead><tr><th>Mês</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado</th></tr></thead><tbody>
-      ${d.porMes.map((m) => `<tr><td>${esc(nomeMesLongo(m.mes))}</td><td class="n">${m.festas}</td><td class="n pos">${brl(m.entradas)}</td><td class="n neg">${brl(m.saidas)}</td><td class="n ${cls(m.saldo)}">${brl(m.saldo)}</td><td class="n ${cls(m.resultado)}">${brl(m.resultado)} ${m.resultado >= 0 ? '(lucro)' : '(prejuízo)'}</td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="n">${r.festas}</td><td class="n pos">${brl(entrou)}</td><td class="n neg">${brl(saiu)}</td><td class="n ${cls(c.saldo)}">${brl(c.saldo)}</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td></tr>
+    <p class="exp">Como cada mês do período contribuiu. "Saldo do caixa" é o dinheiro. O resultado aparece em dois cenários: só com as festas e despesas, e somando as entradas lançadas à mão.</p>
+    <table><thead><tr><th>Mês</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado das festas</th><th class="n">Entradas à mão</th><th class="n">Resultado com entradas à mão</th></tr></thead><tbody>
+      ${d.porMes.map((m) => `<tr><td>${esc(nomeMesLongo(m.mes))}</td><td class="n">${m.festas}</td><td class="n pos">${brl(m.entradas)}</td><td class="n neg">${brl(m.saidas)}</td><td class="n ${cls(m.saldo)}">${brl(m.saldo)}</td><td class="n ${cls(m.resultado)}">${brl(m.resultado)} ${m.resultado >= 0 ? '(lucro)' : '(prejuízo)'}</td><td class="n pos">${brl(m.manuais)}</td><td class="n ${cls(m.resultado + m.manuais)}">${brl(m.resultado + m.manuais)} ${m.resultado + m.manuais >= 0 ? '(lucro)' : '(prejuízo)'}</td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="n">${r.festas}</td><td class="n pos">${brl(entrou)}</td><td class="n neg">${brl(saiu)}</td><td class="n ${cls(c.saldo)}">${brl(c.saldo)}</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td><td class="n pos">${brl(d.entradasManuais)}</td><td class="n ${cls(r2)}">${brl(r2)}</td></tr>
     </tbody></table>`
 
   const secCaixa = `
@@ -203,7 +219,9 @@ export function htmlRelatorio(d: DadosRelatorio): string {
       <tr><td>Lucro das festas realizadas</td><td class="n ${cls(r.resultado_direto)}">${brl(r.resultado_direto)}</td></tr>
       <tr><td>(−) Despesas gerais pagas (aluguel, contas, salários, comissões, marketing...)</td><td class="n neg">${brl(-r.despesas_gerais)}</td></tr>
       <tr><td>(±) Efeito dos cancelamentos</td><td class="n ${cls(r.efeito_cancelamentos)}">${brl(r.efeito_cancelamentos)}</td></tr>
-      <tr class="total"><td>(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td></tr>
+      <tr class="total"><td>(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período (só festas e despesas)</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td></tr>
+      <tr><td>(+) Entradas lançadas à mão no período</td><td class="n pos">${brl(d.entradasManuais)}</td></tr>
+      <tr class="total"><td>(=) ${v2.lucro ? 'Lucro' : 'Prejuízo'} do período com as entradas lançadas à mão</td><td class="n ${cls(r2)}">${brl(r2)}</td></tr>
     </tbody></table>
     <p class="exp">Compras de estoque pagas no período (${brl(r.compras_estoque)}) não entram aqui: o resultado conta o que as festas consumiram (insumos), não a compra.</p>
     ${d.cancelamentos.length > 0 ? `<h3>Cancelamentos do período</h3>
@@ -330,6 +348,8 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
   }
 
   const v = veredito(d)
+  const v2 = vereditoComManuais(d)
+  const r2 = resultadoComManuais(d)
   const r = d.resultado
   const c = d.caixa
 
@@ -339,10 +359,17 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     let l = l0
     const cel = ws.getCell(l, 1)
     ws.mergeCells(l, 1, l, 3)
-    cel.value = `${v.palavra} NO PERÍODO: ${brl(v.valor)}`
+    cel.value = `${v.palavra} DAS FESTAS NO PERÍODO: ${brl(v.valor)}`
     cel.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
     cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: v.lucro ? 'FF2E7D57' : 'FFB23A3A' } }
     ws.getRow(l).height = 30
+    l += 1
+    const cel2 = ws.getCell(l, 1)
+    ws.mergeCells(l, 1, l, 3)
+    cel2.value = `${v2.palavra} COM AS ENTRADAS LANÇADAS À MÃO: ${brl(v2.valor)}`
+    cel2.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } }
+    cel2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: v2.lucro ? 'FF1F6E8C' : 'FF8C3A5A' } }
+    ws.getRow(l).height = 26
     l += 2
     l = paragrafo(ws, l, 'Como chegamos nesse número', 3, { negrito: true, cor: ROXO })
     for (const p of explicacaoResultado(d)) l = paragrafo(ws, l, p, 3)
@@ -356,9 +383,11 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
       ['(=) O que sobrou das festas', r.resultado_direto, 'Lucro das festas antes das despesas gerais.'],
       ['(−) Despesas gerais pagas', -r.despesas_gerais, 'Aluguel, contas, salários, comissões, marketing e outras contas da casa pagas no período.'],
       ['(±) Efeito dos cancelamentos', r.efeito_cancelamentos, 'Multas retidas menos custos já lançados nas festas canceladas.'],
-      [`(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período`, r.resultado, 'Resultado final da casa no período.'],
+      [`(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período (só festas e despesas)`, r.resultado, 'Resultado das festas e da casa no período.'],
+      ['(+) Entradas lançadas à mão', d.entradasManuais, 'Entradas do período lançadas à mão (ex.: aluguel do espaço). Não entram no resultado das festas.'],
+      [`(=) ${v2.lucro ? 'Lucro' : 'Prejuízo'} do período com as entradas lançadas à mão`, r2, 'Resultado das festas somado às entradas lançadas à mão.'],
     ]
-    linhas.forEach(([a, b, x], i) => (l = linhaDados(ws, l, [a, b, x], { moeda: [1], negrito: i === 4 || i === 7, quebra: [2] })))
+    linhas.forEach(([a, b, x], i) => (l = linhaDados(ws, l, [a, b, x], { moeda: [1], negrito: i === 4 || i === 7 || i === 9, quebra: [2] })))
     l++
     l = paragrafo(ws, l, 'O que este relatório mostra', 3, { negrito: true, cor: ROXO })
     for (const t of escopo(d).mostra) l = paragrafo(ws, l, t, 3)
@@ -373,10 +402,10 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
 
   // ---- Mês a mês ----
   {
-    const { ws, linha: l0 } = aba('Mês a mês', 'Mês a mês', [22, 10, 16, 16, 18, 18, 12])
-    let l = cabecalho(ws, l0, ['Mês', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado', ''])
-    for (const m of d.porMes) l = linhaDados(ws, l, [nomeMesLongo(m.mes), m.festas, m.entradas, m.saidas, m.saldo, m.resultado, m.resultado >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5] })
-    linhaDados(ws, l, ['Total', r.festas, c.entradas + c.acertos_recebidos, c.contas_pagas + c.custos_festas, c.saldo, r.resultado, r.resultado >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5], negrito: true })
+    const { ws, linha: l0 } = aba('Mês a mês', 'Mês a mês', [22, 10, 16, 16, 18, 20, 18, 22, 12])
+    let l = cabecalho(ws, l0, ['Mês', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado das festas', 'Entradas à mão', 'Resultado com entradas à mão', ''])
+    for (const m of d.porMes) l = linhaDados(ws, l, [nomeMesLongo(m.mes), m.festas, m.entradas, m.saidas, m.saldo, m.resultado, m.manuais, m.resultado + m.manuais, m.resultado + m.manuais >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5, 6, 7] })
+    linhaDados(ws, l, ['Total', r.festas, c.entradas + c.acertos_recebidos, c.contas_pagas + c.custos_festas, c.saldo, r.resultado, d.entradasManuais, r2, r2 >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5, 6, 7], negrito: true })
   }
 
   // ---- Caixa ----
@@ -419,7 +448,9 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     l = linhaDados(ws, l, ['', 'Lucro das festas realizadas', r.resultado_direto], { moeda: [2] })
     l = linhaDados(ws, l, ['', '(−) Despesas gerais pagas', -r.despesas_gerais], { moeda: [2] })
     l = linhaDados(ws, l, ['', '(±) Efeito dos cancelamentos', r.efeito_cancelamentos], { moeda: [2] })
-    l = linhaDados(ws, l, ['', `(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período`, r.resultado], { moeda: [2], negrito: true })
+    l = linhaDados(ws, l, ['', `(=) ${v.lucro ? 'Lucro' : 'Prejuízo'} do período (só festas e despesas)`, r.resultado], { moeda: [2], negrito: true })
+    l = linhaDados(ws, l, ['', '(+) Entradas lançadas à mão no período', d.entradasManuais], { moeda: [2] })
+    l = linhaDados(ws, l, ['', `(=) ${v2.lucro ? 'Lucro' : 'Prejuízo'} do período com as entradas lançadas à mão`, r2], { moeda: [2], negrito: true })
     if (d.cancelamentos.length > 0) {
       l++
       l = cabecalho(ws, l, ['Cancelada em', 'Cliente', 'Data da festa', 'Pago', 'Devolvido', 'Multa retida', 'Custos', 'Efeito'])

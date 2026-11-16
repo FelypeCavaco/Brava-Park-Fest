@@ -11,7 +11,7 @@ import { Badge } from '../components/ui/Badge'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { UNITS } from '../lib/UnitContext'
-import { addMonthsToValue } from '../lib/monthUtils'
+import { addMonthsToValue, monthBounds } from '../lib/monthUtils'
 import { faixasDoPeriodo, descreverPeriodo } from '../lib/periodo'
 import { PeriodoGrafico, GraficoSerie, usePeriodo } from '../components/PeriodoGrafico'
 
@@ -69,6 +69,23 @@ export async function loadMonthViews(monthValue: string, unitId: string | null):
   const { data, error } = await supabase.rpc('finance_month_views', { p_month: `${monthValue}-01`, p_unit: unitId })
   if (error) throw error
   return data as MonthViews
+}
+
+// Entradas do mês lançadas à mão (Financeiro → Lançamentos → Entradas). Não fazem
+// parte do resultado das festas; entram no segundo cenário (festas + entradas à mão).
+// Em mês em andamento, vale só até a data de corte (hoje), como o resto da tela.
+export interface EntradaManual { id: string; unit_id: string; data: string; descricao: string; categoria: string; valor: number }
+export async function loadEntradasManuais(monthValue: string, unitId: string | null, ate?: string | null): Promise<{ total: number; itens: EntradaManual[] }> {
+  const { startIso, endIso } = monthBounds(monthValue)
+  let q = supabase.from('other_incomes').select('id, unit_id, category, description, amount, received_date')
+    .eq('kind', 'manual').gte('received_date', startIso).lt('received_date', endIso).order('received_date').limit(2000)
+  if (unitId) q = q.eq('unit_id', unitId)
+  const { data, error } = await q
+  if (error) throw error
+  const itens = ((data ?? []) as any[])
+    .filter((x) => !ate || String(x.received_date).slice(0, 10) <= ate)
+    .map((x) => ({ id: x.id as string, unit_id: x.unit_id as string, data: x.received_date as string, descricao: (x.description as string) || (x.category as string) || 'Entrada', categoria: (x.category as string) || 'Outras entradas', valor: Number(x.amount) }))
+  return { total: itens.reduce((t, i) => t + i.valor, 0), itens }
 }
 
 // ---------- peças comuns ----------
@@ -198,6 +215,15 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
   unitDbIds: Record<string, { unitId: string }>; mostrarUnidade: boolean
 }) {
   const { data, loading, error } = useMonthViews(month, unitId)
+  const [manuais, setManuais] = useState<{ total: number; itens: EntradaManual[] } | null>(null)
+  useEffect(() => {
+    let vivo = true
+    setManuais(null)
+    loadEntradasManuais(month, unitId, data?.mes_atual ? data.corte : null).then((m) => vivo && setManuais(m)).catch(() => vivo && setManuais({ total: 0, itens: [] }))
+    return () => {
+      vivo = false
+    }
+  }, [month, unitId, data?.corte, data?.mes_atual])
   const [serie, setSerie] = useState<{ rotulo: string; mesValue: string; receita: number; custos: number; resultado: number }[]>([])
   const resP = usePeriodo('financeiro-resultado-festas', 6, 'barras')
 
@@ -258,6 +284,7 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
       >
         <p>Aqui cada festa conta no mês em que ela acontece, <strong>não importa quando o cliente pagou</strong>. Uma festa paga em agosto e realizada em outubro entra no resultado de outubro. O valor da festa aparece aqui como receita da festa e <strong>não é dinheiro novo</strong>: não se soma às entradas do caixa.</p>
         <p>Festa realizada = já aconteceu até hoje (nos meses que já passaram, até o último dia do mês). As despesas gerais contam pela data em que a conta foi paga.</p>
+        <p>O resultado do mês aparece em <strong>dois cenários</strong>: só com as festas e as despesas, e <strong>somando as entradas do mês lançadas à mão</strong> (ex.: aluguel do espaço), que não são pagamento de festa.</p>
         <p className="text-xs text-muted">{AVISO_MESES_PASSADOS}</p>
       </ExplainBox>
 
@@ -287,6 +314,49 @@ export function ResultadoFestasView({ month, onMonthChange, unitId, unitDbIds, m
             <Stat titulo="Resultado do mês" valor={r.resultado} tom={n(r.resultado) >= 0 ? 'teal' : 'danger'} destaque
               legenda="O que sobrou das festas depois das despesas gerais." />
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className={n(r.resultado) >= 0 ? 'border-teal' : 'border-danger'}>
+              <p className="text-xs text-muted">Resultado do mês — só festas e despesas</p>
+              <p className={`text-xl font-display font-semibold mt-1 ${n(r.resultado) >= 0 ? 'text-teal' : 'text-danger'}`}>{brl(r.resultado)}</p>
+              <p className="text-[11px] text-muted mt-1 leading-snug">As festas que aconteceram, menos os custos delas, as despesas gerais e os cancelamentos. Não conta o que foi lançado à mão como entrada.</p>
+            </Card>
+            <Card className={manuais && n(r.resultado) + manuais.total < 0 ? 'border-danger' : 'border-teal'}>
+              <p className="text-xs text-muted">Resultado do mês — com as entradas lançadas à mão</p>
+              {manuais ? (
+                <>
+                  <p className={`text-xl font-display font-semibold mt-1 ${n(r.resultado) + manuais.total >= 0 ? 'text-teal' : 'text-danger'}`}>{brl(n(r.resultado) + manuais.total)}</p>
+                  <p className="text-[11px] text-muted mt-1 leading-snug">
+                    {brl(r.resultado)} das festas e despesas {manuais.total >= 0 ? '+' : '−'} {brl(Math.abs(manuais.total))} de entradas lançadas à mão neste mês{manuais.itens.length > 0 ? ` (${manuais.itens.length} lançamento${manuais.itens.length === 1 ? '' : 's'})` : ''}.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted mt-2">Calculando…</p>
+              )}
+            </Card>
+          </div>
+
+          {manuais && manuais.itens.length > 0 && (
+            <Card title="Entradas lançadas à mão neste mês">
+              <p className="text-[11px] text-muted mb-2">Dinheiro que entrou e não é pagamento de festa (ex.: aluguel do espaço para ensaio). Não entram no resultado das festas; somam no segundo resultado, acima. Para editar ou remover, use Lançamentos → Entradas.</p>
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-line">
+                  {manuais.itens.map((i) => (
+                    <tr key={i.id}>
+                      <td className="py-2 text-muted whitespace-nowrap w-24">{dataCurta(i.data)}</td>
+                      {mostrarUnidade && <td className="py-2 text-muted whitespace-nowrap">{unidadeNome(i.unit_id, unitDbIds)}</td>}
+                      <td className="py-2">{i.descricao}<span className="block text-xs text-muted">{i.categoria}</span></td>
+                      <td className="py-2 text-right text-teal font-medium whitespace-nowrap">{brl(i.valor)}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold">
+                    <td className="pt-2" colSpan={mostrarUnidade ? 3 : 2}>Total</td>
+                    <td className="pt-2 text-right text-teal whitespace-nowrap">{brl(manuais.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </Card>
+          )}
 
           <p className="text-xs text-muted">
             Estoque: compras pagas no mês {brl(r.compras_estoque)} × consumo das festas do mês {brl(r.insumos)}. O caixa conta a compra; aqui conta só o que as festas consumiram.

@@ -1,0 +1,6 @@
+# Lista das casas (bancos Supabase) que o despertador diário acorda às 3h da manhã.
+# Uma casa por linha, no formato:   nome | endereço do projeto | chave pública (anon/publishable)
+# Para incluir uma casa nova, é só acrescentar uma linha aqui. Linhas com # são ignoradas.
+# A chave pública é a mesma que já vai dentro do site daquela casa (não é segredo).
+Brava | https://ecebsmodxochfuujhqnk.supabase.co | eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjZWJzbW9keG9jaGZ1dWpocW5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MTk0NjUsImV4cCI6MjEwNDM5NTQ2NX0.RK9gwMW_fHnBW8G20C2puBHuRk6s08rWet3k8oVOuxY
+Clientes (Festou) | https://cadbylnuopirgalscduj.supabase.co | sb_publishable_fyOxalO1whjKDACwgBxQUQ_NVvHYAoJ

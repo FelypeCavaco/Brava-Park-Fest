@@ -1,0 +1,49 @@
+# Despertador diário: todo dia às 3h da manhã (horário de Brasília) entra em cada
+# banco da lista ".github/casas_acordar.txt" e faz uma consulta, para o Supabase
+# gratuito não pausar o projeto por falta de atividade (pausa após 7 dias parado).
+# Observação: o GitHub pode atrasar o horário em alguns minutos.
+# Se algum banco não responder, o GitHub manda e-mail avisando que falhou.
+# Um projeto que JÁ está pausado não acorda por aqui: precisa clicar em "Restore"
+# no painel do Supabase uma vez.
+# Também reativa o "Monitor": o GitHub desliga tarefas agendadas de repositório
+# público que fica 60 dias sem alteração, e este passo evita isso.
+name: Acordar bancos
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC = 03:00 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  acordar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consultar cada banco
+        run: |
+          falhou=0
+          while IFS='|' read -r nome url chave; do
+            nome=$(echo "$nome" | xargs); url=$(echo "$url" | xargs); chave=$(echo "$chave" | xargs)
+            case "$nome" in ''|\#*) continue;; esac
+            if curl -fsS --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null -X POST \
+                 "$url/rest/v1/rpc/public_company_brand" \
+                 -H "apikey: $chave" -H "Content-Type: application/json" -d '{}'; then
+              echo "OK: $nome acordado"
+            else
+              echo "::error::Falhou: $nome nao respondeu (projeto pausado ou fora do ar?)"
+              falhou=1
+            fi
+          done < .github/casas_acordar.txt
+          exit $falhou
+      - name: Manter as tarefas agendadas ligadas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for f in acordar_bancos.yml monitor.yml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$f/enable" || true
+          done

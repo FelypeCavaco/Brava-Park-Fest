@@ -1,5 +1,5 @@
-// Comissões por festa cadastrada, com repasse semanal (segunda), por pessoa.
-// Os cálculos ficam no banco (migrações 064, 066 e 096): commission_pending diz
+// Comissões por festa cadastrada, com repasse por pessoa (semanal, quinzenal ou mensal).
+// Os cálculos ficam no banco (migrações 064, 066, 096 e 098): commission_pending diz
 // o que falta pagar ou abater de cada pessoa; pay_commissions lança as contas
 // pagas no Financeiro (ou só marca como paga, quando já foi lançado por fora).
 import { FormEvent, useEffect, useMemo, useState } from 'react'
@@ -33,6 +33,17 @@ interface Historico {
   cancelada_em: string | null; cadastrada_por: string; conta: boolean; devido: number; pago: number
   ultimo_repasse: string | null; situacao: string; modo: Modo | null; valor_regra: number | null; valor_festa: number; fora_financeiro: boolean
 }
+// Quando cada pessoa é paga (migração 098). Sem ela, todos são semanais, na segunda.
+type Freq = 'semanal' | 'quinzenal' | 'mensal'
+interface Agenda { rule_id: string; frequency: Freq; weekday: number; day: number; day2: number; last_pay: string; next_pay: string; cutoff: string }
+const DIAS_SEMANA = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo']
+function descAgenda(a: { frequency: Freq; weekday: number; day: number; day2: number } | undefined) {
+  if (!a || (a.frequency === 'semanal' && a.weekday === 1)) return 'toda segunda-feira'
+  if (a.frequency === 'semanal') return `toda ${DIAS_SEMANA[a.weekday - 1]}`
+  if (a.frequency === 'quinzenal') return `duas vezes por mês, nos dias ${Math.min(a.day, a.day2)} e ${Math.max(a.day, a.day2)}`
+  return `todo dia ${a.day} do mês`
+}
+
 type Acao =
   | { tipo: 'paga'; ruleId: string; resId: string; cliente: string; pessoa: string; valor: number }
   | { tipo: 'cancelar'; ruleId: string; resId: string; cliente: string; pessoa: string; valor: number; jaPaga: boolean }
@@ -67,6 +78,7 @@ export function Commissions() {
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ultimoDomingo, setUltimoDomingo] = useState<string | null>(null)
+  const [agendas, setAgendas] = useState<Record<string, Agenda>>({})
   const [regras, setRegras] = useState<Regra[]>([])
   const [proximo, setProximo] = useState<Pendente[]>([])
   const [semanaAberta, setSemanaAberta] = useState<Pendente[]>([])
@@ -103,8 +115,18 @@ export function Commissions() {
     const { data: dom } = await supabase.rpc('commission_last_sunday')
     const domingo = dom as string
     setUltimoDomingo(domingo)
-    const [pend, ate, rep, reg, hist, us] = await Promise.all([
-      supabase.rpc('commission_pending', { p_until: domingo, p_rule: null }),
+    // Cada pessoa tem a sua data de repasse (098). Se o banco ainda não tem, vale a segunda para todos.
+    const sch = await supabase.rpc('commission_schedules')
+    const agendasNovas: Record<string, Agenda> = {}
+    if (!sch.error) for (const a of (sch.data ?? []) as Agenda[]) agendasNovas[a.rule_id] = a
+    setAgendas(agendasNovas)
+    const ids098 = Object.keys(agendasNovas)
+    const [pendLista, ate, rep, reg, hist, us] = await Promise.all([
+      Promise.all(
+        ids098.length > 0
+          ? ids098.map((id) => supabase.rpc('commission_pending', { p_until: agendasNovas[id].cutoff, p_rule: id }))
+          : [supabase.rpc('commission_pending', { p_until: domingo, p_rule: null })],
+      ),
       supabase.rpc('commission_pending', { p_until: todayIso(), p_rule: null }),
       supabase
         .from('commission_payouts')
@@ -116,6 +138,7 @@ export function Commissions() {
       supabase.rpc('commission_history', { p_from: null, p_to: null, p_rule: null }),
       supabase.from('user_profiles').select('id, name').eq('active', true).order('name'),
     ])
+    const pend = { error: pendLista.find((x) => x.error)?.error ?? null, data: pendLista.flatMap((x) => (x.data ?? []) as any[]) }
     if (pend.error) {
       setErro(
         /permiss/i.test(pend.error.message)
@@ -153,6 +176,8 @@ export function Commissions() {
     carregar()
   }, [])
 
+  // festas cadastradas até esta data entram no repasse da pessoa
+  const corteDe = (ruleId: string) => agendas[ruleId]?.cutoff ?? ultimoDomingo
   const regrasVisiveis = regras.filter((r) => pessoa === 'todas' || r.id === pessoa)
   const varias = regras.length > 1
   const daPessoa = <T extends { rule_id: string | null }>(l: T[]) => l.filter((x) => pessoa === 'todas' || x.rule_id === pessoa)
@@ -183,10 +208,11 @@ export function Commissions() {
 
   async function pagar(e: FormEvent, ruleId: string) {
     e.preventDefault()
-    if (!ultimoDomingo) return
+    const corte = corteDe(ruleId)
+    if (!corte) return
     setSalvando(true)
     const { error } = await supabase.rpc('pay_commissions', {
-      p_rule: ruleId, p_until: ultimoDomingo, p_paid_date: dataPagamento, p_payment_method: forma, p_launch: !jaLancado, p_reservations: null, p_note: null,
+      p_rule: ruleId, p_until: corte, p_paid_date: dataPagamento, p_payment_method: forma, p_launch: !jaLancado, p_reservations: null, p_note: null,
     })
     setSalvando(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -325,7 +351,7 @@ export function Commissions() {
       <div>
         <h1 className="text-2xl font-semibold">Comissões</h1>
         <p className="text-sm text-muted mt-1">
-          {regras.length === 0 ? 'Comissão por festa cadastrada' : `Comissão por festa de ${regras.map((r) => r.name).join(', ')}`} · repasse toda segunda-feira
+          {regras.length === 0 ? 'Comissão por festa cadastrada' : `Comissão por festa de ${regras.map((r) => r.name).join(', ')}`} · cada pessoa tem a sua data de repasse
         </p>
       </div>
 
@@ -333,7 +359,7 @@ export function Commissions() {
         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
         <span>
           Cada pessoa recebe um valor fixo por festa ou uma porcentagem do valor da festa, conforme combinado (veja Configuração, no fim da tela). A festa gera a comissão pelo valor que valia no dia do cadastro.
-          Na segunda, o repasse paga as festas cadastradas até o domingo anterior. Se uma festa com comissão já paga for cancelada, o valor é abatido no próximo repasse; festa cadastrada e cancelada antes do repasse não gera comissão.
+          No dia do repasse de cada pessoa (semanal, quinzenal ou mensal, veja em cada cartão), o repasse paga as festas cadastradas até a véspera. Se uma festa com comissão já paga for cancelada, o valor é abatido no próximo repasse; festa cadastrada e cancelada antes do repasse não gera comissão.
           Cada repasse vira uma conta paga no Financeiro (categoria "Comissão"), uma por unidade. Se você já lançou esse pagamento por fora, use "Já foi paga" ou marque a opção ao pagar: ele fica como pago aqui, sem criar conta de novo.
         </span>
       </p>
@@ -379,7 +405,8 @@ export function Commissions() {
                     <div>
                       <p className="text-xs text-muted">Próximo repasse</p>
                       <p className="text-lg font-display font-semibold text-amber">{brl(totalDe(meus, true))}</p>
-                      <p className="text-[11px] text-muted">Até domingo, {ultimoDomingo ? dataBR(ultimoDomingo) : '—'} (já com abatimentos).{meusSemana.length > 0 ? ` Mais ${meusSemana.filter((p) => p.kind === 'comissao').length} festa(s) cadastrada(s) depois, na semana em andamento.` : ''}</p>
+                      <p className="text-[11px] text-muted">Festas cadastradas até {corteDe(r.id) ? dataBR(corteDe(r.id)!) : '—'} (já com abatimentos).{meusSemana.length > 0 ? ` Mais ${meusSemana.filter((p) => p.kind === 'comissao').length} festa(s) cadastrada(s) depois, no período em andamento.` : ''}</p>
+                      <p className="text-[11px] text-muted mt-1">Paga {descAgenda(agendas[r.id])}{agendas[r.id] ? ` · próximo pagamento em ${dataBR(agendas[r.id].next_pay)}` : ''}.</p>
                     </div>
                   </div>
                 </Card>
@@ -399,7 +426,7 @@ export function Commissions() {
             return (
               <Card
                 key={r.id}
-                title={`Próximo repasse${varias ? ` de ${r.name}` : ''} — festas cadastradas até ${ultimoDomingo ? dataBR(ultimoDomingo) : '—'}`}
+                title={`Próximo repasse${varias ? ` de ${r.name}` : ''} — festas cadastradas até ${corteDe(r.id) ? dataBR(corteDe(r.id)!) : '—'}`}
                 action={
                   totalPagavel > 0 && pagandoRegra !== r.id ? (
                     <Can permission="action:comissoes.pagar">
@@ -409,7 +436,7 @@ export function Commissions() {
                 }
               >
                 {porUnidade.length === 0 ? (
-                  <p className="text-sm text-muted py-3">Nada a pagar: todas as festas cadastradas até domingo já foram pagas.</p>
+                  <p className="text-sm text-muted py-3">Nada a pagar: todas as festas cadastradas até {corteDe(r.id) ? dataBR(corteDe(r.id)!) : 'o último repasse'} já foram pagas.</p>
                 ) : (
                   <div className="space-y-5 overflow-x-auto">
                     {porUnidade.map((u) => (
@@ -459,8 +486,8 @@ export function Commissions() {
           })}
 
           {daPessoa(semanaAberta).length > 0 && (
-            <Card title="Semana em andamento (ainda não fecha)">
-              <p className="text-[11px] text-muted mb-2">Festas cadastradas depois do último domingo. Só entram no repasse da próxima segunda.</p>
+            <Card title="Período em andamento (ainda não fecha)">
+              <p className="text-[11px] text-muted mb-2">Festas cadastradas depois do último fechamento de cada pessoa. Só entram no próximo repasse dela.</p>
               <div className="overflow-x-auto"><Tabela itens={daPessoa(semanaAberta)} mostrarUnidade mostrarPessoa={varias} /></div>
             </Card>
           )}
@@ -585,7 +612,7 @@ export function Commissions() {
               </p>
               <div className="space-y-4">
                 {regras.map((r) => (
-                  <CartaoPessoa key={r.id} regra={r} usuarios={usuarios} hoje={hoje} onErro={setErro} onAviso={setAviso} onMudou={carregar} />
+                  <CartaoPessoa key={`${r.id}-${agendas[r.id]?.frequency ?? ''}-${agendas[r.id]?.day ?? ''}-${agendas[r.id]?.weekday ?? ''}`} regra={r} agenda={agendas[r.id]} usuarios={usuarios} hoje={hoje} onErro={setErro} onAviso={setAviso} onMudou={carregar} />
                 ))}
                 <NovaPessoa usuarios={usuarios} hoje={hoje} primeira={regras.length === 0} onErro={setErro} onAviso={setAviso} onMudou={carregar} />
               </div>
@@ -668,6 +695,44 @@ function SeletorValor({ modo, setModo, valor, setValor }: { modo: Modo; setModo:
   )
 }
 
+function SeletorAgenda({ freq, setFreq, weekday, setWeekday, day, setDay, day2, setDay2 }: {
+  freq: Freq; setFreq: (f: Freq) => void; weekday: number; setWeekday: (n: number) => void
+  day: string; setDay: (v: string) => void; day2: string; setDay2: (v: string) => void
+}) {
+  return (
+    <>
+      <label className="text-sm">
+        <span className="block text-xs text-muted mb-1">Quando é paga</span>
+        <select value={freq} onChange={(e) => setFreq(e.target.value as Freq)} className={inputCls}>
+          <option value="semanal">Toda semana</option>
+          <option value="quinzenal">Quinzenal (2 vezes por mês)</option>
+          <option value="mensal">Uma vez por mês</option>
+        </select>
+      </label>
+      {freq === 'semanal' && (
+        <label className="text-sm">
+          <span className="block text-xs text-muted mb-1">Dia da semana</span>
+          <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={inputCls}>
+            {DIAS_SEMANA.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}
+          </select>
+        </label>
+      )}
+      {freq !== 'semanal' && (
+        <label className="text-sm">
+          <span className="block text-xs text-muted mb-1">{freq === 'mensal' ? 'Todo dia' : 'Primeiro dia'}</span>
+          <input value={day} onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="10" className={`${inputCls} w-20`} required />
+        </label>
+      )}
+      {freq === 'quinzenal' && (
+        <label className="text-sm">
+          <span className="block text-xs text-muted mb-1">Segundo dia</span>
+          <input value={day2} onChange={(e) => setDay2(e.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="25" className={`${inputCls} w-20`} required />
+        </label>
+      )}
+    </>
+  )
+}
+
 function EscolhaFestas({ scope, setScope, userId, setUserId, usuarios }: { scope: 'cadastradas' | 'todas'; setScope: (s: 'cadastradas' | 'todas') => void; userId: string; setUserId: (v: string) => void; usuarios: { id: string; name: string }[] }) {
   return (
     <>
@@ -691,8 +756,8 @@ function EscolhaFestas({ scope, setScope, userId, setUserId, usuarios }: { scope
   )
 }
 
-function CartaoPessoa({ regra, usuarios, hoje, onErro, onAviso, onMudou }: {
-  regra: Regra; usuarios: { id: string; name: string }[]; hoje: string
+function CartaoPessoa({ regra, agenda, usuarios, hoje, onErro, onAviso, onMudou }: {
+  regra: Regra; agenda: Agenda | undefined; usuarios: { id: string; name: string }[]; hoje: string
   onErro: (m: string) => void; onAviso: (m: string) => void; onMudou: () => Promise<void>
 }) {
   const [editando, setEditando] = useState(false)
@@ -703,6 +768,10 @@ function CartaoPessoa({ regra, usuarios, hoje, onErro, onAviso, onMudou }: {
   const [modo, setModo] = useState<Modo>(versaoEm(regra, hoje)?.mode ?? 'fixo')
   const [valor, setValor] = useState('')
   const [desde, setDesde] = useState(hoje)
+  const [freq, setFreq] = useState<Freq>(agenda?.frequency ?? 'semanal')
+  const [weekday, setWeekday] = useState(agenda?.weekday ?? 1)
+  const [dia, setDia] = useState(String(agenda?.day ?? 5))
+  const [dia2, setDia2] = useState(String(agenda?.day2 ?? 20))
   const versoes = [...regra.versions].sort((a, b) => (a.valid_from < b.valid_from ? 1 : -1))
 
   async function salvarValor(e: FormEvent) {
@@ -721,6 +790,15 @@ function CartaoPessoa({ regra, usuarios, hoje, onErro, onAviso, onMudou }: {
     if (error) return onErro(friendlyDbError(error.message))
     setEditando(false)
     onAviso('Dados salvos.')
+    await onMudou()
+  }
+  async function salvarAgenda(e: FormEvent) {
+    e.preventDefault()
+    const { error } = await supabase.rpc('set_commission_schedule', {
+      p_rule: regra.id, p_frequency: freq, p_weekday: weekday, p_day: freq === 'semanal' ? null : Number(dia), p_day2: freq === 'quinzenal' ? Number(dia2) : null,
+    })
+    if (error) return onErro(/set_commission_schedule|schema cache/i.test(error.message) ? 'A data de repasse ainda não foi instalada no banco de dados (migração 098).' : friendlyDbError(error.message))
+    onAviso(`${regra.name} passa a ser paga ${descAgenda({ frequency: freq, weekday, day: Number(dia), day2: Number(dia2) })}.`)
     await onMudou()
   }
   async function remover() {
@@ -761,6 +839,14 @@ function CartaoPessoa({ regra, usuarios, hoje, onErro, onAviso, onMudou }: {
         </form>
       )}
 
+      <form onSubmit={salvarAgenda} className="flex flex-wrap gap-3 items-end">
+        <SeletorAgenda freq={freq} setFreq={setFreq} weekday={weekday} setWeekday={setWeekday} day={dia} setDay={setDia} day2={dia2} setDay2={setDia2} />
+        <Button type="submit" variant="secondary">Salvar quando é paga</Button>
+        <p className="basis-full text-[11px] text-muted">
+          Hoje: paga {descAgenda(agenda)}. O repasse paga as festas cadastradas até a véspera do dia de pagamento. Mês sem o dia escolhido (ex.: 31 em fevereiro) paga no último dia do mês.
+        </p>
+      </form>
+
       <form onSubmit={salvarValor} className="flex flex-wrap gap-3 items-end">
         <SeletorValor modo={modo} setModo={setModo} valor={valor} setValor={setValor} />
         <label className="text-sm">
@@ -789,14 +875,28 @@ function NovaPessoa({ usuarios, hoje, primeira, onErro, onAviso, onMudou }: {
   const [inicio, setInicio] = useState(hoje)
   const [modo, setModo] = useState<Modo>('fixo')
   const [valor, setValor] = useState('')
+  const [freq, setFreq] = useState<Freq>('semanal')
+  const [weekday, setWeekday] = useState(1)
+  const [dia, setDia] = useState('5')
+  const [dia2, setDia2] = useState('20')
 
   async function criar(e: FormEvent) {
     e.preventDefault()
     const v = parseDecimal(valor)
     if (v == null || v < 0 || (modo === 'percentual' && v > 100)) return onErro(modo === 'percentual' ? 'Informe uma porcentagem entre 0 e 100.' : 'Informe um valor válido.')
-    const { error } = await supabase.rpc('create_commission_rule', { p_name: nome, p_user: scope === 'cadastradas' ? userId || null : null, p_scope: scope, p_start: inicio, p_mode: modo, p_value: v })
+    const { data: novoId, error } = await supabase.rpc('create_commission_rule', { p_name: nome, p_user: scope === 'cadastradas' ? userId || null : null, p_scope: scope, p_start: inicio, p_mode: modo, p_value: v })
     if (error) return onErro(friendlyDbError(error.message))
-    onAviso(`${nome.trim()} adicionada: ${descValor(modo, v)}.`)
+    // só grava a data de repasse quando não é a padrão (toda segunda)
+    if (novoId && !(freq === 'semanal' && weekday === 1)) {
+      const { error: e2 } = await supabase.rpc('set_commission_schedule', { p_rule: novoId, p_frequency: freq, p_weekday: weekday, p_day: freq === 'semanal' ? null : Number(dia), p_day2: freq === 'quinzenal' ? Number(dia2) : null })
+      if (e2) {
+        onErro(`${nome.trim()} foi adicionada, mas a data de repasse não foi salva: ${/set_commission_schedule|schema cache/i.test(e2.message) ? 'a migração 098 ainda não foi instalada no banco.' : friendlyDbError(e2.message)}`)
+        setNome(''); setValor(''); setUserId(''); setAberto(false)
+        await onMudou()
+        return
+      }
+    }
+    onAviso(`${nome.trim()} adicionada: ${descValor(modo, v)}, paga ${descAgenda({ frequency: freq, weekday, day: Number(dia), day2: Number(dia2) })}.`)
     setNome(''); setValor(''); setUserId(''); setAberto(false)
     await onMudou()
   }
@@ -812,6 +912,7 @@ function NovaPessoa({ usuarios, hoje, primeira, onErro, onAviso, onMudou }: {
         </label>
         <EscolhaFestas scope={scope} setScope={setScope} userId={userId} setUserId={setUserId} usuarios={usuarios} />
         <SeletorValor modo={modo} setModo={setModo} valor={valor} setValor={setValor} />
+        <SeletorAgenda freq={freq} setFreq={setFreq} weekday={weekday} setWeekday={setWeekday} day={dia} setDay={setDia} day2={dia2} setDay2={setDia2} />
         <label className="text-sm">
           <span className="block text-xs text-muted mb-1">Contar festas cadastradas a partir de</span>
           <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} className={inputCls} required />

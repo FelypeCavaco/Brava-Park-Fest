@@ -1,8 +1,9 @@
-// Relatório financeiro completo (PDF e Excel) de um período em meses.
+// Relatório financeiro completo (PDF e Excel) de um período qualquer: dias, semanas,
+// meses ou um intervalo de datas.
 //
 // Usa as mesmas contas do banco que as três visões do Financeiro
-// (finance_month_views e finance_commitments), somadas mês a mês, e lista
-// cada lançamento do período. Assim os números do relatório batem com as telas.
+// (finance_range_views, que faz a conta de finance_month_views para qualquer
+// intervalo, e finance_commitments) e lista cada lançamento do período. Assim os números do relatório batem com as telas.
 
 import { supabase } from './supabaseClient'
 import { addMonthsToValue } from './monthUtils'
@@ -52,13 +53,16 @@ export interface DadosRelatorio {
   unidade: string
   mesIni: string
   mesFim: string
+  de: string // primeiro dia do período (aaaa-mm-dd)
+  ate: string // último dia do período (aaaa-mm-dd), no máximo hoje
+  agrupar: Agrupar
   periodoTexto: string
   geradoEm: string
   geradoPor: string
   meses: string[]
   caixa: MonthViews['caixa']
   resultado: MonthViews['resultado']
-  porMes: { mes: string; entradas: number; saidas: number; saldo: number; resultado: number; festas: number; manuais: number }[]
+  porMes: { mes: string; rotulo: string; de: string; ate: string; entradas: number; saidas: number; saldo: number; resultado: number; festas: number; manuais: number }[]
   festas: (FestaRealizada & { mes: string; foraDaConta: boolean })[]
   cancelamentos: Cancelamento[]
   ponte: LinhaPonte[]
@@ -72,6 +76,8 @@ export interface DadosRelatorio {
   entradasManuaisLista: Lancamento[]
   mesAtualIncluido: boolean
   corteMesAtual: string | null
+  // quando o relatório separa por unidade: os mesmos números de cada unidade
+  unidadesSeparadas?: { nome: string; dados: DadosRelatorio }[]
 }
 
 const n = (v: unknown) => Number(v ?? 0)
@@ -111,57 +117,140 @@ async function buscarTudo<T>(montar: () => any): Promise<T[]> {
   return out
 }
 
+// ---------- períodos ----------
+
+export type Agrupar = 'dia' | 'semana' | 'mes'
+export interface Faixa { chave: string; rotulo: string; de: string; ate: string }
+
+const pad2 = (v: number) => String(v).padStart(2, '0')
+const isoDe = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+const dataDe = (iso: string) => new Date(`${iso}T12:00:00`)
+export const hojeIso = () => isoDe(new Date())
+export function somarDias(iso: string, dias: number) {
+  const d = dataDe(iso)
+  d.setDate(d.getDate() + dias)
+  return isoDe(d)
+}
+export function diasEntre(de: string, ate: string) {
+  return Math.round((dataDe(ate).getTime() - dataDe(de).getTime()) / 86400000) + 1
+}
+const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+const dma = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+
+// Segunda-feira da semana de uma data (a semana vai de segunda a domingo).
+export function inicioDaSemana(iso: string) {
+  const d = dataDe(iso)
+  const dia = (d.getDay() + 6) % 7 // segunda = 0
+  d.setDate(d.getDate() - dia)
+  return isoDe(d)
+}
+
+export function montarFaixas(de: string, ate: string, agrupar: Agrupar): Faixa[] {
+  const out: Faixa[] = []
+  if (agrupar === 'dia') {
+    for (let d = de; d <= ate; d = somarDias(d, 1)) out.push({ chave: d, rotulo: dm(d), de: d, ate: d })
+  } else if (agrupar === 'semana') {
+    for (let ini = de; ini <= ate; ) {
+      const domingo = somarDias(inicioDaSemana(ini), 6)
+      const fim = domingo < ate ? domingo : ate
+      out.push({ chave: ini, rotulo: ini === fim ? dm(ini) : `${dm(ini)} a ${dm(fim)}`, de: ini, ate: fim })
+      ini = somarDias(fim, 1)
+    }
+  } else {
+    for (let ini = de; ini <= ate; ) {
+      const mes = ini.slice(0, 7)
+      const ultimo = `${addMonthsToValue(mes, 1)}-01`
+      const fimMes = somarDias(ultimo, -1)
+      const fim = fimMes < ate ? fimMes : ate
+      const inteiro = ini === `${mes}-01` && fim === fimMes
+      out.push({ chave: mes, rotulo: inteiro ? nomeMesLongo(mes) : `${nomeMesLongo(mes)} (${dm(ini)} a ${dm(fim)})`, de: ini, ate: fim })
+      ini = somarDias(fim, 1)
+    }
+  }
+  return out
+}
+
+// Até 31 dias: dia a dia. Até 4 meses: semana a semana. Depois: mês a mês.
+export function agrupamentoAutomatico(de: string, ate: string): Agrupar {
+  const dias = diasEntre(de, ate)
+  return dias <= 31 ? 'dia' : dias <= 124 ? 'semana' : 'mes'
+}
+// No máximo 60 faixas por relatório: se o agrupamento escolhido passar disso, sobe um nível.
+export function ajustarAgrupamento(de: string, ate: string, agrupar: Agrupar): Agrupar {
+  const ordem: Agrupar[] = ['dia', 'semana', 'mes']
+  let i = ordem.indexOf(agrupar)
+  while (i < 2 && montarFaixas(de, ate, ordem[i]).length > 60) i++
+  return ordem[i]
+}
+export const NOME_AGRUPAR: Record<Agrupar, { tabela: string; unidade: string; plural: string }> = {
+  dia: { tabela: 'Dia a dia', unidade: 'dia', plural: 'dias' },
+  semana: { tabela: 'Semana a semana', unidade: 'semana', plural: 'semanas' },
+  mes: { tabela: 'Mês a mês', unidade: 'mês', plural: 'meses' },
+}
+
+export function textoDoPeriodo(de: string, ate: string) {
+  if (de === ate) return dma(de)
+  const mes = de.slice(0, 7)
+  const fimDoMes = somarDias(`${addMonthsToValue(mes, 1)}-01`, -1)
+  if (de === `${mes}-01` && ate === fimDoMes) return nomeMesLongo(mes)
+  return `${dma(de)} a ${dma(ate)}`
+}
+
 // ---------- carregar ----------
 
-export async function carregarRelatorio(op: {
-  mesIni: string; mesFim: string; unitId: string | null; unidade: string; casa: string; geradoPor: string
-}): Promise<DadosRelatorio> {
-  let { mesIni, mesFim } = op
-  if (mesFim < mesIni) [mesIni, mesFim] = [mesFim, mesIni]
-  const meses: string[] = []
-  for (let m = mesIni; m <= mesFim && meses.length < 24; m = addMonthsToValue(m, 1)) meses.push(m)
-  const ini = `${meses[0]}-01`
-  const fim = `${addMonthsToValue(meses[meses.length - 1], 1)}-01`
+interface OpRelatorio {
+  de: string; ate: string; agrupar?: Agrupar; unitId: string | null; unidade: string; casa: string; geradoPor: string
+  // para separar por unidade: as unidades (cada uma com o id do banco)
+  separarPor?: { nome: string; unitId: string }[]
+}
 
-  const views = await Promise.all(
-    meses.map(async (m) => {
-      const { data, error } = await supabase.rpc('finance_month_views', { p_month: `${m}-01`, p_unit: op.unitId })
-      if (error) throw error
-      return data as MonthViews
-    }),
-  )
+export async function carregarRelatorio(op: OpRelatorio): Promise<DadosRelatorio> {
+  const hoje = hojeIso()
+  let { de, ate } = op
+  if (ate < de) [de, ate] = [ate, de]
+  if (ate > hoje) ate = hoje // o relatório vai até hoje: dias que não chegaram ainda não têm lançamento
+  if (de > ate) throw new Error('Esse período ainda não começou.')
+  if (diasEntre(de, ate) > 800) throw new Error('Escolha no máximo 2 anos por relatório.')
+  const agrupar = ajustarAgrupamento(de, ate, op.agrupar ?? agrupamentoAutomatico(de, ate))
+  const faixas = montarFaixas(de, ate, agrupar)
+  const ini = de
+  const fim = somarDias(ate, 1) // exclusivo
+
+  const chamar = async (a: string, b: string) => {
+    const { data, error } = await supabase.rpc('finance_range_views', { p_from: a, p_to: b, p_unit: op.unitId })
+    if (error) {
+      if (/finance_range_views|schema cache|PGRST202/i.test(`${error.message} ${error.code ?? ''}`)) throw new Error('O relatório por período ainda não foi instalado no banco de dados (migração 099).')
+      throw error
+    }
+    return data as MonthViews
+  }
+  // O período inteiro numa conta só (totais, ponte, festas e cancelamentos) e cada faixa à parte (só para a tabela "por período").
+  const [v, viewsFaixas] = await Promise.all([
+    chamar(de, ate),
+    faixas.length > 1 ? Promise.all(faixas.map((f) => chamar(f.de, f.ate))) : Promise.resolve(null as MonthViews[] | null),
+  ])
 
   const caixa = { entradas: 0, acertos_recebidos: 0, contas_pagas: 0, custos_festas: 0, saldo: 0 }
   const resultado = { festas: 0, receita: 0, custos_lancados: 0, insumos: 0, taxa: 0, resultado_direto: 0, despesas_gerais: 0, efeito_cancelamentos: 0, resultado: 0, compras_estoque: 0 }
-  const ponte = new Map<string, LinhaPonte>()
-  let diferenca = 0
-  const festas: DadosRelatorio['festas'] = []
-  const cancelamentos: Cancelamento[] = []
-  const porMes: DadosRelatorio['porMes'] = []
-  let corteMesAtual = null as string | null
+  for (const k of Object.keys(caixa) as (keyof typeof caixa)[]) caixa[k] = n(v.caixa[k])
+  for (const k of Object.keys(resultado) as (keyof typeof resultado)[]) resultado[k] = n(v.resultado[k])
+  const ponte: LinhaPonte[] = (v.ponte ?? []).map((l) => ({ chave: l.chave, valor: n(l.valor), itens: (l.itens ?? []).map((it) => ({ ...it, valor: n(it.valor) })) }))
+  const diferenca = n(v.diferenca)
+  const festas: DadosRelatorio['festas'] = (v.festas ?? []).map((f) => ({ ...f, mes: String(f.data).slice(0, 7), foraDaConta: false }))
+  const cancelamentos: Cancelamento[] = v.cancelamentos ?? []
+  const corteMesAtual = ate === hoje ? hoje : null
 
-  views.forEach((v, i) => {
-    for (const k of Object.keys(caixa) as (keyof typeof caixa)[]) caixa[k] += n(v.caixa[k])
-    for (const k of Object.keys(resultado) as (keyof typeof resultado)[]) resultado[k] += n(v.resultado[k])
-    for (const l of v.ponte ?? []) {
-      const atual = ponte.get(l.chave) ?? { chave: l.chave, valor: 0, itens: [] }
-      atual.valor += n(l.valor)
-      atual.itens.push(...(l.itens ?? []).map((it) => ({ ...it, valor: n(it.valor) })))
-      ponte.set(l.chave, atual)
-    }
-    diferenca += n(v.diferenca)
-    for (const f of v.festas ?? []) festas.push({ ...f, mes: meses[i], foraDaConta: false })
-    cancelamentos.push(...(v.cancelamentos ?? []))
-    if (v.mes_atual) corteMesAtual = v.corte
-    porMes.push({
-      mes: meses[i],
-      entradas: n(v.caixa.entradas) + n(v.caixa.acertos_recebidos),
-      saidas: n(v.caixa.contas_pagas) + n(v.caixa.custos_festas),
-      saldo: n(v.caixa.saldo),
-      resultado: n(v.resultado.resultado),
-      festas: n(v.resultado.festas),
+  const porMes: DadosRelatorio['porMes'] = faixas.map((f, i) => {
+    const x = viewsFaixas ? viewsFaixas[i] : v
+    return {
+      mes: f.chave, rotulo: f.rotulo, de: f.de, ate: f.ate,
+      entradas: n(x.caixa.entradas) + n(x.caixa.acertos_recebidos),
+      saidas: n(x.caixa.contas_pagas) + n(x.caixa.custos_festas),
+      saldo: n(x.caixa.saldo),
+      resultado: n(x.resultado.resultado),
+      festas: n(x.resultado.festas),
       manuais: 0,
-    })
+    }
   })
 
   // Festas marcadas "fora da conta" no Lucro por festa (migração 088). Se a
@@ -185,9 +274,7 @@ export async function carregarRelatorio(op: {
 
   // ---------- lançamentos do período ----------
   const agoraLocal = new Date()
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  const hoje = iso(agoraLocal)
-  const amanha = iso(new Date(agoraLocal.getFullYear(), agoraLocal.getMonth(), agoraLocal.getDate() + 1))
+  const amanha = somarDias(hoje, 1)
   // Custos das festas contam até hoje (igual ao caixa): festa futura ainda não gastou.
   const limiteCustos = fim < amanha ? fim : amanha
   const porUnidade = (q: any, col = 'unit_id') => (op.unitId ? q.eq(col, op.unitId) : q)
@@ -218,13 +305,13 @@ export async function carregarRelatorio(op: {
     })
   }
   // Entradas lançadas à mão: contam no 2º cenário do resultado (festas + entradas à mão).
-  // No mês atual valem só até hoje, igual ao resto do relatório.
   let entradasManuais = 0
   const entradasManuaisLista: Lancamento[] = []
   for (const o of outras) {
-    if (o.kind === 'manual' && (!corteMesAtual || String(o.received_date).slice(0, 10) <= corteMesAtual || String(o.received_date).slice(0, 7) !== meses[meses.length - 1])) {
+    if (o.kind === 'manual') {
       entradasManuais += n(o.amount)
-      const pm = porMes.find((m) => m.mes === String(o.received_date).slice(0, 7))
+      const dia = String(o.received_date).slice(0, 10)
+      const pm = porMes.find((m) => dia >= m.de && dia <= m.ate)
       if (pm) pm.manuais += n(o.amount)
       entradasManuaisLista.push({ data: o.received_date, categoria: categoriaEntrada(o), descricao: o.description || categoriaEntrada(o), detalhe: metodo(o.payment_method), valor: n(o.amount), origem: ORIGEM_MANUAL })
     }
@@ -266,14 +353,19 @@ export async function carregarRelatorio(op: {
     atrasada: e.status === 'atrasado' || e.due_date < hoje,
   }))
 
-  const agora = new Date()
-  return {
+  const meses: string[] = []
+  for (let m = de.slice(0, 7); m <= ate.slice(0, 7) && meses.length < 30; m = addMonthsToValue(m, 1)) meses.push(m)
+
+  const dados: DadosRelatorio = {
     casa: op.casa,
     unidade: op.unidade,
-    mesIni: meses[0],
-    mesFim: meses[meses.length - 1],
-    periodoTexto: meses.length === 1 ? nomeMesLongo(meses[0]) : `${nomeMesLongo(meses[0])} a ${nomeMesLongo(meses[meses.length - 1])}`,
-    geradoEm: `${dataBr(agora.toISOString())} às ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`,
+    mesIni: de.slice(0, 7),
+    mesFim: ate.slice(0, 7),
+    de,
+    ate,
+    agrupar,
+    periodoTexto: textoDoPeriodo(de, ate),
+    geradoEm: `${dataBr(agoraLocal.toISOString())} às ${pad2(agoraLocal.getHours())}:${pad2(agoraLocal.getMinutes())}`,
     geradoPor: op.geradoPor,
     meses,
     caixa,
@@ -281,7 +373,7 @@ export async function carregarRelatorio(op: {
     porMes,
     festas,
     cancelamentos,
-    ponte: [...ponte.values()],
+    ponte,
     diferenca,
     compromissos: (comp as Commitments) ?? null,
     entradas,
@@ -293,6 +385,16 @@ export async function carregarRelatorio(op: {
     mesAtualIncluido: corteMesAtual !== null,
     corteMesAtual,
   }
+
+  // Separar por unidade: o mesmo relatório, uma vez para cada unidade (sem repetir a separação).
+  if (op.separarPor && op.separarPor.length > 0) {
+    dados.unidadesSeparadas = []
+    for (const u of op.separarPor) {
+      const d = await carregarRelatorio({ ...op, de, ate, agrupar, unitId: u.unitId, unidade: u.nome, separarPor: undefined })
+      dados.unidadesSeparadas.push({ nome: u.nome, dados: d })
+    }
+  }
+  return dados
 }
 
 // ---------- textos (usados no PDF e no Excel) ----------

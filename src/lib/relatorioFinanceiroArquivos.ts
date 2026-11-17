@@ -1,9 +1,10 @@
 // Gera o PDF e o Excel do relatório financeiro a partir de DadosRelatorio.
 
 import { downloadPdf } from './pdfExport'
+import { graficoLinhas, graficoPizza, type Grafico } from './graficosRelatorio'
 import {
   brl, dataBr, nomeMesLongo, veredito, vereditoComManuais, resultadoComManuais, explicacaoResultado, explicacaoCaixa, explicacaoPonte,
-  somaPorCategoria, PONTE_TEXTO, GLOSSARIO, ORIGEM_MANUAL, type DadosRelatorio, type Lancamento,
+  somaPorCategoria, PONTE_TEXTO, GLOSSARIO, ORIGEM_MANUAL, NOME_AGRUPAR, type DadosRelatorio, type Lancamento,
 } from './relatorioFinanceiro'
 
 const LOGO = '/marca/festou.png'
@@ -16,14 +17,14 @@ function escopo(d: DadosRelatorio) {
   const r = d.resultado
   const fora = d.festas.filter((f) => f.foraDaConta).length
   const mostra = [
-    'LUCRO OU PREJUÍZO: o resultado das festas que já aconteceram no período, menos as despesas gerais da casa pagas no período, com o efeito dos cancelamentos. Cada festa conta no mês em que acontece.',
+    'LUCRO OU PREJUÍZO: o resultado das festas que já aconteceram no período, menos as despesas gerais da casa pagas no período, com o efeito dos cancelamentos. Cada festa conta na data em que acontece.',
     'LUCRO COM AS ENTRADAS LANÇADAS À MÃO: o mesmo resultado das festas, somado às entradas do período lançadas à mão (ex.: aluguel do espaço). Os dois números aparecem lado a lado.',
     'CAIXA: o dinheiro que realmente passou pela conta (pagamentos recebidos e contas pagas), no dia em que aconteceu. Não diz, sozinho, se houve lucro.',
     'PONTE: explica linha por linha por que o caixa e o lucro são números diferentes.',
     'COMPROMISSOS: o que já foi recebido de festas que ainda vão acontecer e quanto elas vão custar.',
   ]
   const naoEntra = [
-    'Festas que ainda vão acontecer: só aparecem em Compromissos. Contam no lucro no mês em que acontecerem.',
+    'Festas que ainda vão acontecer: só aparecem em Compromissos. Contam no lucro na data em que acontecerem.',
     d.entradasManuais > 0
       ? `Entradas lançadas à mão (ex.: aluguel do espaço): ${brl(d.entradasManuais)} neste período. Não entram no lucro das festas; aparecem somadas à parte, no lucro com as entradas lançadas à mão.`
       : 'Entradas lançadas à mão (ex.: aluguel do espaço): nenhuma neste período. Se houver, não entram no lucro das festas e aparecem somadas à parte. Acertos entre unidades e multa e juros entram no caixa, mas não no lucro.',
@@ -41,7 +42,7 @@ function escopo(d: DadosRelatorio) {
 
 function nomeArquivo(d: DadosRelatorio, ext: string) {
   const limpar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()
-  const periodo = d.mesIni === d.mesFim ? d.mesIni : `${d.mesIni}_a_${d.mesFim}`
+  const periodo = d.de === d.ate ? d.de : `${d.de}_a_${d.ate}`
   return `relatorio-financeiro-${limpar(d.casa || 'festou')}-${limpar(d.unidade)}-${periodo}.${ext}`
 }
 
@@ -153,7 +154,7 @@ export function htmlRelatorio(d: DadosRelatorio): string {
       <div class="card"><div class="t">Festas realizadas</div><div class="v">${r.festas}</div></div>
     </div>
     <h3>O que tem neste relatório</h3>
-    <p>1. O resultado do período, explicado · 2. Mês a mês · 3. Visão Caixa · 4. Visão Resultado das festas · 5. Visão Ponte e compromissos · 6. Todos os lançamentos · 7. Contas em aberto · 8. Glossário</p>
+    <p>1. O resultado do período, explicado · 2. ${NOME_AGRUPAR[d.agrupar].tabela} · 3. Visão Caixa · 4. Visão Resultado das festas · 5. Visão Ponte e compromissos · 6. Todos os lançamentos · 7. Contas em aberto · 8. Glossário${d.unidadesSeparadas?.length ? ' · 9. Resultado por unidade' : ''}</p>
     <h3>O que este relatório mostra</h3>
     <div class="box">${escopo(d).mostra.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
     <h3>O que NÃO entra no lucro</h3>
@@ -184,17 +185,17 @@ export function htmlRelatorio(d: DadosRelatorio): string {
     <p>${esc(explicacaoPonte(d))}</p>`
 
   const secMeses = `
-    <h2 style="margin-top:16px">2. Mês a mês</h2>
-    <p class="exp">Como cada mês do período contribuiu. "Saldo do caixa" é o dinheiro. O resultado aparece em dois cenários: só com as festas e despesas, e somando as entradas lançadas à mão.</p>
-    <table><thead><tr><th>Mês</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado das festas</th><th class="n">Entradas à mão</th><th class="n">Resultado com entradas à mão</th></tr></thead><tbody>
-      ${d.porMes.map((m) => `<tr><td>${esc(nomeMesLongo(m.mes))}</td><td class="n">${m.festas}</td><td class="n pos">${brl(m.entradas)}</td><td class="n neg">${brl(m.saidas)}</td><td class="n ${cls(m.saldo)}">${brl(m.saldo)}</td><td class="n ${cls(m.resultado)}">${brl(m.resultado)} ${m.resultado >= 0 ? '(lucro)' : '(prejuízo)'}</td><td class="n pos">${brl(m.manuais)}</td><td class="n ${cls(m.resultado + m.manuais)}">${brl(m.resultado + m.manuais)} ${m.resultado + m.manuais >= 0 ? '(lucro)' : '(prejuízo)'}</td></tr>`).join('')}
+    <h2 style="margin-top:16px">2. ${NOME_AGRUPAR[d.agrupar].tabela}</h2>
+    <p class="exp">Como cada ${NOME_AGRUPAR[d.agrupar].unidade} do período contribuiu. "Saldo do caixa" é o dinheiro. O resultado aparece em dois cenários: só com as festas e despesas, e somando as entradas lançadas à mão.</p>
+    <table><thead><tr><th>Período</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado das festas</th><th class="n">Entradas à mão</th><th class="n">Resultado com entradas à mão</th></tr></thead><tbody>
+      ${d.porMes.map((m) => `<tr><td>${esc(m.rotulo)}</td><td class="n">${m.festas}</td><td class="n pos">${brl(m.entradas)}</td><td class="n neg">${brl(m.saidas)}</td><td class="n ${cls(m.saldo)}">${brl(m.saldo)}</td><td class="n ${cls(m.resultado)}">${brl(m.resultado)} ${m.resultado >= 0 ? '(lucro)' : '(prejuízo)'}</td><td class="n pos">${brl(m.manuais)}</td><td class="n ${cls(m.resultado + m.manuais)}">${brl(m.resultado + m.manuais)} ${m.resultado + m.manuais >= 0 ? '(lucro)' : '(prejuízo)'}</td></tr>`).join('')}
       <tr class="total"><td>Total</td><td class="n">${r.festas}</td><td class="n pos">${brl(entrou)}</td><td class="n neg">${brl(saiu)}</td><td class="n ${cls(c.saldo)}">${brl(c.saldo)}</td><td class="n ${cls(r.resultado)}">${brl(r.resultado)}</td><td class="n pos">${brl(d.entradasManuais)}</td><td class="n ${cls(r2)}">${brl(r2)}</td></tr>
     </tbody></table>`
 
   const secCaixa = `
     <div class="quebra"></div>${topo(d, '3. Visão Caixa')}
     <h2>3. Visão Caixa: o dinheiro que passou pela conta</h2>
-    <p class="exp">Pagamentos contam no dia em que o cliente pagou; contas, no dia em que foram pagas; custos das festas, no dia da festa. Por isso um mês com muitas festas pagas antes pode ter saldo baixo sem que isso seja prejuízo.</p>
+    <p class="exp">Pagamentos contam no dia em que o cliente pagou; contas, no dia em que foram pagas; custos das festas, no dia da festa. Por isso um período com muitas festas pagas antes pode ter saldo baixo sem que isso seja prejuízo.</p>
     <table><thead><tr><th>Linha</th><th>O que é</th><th class="n">Valor</th></tr></thead><tbody>
       <tr><td>Pagamentos de clientes</td><td class="exp">Tudo o que os clientes pagaram no período, de qualquer festa (inclusive de festas futuras).</td><td class="n pos">${brl(c.entradas)}</td></tr>
       <tr><td>Outras entradas</td><td class="exp">Entradas lançadas à mão, acertos entre unidades, multa e juros de parcelas.</td><td class="n pos">${brl(c.acertos_recebidos)}</td></tr>
@@ -211,7 +212,7 @@ export function htmlRelatorio(d: DadosRelatorio): string {
   const secResultadoFestas = `
     <div class="quebra"></div>${topo(d, '4. Visão Resultado das festas')}
     <h2>4. Visão Resultado das festas: cada festa deu lucro?</h2>
-    <p class="exp">Cada festa conta no mês em que acontece, com o valor dela (firmado + extras + consumo), menos os custos lançados, os insumos consumidos e a taxa da maquininha.${parciais > 0 ? ` <strong>${parciais} festa${parciais === 1 ? '' : 's'} com dados incompletos</strong> (marcadas como "parcial").` : ''}</p>
+    <p class="exp">Cada festa conta na data em que acontece, com o valor dela (firmado + extras + consumo), menos os custos lançados, os insumos consumidos e a taxa da maquininha.${parciais > 0 ? ` <strong>${parciais} festa${parciais === 1 ? '' : 's'} com dados incompletos</strong> (marcadas como "parcial").` : ''}</p>
     ${d.festas.length === 0 ? '<p class="exp">Nenhuma festa realizada no período.</p>' : `
     <table><thead><tr><th>Data</th><th>Cliente</th><th class="n">Valor</th><th class="n">Recebido</th><th class="n">A receber</th><th class="n">Custos</th><th class="n">Insumos</th><th class="n">Taxa</th><th class="n">Lucro</th><th class="n">Margem</th></tr></thead><tbody>
       ${d.festas.map((f) => `<tr class="${f.foraDaConta ? 'fora' : ''}"><td>${dataBr(f.data)}</td><td>${esc(f.cliente)} ${f.status === 'parcial' ? '<span class="tag parcial">parcial</span>' : ''} ${f.foraDaConta ? '<span class="tag fora">fora da conta</span>' : ''}</td><td class="n">${brl(f.receita)}</td><td class="n">${brl(f.recebido)}</td><td class="n">${brl(f.a_receber)}</td><td class="n neg">${brl(f.custos)}</td><td class="n neg">${brl(f.insumos)}</td><td class="n neg">${brl(f.taxa)}</td><td class="n ${cls(f.lucro)}">${brl(f.lucro)}</td><td class="n">${f.receita > 0 ? ((f.lucro / f.receita) * 100).toFixed(0) : '0'}%</td></tr>`).join('')}
@@ -274,7 +275,30 @@ export function htmlRelatorio(d: DadosRelatorio): string {
     <table><tbody>${GLOSSARIO.map(([t, x]) => `<tr><td style="width:140px"><strong>${esc(t)}</strong></td><td>${esc(x)}</td></tr>`).join('')}</tbody></table>
     <p class="rodape">Relatório gerado pelo Festou · ${esc(d.geradoEm)}</p>`
 
-  return capa + secResultado + secMeses + secCaixa + secResultadoFestas + secPonte + secLanc + secAbertas
+  const un = d.unidadesSeparadas ?? []
+  const linhaUn = (nome: string, x: DadosRelatorio) => {
+    const ent = x.caixa.entradas + x.caixa.acertos_recebidos
+    const sai = x.caixa.contas_pagas + x.caixa.custos_festas
+    const res2 = resultadoComManuais(x)
+    return `<tr><td>${esc(nome)}</td><td class="n">${x.resultado.festas}</td><td class="n pos">${brl(ent)}</td><td class="n neg">${brl(sai)}</td><td class="n ${cls(x.caixa.saldo)}">${brl(x.caixa.saldo)}</td><td class="n ${cls(x.resultado.resultado)}">${brl(x.resultado.resultado)}</td><td class="n pos">${brl(x.entradasManuais)}</td><td class="n ${cls(res2)}">${brl(res2)}</td></tr>`
+  }
+  const secUnidades = un.length === 0 ? '' : `
+    <div class="quebra"></div>${topo(d, '9. Resultado por unidade')}
+    <h2>9. Resultado por unidade</h2>
+    <p class="exp">Os mesmos números do relatório, separados por unidade, no mesmo período (${esc(d.periodoTexto)}).</p>
+    <table><thead><tr><th>Unidade</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado das festas</th><th class="n">Entradas à mão</th><th class="n">Resultado com entradas à mão</th></tr></thead><tbody>
+      ${un.map((u) => linhaUn(u.nome, u.dados)).join('')}
+      ${linhaUn('Total (todas)', d).replace('<tr>', '<tr class="total">')}
+    </tbody></table>
+    ${un.map((u) => `
+    <h3>${esc(u.nome)}</h3>
+    <table><thead><tr><th>Período</th><th class="n">Festas</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Saldo do caixa</th><th class="n">Resultado das festas</th></tr></thead><tbody>
+      ${u.dados.porMes.map((m) => `<tr><td>${esc(m.rotulo)}</td><td class="n">${m.festas}</td><td class="n pos">${brl(m.entradas)}</td><td class="n neg">${brl(m.saidas)}</td><td class="n ${cls(m.saldo)}">${brl(m.saldo)}</td><td class="n ${cls(m.resultado)}">${brl(m.resultado)}</td></tr>`).join('')}
+    </tbody></table>
+    <h4 style="margin:6px 0 2px">Entradas por categoria</h4>${tabelaCategorias(u.dados.entradas, 'pos')}
+    <h4 style="margin:6px 0 2px">Saídas por categoria</h4>${tabelaCategorias(u.dados.saidas, 'neg')}`).join('')}`
+
+  return capa + secResultado + secMeses + secCaixa + secResultadoFestas + secPonte + secLanc + secAbertas + secUnidades
 }
 
 export async function baixarPdfRelatorio(d: DadosRelatorio) {
@@ -282,6 +306,38 @@ export async function baixarPdfRelatorio(d: DadosRelatorio) {
 }
 
 // ======================= EXCEL =======================
+
+// Entradas e saídas somadas por dia (ou por mês, quando o período passa de ~2 meses).
+function serieDoCaixa(d: DadosRelatorio) {
+  const doisDigitos = (n: number) => String(n).padStart(2, '0')
+  const isoDia = (dt: Date) => `${dt.getFullYear()}-${doisDigitos(dt.getMonth() + 1)}-${doisDigitos(dt.getDate())}`
+  const ini = new Date(`${d.de}T12:00:00`)
+  const fim = new Date(`${d.ate}T12:00:00`)
+  const dias = Math.max(1, Math.round((fim.getTime() - ini.getTime()) / 86400000) + 1)
+  const porMes = dias > 62
+  const chaves: string[] = []
+  const rotulos: string[] = []
+  if (porMes) {
+    for (let dt = new Date(ini); dt <= fim; dt = new Date(dt.getFullYear(), dt.getMonth() + 1, 1, 12)) {
+      chaves.push(isoDia(dt).slice(0, 7))
+      rotulos.push(`${doisDigitos(dt.getMonth() + 1)}/${dt.getFullYear()}`)
+    }
+  } else {
+    for (let dt = new Date(ini); dt <= fim; dt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1, 12)) {
+      chaves.push(isoDia(dt))
+      rotulos.push(`${doisDigitos(dt.getDate())}/${doisDigitos(dt.getMonth() + 1)}`)
+    }
+  }
+  const soma = (lista: Lancamento[]) => {
+    const m = new Map<string, number>(chaves.map((k) => [k, 0]))
+    for (const x of lista) {
+      const k = porMes ? String(x.data).slice(0, 7) : String(x.data).slice(0, 10)
+      if (m.has(k)) m.set(k, (m.get(k) ?? 0) + x.valor)
+    }
+    return chaves.map((k) => m.get(k) ?? 0)
+  }
+  return { rotulos, entradas: soma(d.entradas), saidas: soma(d.saidas), porMes }
+}
 
 const ROXO = 'FF59239B'
 const MOEDA = '"R$" #,##0.00;[Red]-"R$" #,##0.00'
@@ -315,6 +371,13 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     s.value = `${d.casa} · ${d.unidade} · ${d.periodoTexto} · gerado em ${d.geradoEm}`
     s.font = { size: 10, color: { argb: 'FF6D5E8C' } }
     return { ws, linha: 5 }
+  }
+  // Coloca um gráfico (imagem) na linha indicada e devolve a próxima linha livre.
+  function colocar(ws: any, g: Grafico | null, linha: number, coluna = 0) {
+    if (!g) return linha
+    const id = wb.addImage({ buffer: g.buffer, extension: 'png' })
+    ws.addImage(id, { tl: { col: coluna, row: linha - 1 }, ext: { width: g.largura, height: g.altura } })
+    return linha + Math.ceil(g.altura / 20) + 1
   }
   function cabecalho(ws: any, linha: number, textos: string[]) {
     const row = ws.getRow(linha)
@@ -406,9 +469,9 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
 
   // ---- Mês a mês ----
   {
-    const { ws, linha: l0 } = aba('Mês a mês', 'Mês a mês', [22, 10, 16, 16, 18, 20, 18, 22, 12])
-    let l = cabecalho(ws, l0, ['Mês', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado das festas', 'Entradas à mão', 'Resultado com entradas à mão', ''])
-    for (const m of d.porMes) l = linhaDados(ws, l, [nomeMesLongo(m.mes), m.festas, m.entradas, m.saidas, m.saldo, m.resultado, m.manuais, m.resultado + m.manuais, m.resultado + m.manuais >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5, 6, 7] })
+    const { ws, linha: l0 } = aba(NOME_AGRUPAR[d.agrupar].tabela, NOME_AGRUPAR[d.agrupar].tabela, [26, 10, 16, 16, 18, 20, 18, 22, 12])
+    let l = cabecalho(ws, l0, ['Período', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado das festas', 'Entradas à mão', 'Resultado com entradas à mão', ''])
+    for (const m of d.porMes) l = linhaDados(ws, l, [m.rotulo, m.festas, m.entradas, m.saidas, m.saldo, m.resultado, m.manuais, m.resultado + m.manuais, m.resultado + m.manuais >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5, 6, 7] })
     linhaDados(ws, l, ['Total', r.festas, c.entradas + c.acertos_recebidos, c.contas_pagas + c.custos_festas, c.saldo, r.resultado, d.entradasManuais, r2, r2 >= 0 ? 'lucro' : 'prejuízo'], { moeda: [2, 3, 4, 5, 6, 7], negrito: true })
   }
 
@@ -417,6 +480,16 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     const { ws, linha: l0 } = aba('Caixa', 'Visão Caixa', [34, 18, 70])
     let l = paragrafo(ws, l0, 'O dinheiro que passou pela conta. Pagamentos contam no dia do pagamento; contas, no dia em que foram pagas; custos das festas, no dia da festa.', 3)
     l++
+    // linhas: o que entrou e o que saiu, dia a dia (ou mês a mês em períodos longos)
+    const serie = serieDoCaixa(d)
+    l = colocar(
+      ws,
+      await graficoLinhas(serie.porMes ? 'Entradas e saídas por mês' : 'Entradas e saídas por dia', serie.rotulos, [
+        { nome: 'Entradas', cor: '#2E7D57', valores: serie.entradas },
+        { nome: 'Saídas', cor: '#B23A3A', valores: serie.saidas },
+      ]),
+      l,
+    )
     l = cabecalho(ws, l, ['Linha', 'Valor', 'O que é'])
     const linhas: [string, number, string, boolean?][] = [
       ['Pagamentos de clientes', c.entradas, 'Tudo o que os clientes pagaram no período, de qualquer festa.'],
@@ -436,12 +509,19 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     l = paragrafo(ws, l, 'Saídas por categoria', 3, { negrito: true, cor: ROXO })
     l = cabecalho(ws, l, ['Categoria', 'Valor', 'Lançamentos'])
     for (const x of somaPorCategoria(d.saidas)) l = linhaDados(ws, l, [x.categoria, x.total, x.qtd], { moeda: [1] })
+    // pizzas por categoria, lado a lado, no fim da aba
+    l++
+    const pizzaEntradas = await graficoPizza('Entradas por categoria', somaPorCategoria(d.entradas).map((x) => ({ nome: x.categoria, valor: x.total })), 760, 320)
+    const pizzaSaidas = await graficoPizza('Saídas por categoria', somaPorCategoria(d.saidas).map((x) => ({ nome: x.categoria, valor: x.total })), 760, 320)
+    const proxima = colocar(ws, pizzaEntradas, l, 0)
+    colocar(ws, pizzaSaidas, l, 3)
+    l = Math.max(proxima, pizzaSaidas ? l + Math.ceil(320 / 20) + 1 : l)
   }
 
   // ---- Resultado das festas ----
   {
     const { ws, linha: l0 } = aba('Resultado das festas', 'Visão Resultado das festas', [12, 30, 15, 15, 15, 15, 15, 13, 15, 10, 12, 14])
-    let l = paragrafo(ws, l0, 'Cada festa conta no mês em que acontece: valor da festa menos custos lançados, insumos consumidos e taxa da maquininha.', 12)
+    let l = paragrafo(ws, l0, 'Cada festa conta na data em que acontece: valor da festa menos custos lançados, insumos consumidos e taxa da maquininha.', 12)
     l++
     l = cabecalho(ws, l, ['Data', 'Cliente', 'Valor', 'Recebido', 'A receber', 'Custos', 'Insumos', 'Taxa', 'Lucro', 'Margem', 'Dados', 'Lucro por festa'])
     for (const f of d.festas)
@@ -483,13 +563,16 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
   }
 
   // ---- Lançamentos ----
-  function abaLancamentos(nome: string, titulo: string, lista: Lancamento[], explica: string) {
+  async function abaLancamentos(nome: string, titulo: string, lista: Lancamento[], explica: string, tituloPizza?: string) {
     // Entradas trazem a coluna "Origem": as lançadas à mão ficam marcadas e em destaque.
     const comOrigem = lista.some((x) => x.origem)
     const { ws, linha: l0 } = aba(nome, titulo, comOrigem ? [12, 24, 26, 60, 16, 34] : [12, 26, 60, 16, 34])
     const cols = comOrigem ? 6 : 5
     let l = paragrafo(ws, l0, explica, cols)
     l++
+    // pizza por categoria, acima da lista
+    if (tituloPizza) l = colocar(ws, await graficoPizza(tituloPizza, somaPorCategoria(lista).map((x) => ({ nome: x.categoria, valor: x.total }))), l)
+    const linhaCab = l
     l = cabecalho(ws, l, comOrigem ? ['Data', 'Origem', 'Categoria', 'Descrição', 'Valor', 'Detalhe'] : ['Data', 'Categoria', 'Descrição', 'Valor', 'Detalhe'])
     const moeda = comOrigem ? [4] : [3]
     for (const x of lista) {
@@ -502,12 +585,12 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
       const manuais = lista.filter((x) => x.origem === ORIGEM_MANUAL)
       linhaDados(ws, l, ['', `Lançadas à mão: ${manuais.length}`, '', '', manuais.reduce((s, x) => s + x.valor, 0), 'Linhas em destaque amarelo acima'], { moeda, negrito: true, fundo: 'FFFFF1CC' })
     }
-    ws.autoFilter = { from: { row: l0 + 2, column: 1 }, to: { row: l0 + 2, column: cols } }
+    ws.autoFilter = { from: { row: linhaCab, column: 1 }, to: { row: linhaCab, column: cols } }
   }
-  abaLancamentos('Entradas', 'Todas as entradas do período', d.entradas, 'Cada pagamento de cliente e cada outra entrada do período. A coluna Origem diz de onde veio; as entradas lançadas à mão aparecem em negrito, com fundo amarelo. Use o filtro do cabeçalho para ver só uma origem ou uma categoria.')
-  abaLancamentos('Saídas', 'Todas as saídas do período', d.saidas, 'Cada conta paga e cada custo de festa do período. Use o filtro do cabeçalho para ver uma categoria só.')
+  await abaLancamentos('Entradas', 'Todas as entradas do período', d.entradas, 'Cada pagamento de cliente e cada outra entrada do período. A coluna Origem diz de onde veio; as entradas lançadas à mão aparecem em negrito, com fundo amarelo. Use o filtro do cabeçalho para ver só uma origem ou uma categoria.', 'Entradas por categoria')
+  await abaLancamentos('Saídas', 'Todas as saídas do período', d.saidas, 'Cada conta paga e cada custo de festa do período. Use o filtro do cabeçalho para ver uma categoria só.', 'Saídas por categoria')
   if (d.pagaCustosFesta.length > 0)
-    abaLancamentos('Já nos custos das festas', 'Contas que já estão nos custos das festas', d.pagaCustosFesta, 'Contas pagas marcadas como "já nos custos das festas". Não entram nos totais, para não contar duas vezes.')
+    await abaLancamentos('Já nos custos das festas', 'Contas que já estão nos custos das festas', d.pagaCustosFesta, 'Contas pagas marcadas como "já nos custos das festas". Não entram nos totais, para não contar duas vezes.')
 
   // ---- Contas em aberto ----
   {
@@ -522,6 +605,54 @@ export async function baixarExcelRelatorio(d: DadosRelatorio) {
     const { ws, linha: l0 } = aba('Glossário', 'Glossário', [26, 100])
     let l = cabecalho(ws, l0, ['Termo', 'O que significa'])
     for (const [t, x] of GLOSSARIO) l = linhaDados(ws, l, [t, x], { quebra: [1] })
+  }
+
+  // ---- Por unidade (quando o relatório foi separado por unidade) ----
+  if (d.unidadesSeparadas && d.unidadesSeparadas.length > 0) {
+    const un = d.unidadesSeparadas
+    {
+      const { ws, linha: l0 } = aba('Por unidade', 'Resultado por unidade', [28, 10, 16, 16, 18, 20, 18, 22])
+      let l = paragrafo(ws, l0, `Os mesmos números do relatório, separados por unidade, no mesmo período (${d.periodoTexto}).`, 8)
+      l++
+      l = cabecalho(ws, l, ['Unidade', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado das festas', 'Entradas à mão', 'Resultado com entradas à mão'])
+      const linhaUn = (nome: string, x: DadosRelatorio, negrito = false) =>
+        linhaDados(ws, l, [nome, x.resultado.festas, x.caixa.entradas + x.caixa.acertos_recebidos, x.caixa.contas_pagas + x.caixa.custos_festas, x.caixa.saldo, x.resultado.resultado, x.entradasManuais, resultadoComManuais(x)], { moeda: [2, 3, 4, 5, 6, 7], negrito })
+      for (const u of un) l = linhaUn(u.nome, u.dados)
+      linhaUn('Total (todas)', d, true)
+    }
+    const usados = new Set<string>(wb.worksheets.map((w: any) => w.name))
+    for (const u of un) {
+      let nome = `Unid. ${u.nome}`.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31).trim()
+      for (let k = 2; usados.has(nome); k++) nome = `${nome.slice(0, 28)} ${k}`
+      usados.add(nome)
+      const x = u.dados
+      const { ws, linha: l0 } = aba(nome, `Unidade: ${u.nome}`, [34, 18, 18, 18, 18, 18])
+      let l = paragrafo(ws, l0, `Mesmo período do relatório (${x.periodoTexto}), só desta unidade.`, 6)
+      l++
+      l = cabecalho(ws, l, ['Resumo', 'Valor'])
+      const resumo: [string, number, boolean?][] = [
+        ['Entrou no caixa', x.caixa.entradas + x.caixa.acertos_recebidos], ['Saiu do caixa', -(x.caixa.contas_pagas + x.caixa.custos_festas)], ['Saldo do caixa', x.caixa.saldo, true],
+        ['Festas realizadas', x.resultado.festas], ['Valor das festas realizadas', x.resultado.receita],
+        ['(−) Custos lançados nas festas', -x.resultado.custos_lancados], ['(−) Insumos consumidos', -x.resultado.insumos], ['(−) Taxa da maquininha (estimada)', -x.resultado.taxa],
+        ['(=) O que sobrou das festas', x.resultado.resultado_direto, true], ['(−) Despesas gerais pagas', -x.resultado.despesas_gerais], ['(±) Efeito dos cancelamentos', x.resultado.efeito_cancelamentos],
+        ['(=) Resultado do período (festas e despesas)', x.resultado.resultado, true], ['(+) Entradas lançadas à mão', x.entradasManuais], ['(=) Resultado com entradas à mão', resultadoComManuais(x), true],
+      ]
+      for (const [a, b, neg] of resumo) l = linhaDados(ws, l, [a, b], { moeda: a === 'Festas realizadas' ? [] : [1], negrito: !!neg })
+      l++
+      l = paragrafo(ws, l, NOME_AGRUPAR[x.agrupar].tabela, 6, { negrito: true, cor: ROXO })
+      l = cabecalho(ws, l, ['Período', 'Festas', 'Entrou', 'Saiu', 'Saldo do caixa', 'Resultado das festas'])
+      for (const m of x.porMes) l = linhaDados(ws, l, [m.rotulo, m.festas, m.entradas, m.saidas, m.saldo, m.resultado], { moeda: [2, 3, 4, 5] })
+      l++
+      const serieU = serieDoCaixa(x)
+      l = colocar(ws, await graficoLinhas(serieU.porMes ? 'Entradas e saídas por mês' : 'Entradas e saídas por dia', serieU.rotulos, [
+        { nome: 'Entradas', cor: '#2E7D57', valores: serieU.entradas },
+        { nome: 'Saídas', cor: '#B23A3A', valores: serieU.saidas },
+      ], 760, 320), l)
+      const pe = await graficoPizza('Entradas por categoria', somaPorCategoria(x.entradas).map((y) => ({ nome: y.categoria, valor: y.total })), 760, 320)
+      const ps = await graficoPizza('Saídas por categoria', somaPorCategoria(x.saidas).map((y) => ({ nome: y.categoria, valor: y.total })), 760, 320)
+      l = colocar(ws, pe, l)
+      colocar(ws, ps, l)
+    }
   }
 
   const buffer = await wb.xlsx.writeBuffer()

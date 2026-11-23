@@ -9,6 +9,9 @@ import { BillingBlockedScreen } from './BillingNotice'
 import { TermsAcceptScreen } from './TermsAcceptScreen'
 import { TERMOS_VERSAO } from '../../lib/termosUso'
 
+// Ordem de preferência quando o Painel não está liberado para o perfil.
+const TELAS_INICIAIS = ['/recreacao', '/recreacao/familias', '/reservas', '/lembretes', '/visitas', '/clientes', '/financeiro', '/estoque', '/escalas', '/recreacao/configuracao']
+
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()
   const location = useLocation()
@@ -72,6 +75,13 @@ export function RequireAuth() {
 
   if (location.pathname !== '/' && !canAccessRoute(profile?.role ?? null, can, location.pathname)) {
     return <Navigate to="/?acesso_negado=1" replace />
+  }
+
+  // Quem não pode ver o Painel (ex.: só a recepção da recreação) entra direto
+  // na primeira tela que pode usar.
+  if (location.pathname === '/' && profile?.role && !canAccessRoute(profile.role, can, '/')) {
+    const destino = TELAS_INICIAIS.find((r) => canAccessRoute(profile.role ?? null, can, r))
+    if (destino) return <Navigate to={destino} replace />
   }
 
   return <Outlet />

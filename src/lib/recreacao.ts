@@ -222,3 +222,33 @@ export function idadeAnos(nasc: string) {
   if (h.getMonth() + 1 < m || (h.getMonth() + 1 === m && h.getDate() < d)) anos--
   return anos
 }
+
+// ---------- Visitas (migração 103) ----------
+export interface ContaRec { s: number; total: number; linhas: { d: string; v: number }[]; expl: string[] }
+export interface VisitaRec {
+  id: string; grupo: string; unit_id: string; pulseira: string | null; entrada_em: string; entrada_por: string | null
+  crianca: { id: string; nome: string; nascimento: string; cuidados: string | null; foto_path: string | null }
+  familia: { id: string; responsavel: string; telefone: string | null }
+  plano: { nome: string; cobranca: 'entrada' | 'saida'; incl: number | null; tolIncl: number | null; valor: number | null; limite: number | null; limiteAcao: string | null; pausa: boolean }
+  extensao_min: number; pago_entrada: number; forma_entrada: string | null; excecao: string | null
+  seg_total: number; seg_cobrado: number
+  pausa: { inicio: string; motivo: string; por: string | null } | null
+  conta: ContaRec; proxima: { em: number; total: number } | null
+  ocorrencias: { id: string; tipo: string; descricao: string; providencia: string | null; em: string; por: string | null }[]
+  agora: string
+}
+export const FORMAS_REC: [string, string][] = [['pix', 'Pix'], ['cartao_debito', 'Débito'], ['cartao_credito', 'Crédito'], ['dinheiro', 'Dinheiro']]
+export const nomeForma = (f: string | null | undefined) => FORMAS_REC.find((x) => x[0] === f)?.[1] ?? f ?? ''
+
+// "52:13" ou "1:05:22"
+export function cronometro(seg: number) {
+  const s = Math.max(0, Math.floor(seg)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60
+  return (h ? `${h}:${String(m).padStart(2, '0')}` : String(m).padStart(2, '0')) + ':' + String(x).padStart(2, '0')
+}
+export const horaMin = (d: Date | number | string) => new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+// Link do WhatsApp com a mensagem pronta
+export function linkWhatsApp(telefone: string | null | undefined, texto: string) {
+  let d = soDigitos(telefone)
+  if (d.length === 10 || d.length === 11) d = '55' + d
+  return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`
+}

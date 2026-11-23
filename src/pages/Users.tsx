@@ -8,7 +8,11 @@ import { useAuth } from '../lib/AuthContext'
 import { useOpenOnQueryParam } from '../lib/useOpenOnQueryParam'
 import { useUndo } from '../lib/UndoContext'
 import { PERMISSION_GROUPS, ALL_PERMISSIONS } from '../lib/permissionRegistry'
+import { useModulo } from '../lib/useModulo'
 import type { Role } from '../types'
+
+// Modelo pronto: quem trabalha só no balcão da recreação.
+const RECEPCAO_RECREACAO = ['page:recreacao', 'action:recreacao.operar', 'page:recreacao_familias', 'action:recreacao.familias_editar']
 
 interface UserRow {
   id: string
@@ -52,6 +56,7 @@ export function Users() {
   const [showCreateRoleModal, setShowCreateRoleModal] = useState(false)
   const [createRoleName, setCreateRoleName] = useState('')
   const [createRolePermValues, setCreateRolePermValues] = useState<Record<string, boolean>>({})
+  const temRecreacao = useModulo('recreacao')
   const [creatingRole, setCreatingRole] = useState(false)
 
   const [overrideUser, setOverrideUser] = useState<UserRow | null>(null)
@@ -704,6 +709,20 @@ export function Users() {
                   placeholder="Ex: Recepção"
                   className="w-full border border-line rounded-lg px-3 py-2 text-sm"
                 />
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5">Começar de um modelo (depois dá para ajustar):</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setCreateRolePermValues({})} className="px-3 py-1.5 rounded-full border border-line text-xs font-medium hover:border-purple hover:text-purple">Tudo liberado</button>
+                  <button type="button" onClick={() => setCreateRolePermValues(Object.fromEntries(ALL_PERMISSIONS.map((p) => [p.key, false])))} className="px-3 py-1.5 rounded-full border border-line text-xs font-medium hover:border-purple hover:text-purple">Nada liberado</button>
+                  {temRecreacao && (
+                    <button type="button" onClick={() => {
+                      setCreateRolePermValues(Object.fromEntries(ALL_PERMISSIONS.map((p) => [p.key, RECEPCAO_RECREACAO.includes(p.key)])))
+                      if (!createRoleName.trim()) setCreateRoleName('Recepção da recreação')
+                    }} className="px-3 py-1.5 rounded-full border border-purple/40 bg-purple-light/40 text-purple text-xs font-semibold hover:border-purple">Recepção da recreação</button>
+                  )}
+                </div>
+                {temRecreacao && <p className="text-[11px] text-muted mt-1.5">"Recepção da recreação" vê só o painel ao vivo e as famílias: dá entrada e saída, pausa, estende e registra ocorrência. Desconto, cancelar e liberar sem código ficam com o gerente.</p>}
               </div>
               <div>
                 <p className="text-xs text-muted mb-2">

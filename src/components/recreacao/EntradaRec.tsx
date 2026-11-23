@@ -1,0 +1,291 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Search, Plus, UserRound, Pencil, AlertTriangle, Check, X, MessageCircle, Printer, LogIn, ArrowLeft } from 'lucide-react'
+import { supabase } from '../../lib/supabaseClient'
+import { useAuth } from '../../lib/AuthContext'
+import { Button } from '../ui/Button'
+import { FamiliaEditor } from './FamiliaEditor'
+import { brl, friendlyDbError } from '../../lib/format'
+import {
+  FORMAS_REC, fmtMin, horaMin, idadeAnos, idadeTexto, linkWhatsApp, mascaraCpf, mascaraTelefone, nomeForma,
+  type FamiliaRec, type FuncoesRec, type PlanoRec,
+} from '../../lib/recreacao'
+
+// Entrada das crianças: acha a família, marca quem entra, plano e pagamento
+// de cada uma. O código de retirada e a mensagem saem no fim.
+
+interface Props {
+  unidades: { id: string; nome: string }[]
+  unidadeInicial: string | null
+  funcoes: FuncoesRec
+  regras: Record<string, string | number>
+  termo: string
+  dentro: string[] // crianças que já estão dentro
+  nomeCasa: string
+  onFechar: () => void
+  onConcluida: () => void
+}
+interface Escolha { plano: string; pulseira: string; forma: string; excecao: string; usarExcecao: boolean }
+interface Resultado { codigo: string; grupo: string; token: string; entrada_em: string; responsavel: string; telefone: string; visitas: { id: string; nome: string; pulseira: string | null; plano: string; pago: number; cuidados: string | null; nascimento: string; ate: string | null }[] }
+
+export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, dentro, nomeCasa, onFechar, onConcluida }: Props) {
+  const { can } = useAuth()
+  const gerente = can('action:recreacao.gerente')
+  // com mais de uma unidade e o sistema em 'todas', a recepção escolhe (não vem nenhuma marcada)
+  const [unidade, setUnidade] = useState(unidadeInicial ?? (unidades.length === 1 ? unidades[0].id : ''))
+  const [busca, setBusca] = useState('')
+  const [achadas, setAchadas] = useState<FamiliaRec[]>([])
+  const [familia, setFamilia] = useState<FamiliaRec | null>(null)
+  const [editando, setEditando] = useState<{ id: string | null } | null>(null)
+  const [planos, setPlanos] = useState<PlanoRec[]>([])
+  const [marcadas, setMarcadas] = useState<Record<string, Escolha>>({})
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [res, setRes] = useState<Resultado | null>(null)
+
+  useEffect(() => {
+    supabase.from('rec_planos').select('id, nome, descricao, ativo, ordem, regra, versao, atualizado_em, atualizado_por').eq('ativo', true).order('ordem')
+      .then(({ data }) => setPlanos((data ?? []) as PlanoRec[]))
+  }, [])
+  // planos chegaram depois de marcar: põe o primeiro como padrão
+  useEffect(() => {
+    if (!planos.length) return
+    setMarcadas((m) => Object.fromEntries(Object.entries(m).map(([k, e]) => [k, e.plano ? e : { ...e, plano: planos[0].id }])))
+  }, [planos])
+  useEffect(() => {
+    if (familia || editando) return
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase.rpc('rec_familias_buscar', { p_texto: busca, p_limite: 8 })
+      if (error) return setErro(friendlyDbError(error.message))
+      setAchadas((data ?? []) as FamiliaRec[])
+      // CPF completo e uma família só: abre direto
+      if (busca.replace(/\D/g, '').length === 11 && (data ?? []).length === 1) abrir((data as FamiliaRec[])[0])
+    }, busca ? 280 : 0)
+    return () => clearTimeout(t)
+  }, [busca, familia, editando]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function abrir(f: FamiliaRec) {
+    setFamilia(f); setErro(null)
+    const podem = f.criancas.filter((c) => c.ativo && !dentro.includes(c.id!))
+    const padrao = planos[0]?.id ?? ''
+    // uma criança só: já vem marcada; mais de uma: a recepção marca quem entra
+    setMarcadas(podem.length === 1 ? { [podem[0].id!]: { plano: padrao, pulseira: '', forma: '', excecao: '', usarExcecao: false } } : {})
+  }
+  async function recarregar(id: string) {
+    const { data } = await supabase.rpc('rec_familia_get', { p_id: id })
+    setEditando(null)
+    if (data) abrir(data as FamiliaRec)
+  }
+
+  const idMin = Number(regras.idMin ?? 0), idMax = Number(regras.idMax ?? 17)
+  const planoDe = (id: string) => planos.find((p) => p.id === id)
+  const linhas = Object.entries(marcadas)
+  const cobrarAgora = linhas.reduce((s, [, e]) => { const p = planoDe(e.plano); return s + (p && p.regra.cobranca === 'entrada' && !e.usarExcecao ? Number(p.regra.valor) : 0) }, 0)
+  const pendencias = useMemo(() => {
+    const out: string[] = []
+    if (!unidade) out.push('Escolha a unidade.')
+    if (!linhas.length) out.push('Marque quem vai entrar.')
+    for (const [cid, e] of linhas) {
+      const c = familia?.criancas.find((x) => x.id === cid)
+      const p = planoDe(e.plano)
+      if (!p) out.push(`Escolha o plano de ${c?.nome.split(' ')[0]}.`)
+      else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && !e.forma) out.push(`Escolha como ${c?.nome.split(' ')[0]} paga.`)
+      if (e.usarExcecao && e.excecao.trim().length < 3) out.push('Escreva o motivo da exceção.')
+      if (funcoes.foto !== 'nao' && funcoes.fotoObrig && !c?.foto_path) out.push(`Tire a foto de ${c?.nome.split(' ')[0]} (no cadastro).`)
+    }
+    return out
+  }, [linhas, unidade, familia, planos, funcoes]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function confirmar() {
+    if (!familia || pendencias.length) return
+    setSalvando(true); setErro(null)
+    const { data, error } = await supabase.rpc('rec_entrada', {
+      p_unit: unidade, p_familia: familia.id,
+      p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null })),
+    })
+    setSalvando(false)
+    if (error) return setErro(friendlyDbError(error.message))
+    setRes(data as Resultado)
+    onConcluida()
+  }
+
+  // ---------- depois de confirmar ----------
+  if (res) {
+    const nomes = res.visitas.map((v) => v.nome.split(' ')[0])
+    const ate = res.visitas.find((v) => v.ate)?.ate
+    const msg = `Oi, ${res.responsavel.split(' ')[0]}! ${nomes.join(' e ')} ${nomes.length > 1 ? 'entraram' : 'entrou'} na recreação às ${horaMin(res.entrada_em)}`
+      + `${res.visitas.some((v) => v.pulseira) ? ` (pulseira${res.visitas.length > 1 ? 's' : ''} ${res.visitas.map((v) => v.pulseira ?? '—').join(' e ')})` : ''}.`
+      + `${ate ? ` Tempo combinado até ${horaMin(ate)}.` : ''}`
+      + `${funcoes.codigo ? `\n\nCódigo de retirada: ${res.codigo}\nSó entregamos a criança com esse código.` : ''}`
+    function imprimir() {
+      const w = window.open('', '_blank', 'width=360,height=640')
+      if (!w) return setErro('O navegador bloqueou a janela de impressão. Libere as janelas deste site.')
+      const largura = String(regras.impressora) === '80' ? '72mm' : '48mm'
+      w.document.write(`<!doctype html><meta charset="utf-8"><title>Etiqueta</title><style>body{font:12px/1.4 monospace;margin:0;padding:6px;width:${largura}}h1{font-size:13px;margin:0 0 4px}.c{border-top:1px dashed #000;margin-top:8px;padding-top:6px}.cod{font-size:18px;font-weight:bold;letter-spacing:3px}@media print{@page{margin:2mm}}</style>`
+        + res!.visitas.map((v) => `<div class="c"><h1>${nomeCasa} · RECREAÇÃO</h1>${v.pulseira ? `<b>PULSEIRA ${v.pulseira}</b><br>` : ''}${v.nome.toUpperCase()} (${idadeTexto(v.nascimento)})<br>${v.cuidados ? `<b>⚠ ${v.cuidados.toUpperCase()}</b><br>` : ''}Entrada: ${horaMin(res!.entrada_em)}<br>Plano: ${v.plano}${v.ate ? `<br>Até: ${horaMin(v.ate)}` : ''}<br>Responsável: ${res!.responsavel}<br>${mascaraTelefone(res!.telefone)}${funcoes.codigo ? `<br><span class="cod">${res!.codigo}</span><br>código de retirada` : ''}</div>`).join('')
+        + `<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),400)}<\/script>`)
+      w.document.close()
+    }
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl bg-teal-light p-5 flex flex-wrap items-center gap-5">
+          <span className="w-12 h-12 rounded-full bg-teal text-white flex items-center justify-center"><Check className="w-6 h-6" /></span>
+          <div className="flex-1 min-w-[12rem]">
+            <p className="font-semibold text-teal">Entrada registrada às {horaMin(res.entrada_em)}</p>
+            <p className="text-sm">{nomes.join(' e ')} já {nomes.length > 1 ? 'aparecem' : 'aparece'} no painel. O preço de cada um ficou guardado como estava agora.</p>
+          </div>
+          {funcoes.codigo && (
+            <div className="text-center">
+              <p className="text-xs text-muted">Código de retirada</p>
+              <p className="font-display text-4xl font-black tracking-[0.3em] text-ink">{res.codigo}</p>
+            </div>
+          )}
+        </div>
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          {res.visitas.map((v) => (
+            <li key={v.id} className="px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-1 text-sm items-center">
+              <b className="flex-1 min-w-[10rem]">{v.nome}</b>
+              {v.pulseira && <span className="text-muted">pulseira {v.pulseira}</span>}
+              <span>{v.plano}{v.ate ? ` · até ${horaMin(v.ate)}` : ''}</span>
+              <span className="font-semibold">{v.pago > 0 ? `pago ${brl(v.pago)}` : 'paga na saída'}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="rounded-xl bg-[#e7f6ec] text-[#1b3a28] p-4 text-sm whitespace-pre-line max-w-lg">{msg}</div>
+        <div className="flex flex-wrap gap-2">
+          <a href={linkWhatsApp(res.telefone, msg)} target="_blank" rel="noreferrer"><Button><MessageCircle className="w-4 h-4" />Mandar no WhatsApp</Button></a>
+          {String(regras.impressora ?? 'nao') !== 'nao' && <Button variant="secondary" onClick={imprimir}><Printer className="w-4 h-4" />Imprimir etiqueta</Button>}
+          <Button variant="secondary" onClick={() => { setRes(null); setFamilia(null); setBusca(''); setMarcadas({}) }}><Plus className="w-4 h-4" />Outra entrada</Button>
+          <Button variant="ghost" onClick={onFechar}>Fechar</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------- cadastro / edição no meio da entrada ----------
+  if (editando) {
+    return (
+      <div>
+        <button type="button" onClick={() => setEditando(null)} className="text-sm text-muted hover:text-purple inline-flex items-center gap-1 mb-4"><ArrowLeft className="w-4 h-4" />Voltar para a entrada</button>
+        <FamiliaEditor familiaId={editando.id} funcoes={funcoes} regras={regras} termo={termo}
+          onFechar={() => setEditando(null)} onAbrirOutra={(id) => recarregar(id)} onSalvo={(id) => recarregar(id)} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {unidades.length > 1 && (
+        <label className="block max-w-xs text-xs font-medium text-muted">Unidade
+          <select className="campo mt-1" value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+            {!unidade && <option value="">Escolha a unidade</option>}
+            {unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          </select>
+        </label>
+      )}
+
+      {!familia ? (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <div className="relative flex-1 min-w-[16rem]">
+              <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input className="campo !pl-10 !py-3 !text-base" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="CPF do responsável, telefone ou nome" aria-label="Procurar família" />
+            </div>
+            {can('action:recreacao.familias_editar') && <Button variant="secondary" onClick={() => setEditando({ id: null })} className="!py-3"><Plus className="w-4 h-4" />Família nova</Button>}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {achadas.map((f) => (
+              <button key={f.id} type="button" onClick={() => abrir(f)} className="text-left rounded-xl border border-line bg-surface px-4 py-3 hover:border-purple/40 hover:shadow-sm">
+                <p className="font-semibold">{f.responsavel}</p>
+                <p className="text-xs text-muted">{f.cpf ? `CPF ${mascaraCpf(f.cpf)} · ` : ''}{mascaraTelefone(f.telefone)}</p>
+                <p className="text-xs mt-1">{f.criancas.filter((c) => c.ativo).map((c) => c.nome.split(' ')[0]).join(', ')}</p>
+              </button>
+            ))}
+            {busca.trim() && achadas.length === 0 && <p className="text-sm text-muted">Ninguém encontrado. Confira os números ou cadastre a família.</p>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-start gap-3 rounded-xl bg-paper px-4 py-3">
+            <span className="w-10 h-10 rounded-full bg-purple-light text-purple flex items-center justify-center"><UserRound className="w-5 h-5" /></span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">{familia.responsavel}</p>
+              <p className="text-xs text-muted">{familia.cpf ? `CPF ${mascaraCpf(familia.cpf)} · ` : ''}{mascaraTelefone(familia.telefone)}</p>
+              {familia.autorizados.some((a) => a.ativo) && <p className="text-xs text-muted">Também podem buscar: {familia.autorizados.filter((a) => a.ativo).map((a) => `${a.nome}${a.parentesco ? ` (${a.parentesco})` : ''}`).join(', ')}</p>}
+              {!familia.termo_aceito_em && <p className="text-xs text-danger font-semibold mt-1">Falta o aceite do termo: abra "Editar dados" e marque.</p>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {can('action:recreacao.familias_editar') && <Button variant="secondary" className="!px-3 !py-1.5" onClick={() => setEditando({ id: familia.id! })}><Pencil className="w-3.5 h-3.5" />Editar dados</Button>}
+              {can('action:recreacao.familias_editar') && <Button variant="secondary" className="!px-3 !py-1.5" onClick={() => setEditando({ id: familia.id! })}><Plus className="w-3.5 h-3.5" />Adicionar criança</Button>}
+              <Button variant="ghost" className="!px-3 !py-1.5" onClick={() => { setFamilia(null); setMarcadas({}) }}>Trocar família</Button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold mb-2">Quem vai entrar?</p>
+            <div className="space-y-2">
+              {familia.criancas.filter((c) => c.ativo).map((c) => {
+                const ja = dentro.includes(c.id!)
+                const anos = idadeAnos(c.nascimento)
+                const fora = anos < idMin || anos > idMax
+                const e = marcadas[c.id!]
+                const p = e ? planoDe(e.plano) : null
+                const set = (patch: Partial<Escolha>) => setMarcadas((m) => ({ ...m, [c.id!]: { ...m[c.id!], ...patch } }))
+                return (
+                  <div key={c.id} className={`rounded-xl border-2 p-3 transition-colors ${e ? 'border-purple bg-purple-light/30' : 'border-line bg-surface'} ${ja ? 'opacity-60' : ''}`}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" className="mt-1 w-5 h-5 accent-[rgb(var(--c-purple))]" disabled={ja} checked={!!e}
+                        onChange={(ev) => setMarcadas((m) => { const n = { ...m }; if (ev.target.checked) n[c.id!] = { plano: planos[0]?.id ?? '', pulseira: '', forma: '', excecao: '', usarExcecao: false }; else delete n[c.id!]; return n })} />
+                      <span className="flex-1">
+                        <b>{c.nome}</b> <span className="text-sm text-muted">· {idadeTexto(c.nascimento)}</span>
+                        {ja && <span className="ml-2 text-xs font-semibold text-muted">já está dentro</span>}
+                        {fora && !ja && <span className="ml-2 text-xs font-semibold text-amber">fora da idade da casa ({idMin} a {idMax})</span>}
+                        {c.cuidados && <span className="block mt-1 text-xs font-bold text-danger"><AlertTriangle className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{c.cuidados}</span>}
+                      </span>
+                    </label>
+                    {e && (
+                      <div className="mt-3 ml-8 grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_120px] animate-card-in">
+                        <label className="text-xs font-medium text-muted">Plano
+                          <select className="campo mt-1" value={e.plano} onChange={(ev) => set({ plano: ev.target.value })}>
+                            {planos.map((pl) => <option key={pl.id} value={pl.id}>{pl.nome} · {pl.regra.cobranca === 'entrada' ? `${brl(Number(pl.regra.valor))} na entrada${pl.regra.incl ? ` (${fmtMin(pl.regra.incl)})` : ''}` : 'paga na saída'}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs font-medium text-muted">Pulseira nº<input className="campo mt-1" value={e.pulseira} onChange={(ev) => set({ pulseira: ev.target.value })} /></label>
+                        {p && p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && (
+                          <div className="sm:col-span-2 space-y-2">
+                            {!e.usarExcecao && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs text-muted mr-1">Paga agora {brl(Number(p.regra.valor))} no:</span>
+                                {FORMAS_REC.map(([v, l]) => (
+                                  <button key={v} type="button" onClick={() => set({ forma: v })} className={`px-3 h-8 rounded-full text-xs font-semibold border ${e.forma === v ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{l}</button>
+                                ))}
+                              </div>
+                            )}
+                            {gerente && (
+                              <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={e.usarExcecao} onChange={(ev) => set({ usarExcecao: ev.target.checked })} />Exceção: cobrar tudo na saída</label>
+                            )}
+                            {e.usarExcecao && <input className="campo" value={e.excecao} onChange={(ev) => set({ excecao: ev.target.value })} placeholder="Motivo (ex.: maquininha sem sinal)" />}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-line">
+            <div className="flex-1 min-w-[12rem] text-sm">
+              {cobrarAgora > 0 ? <p>Cobrar agora: <b className="font-display text-lg">{brl(cobrarAgora)}</b> {linhas.length > 1 && <span className="text-muted">({linhas.filter(([, e]) => e.forma).map(([, e]) => nomeForma(e.forma)).join(' + ')})</span>}</p>
+                : linhas.length ? <p className="text-muted">Nada a pagar agora: a conta é feita na saída.</p> : null}
+              {pendencias.length > 0 && linhas.length > 0 && <p className="text-xs text-amber mt-1">{pendencias[0]}</p>}
+            </div>
+            <Button variant="ghost" onClick={onFechar}>Cancelar</Button>
+            <Button onClick={confirmar} disabled={salvando || pendencias.length > 0 || !familia.termo_aceito_em}><LogIn className="w-4 h-4" />{salvando ? 'Registrando...' : `Dar entrada${linhas.length > 1 ? ` (${linhas.length})` : ''}`}</Button>
+          </div>
+        </>
+      )}
+      {erro && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5 flex justify-between gap-2">{erro}<button onClick={() => setErro(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button></div>}
+    </div>
+  )
+}

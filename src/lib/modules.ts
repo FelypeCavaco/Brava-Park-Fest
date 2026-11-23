@@ -16,7 +16,7 @@ export const MODULOS: ModuloOpcional[] = [
     id: 'festas',
     label: 'Gestão de festas',
     descricao: 'Reservas, clientes, pacotes, contratos, pagamentos e o portal da família.',
-    keys: ['page:lembretes', 'page:reservas', 'action:reservas.', 'page:festa_detalhe', 'action:festa.', 'page:clientes', 'action:clientes.',
+    keys: ['page:painel', 'page:lembretes', 'page:reservas', 'action:reservas.', 'page:festa_detalhe', 'action:festa.', 'page:clientes', 'action:clientes.',
       'page:pacotes', 'action:pacotes.', 'page:contratos', 'page:pagamentos', 'page:portal_avisos', 'page:relatorio_aniversariantes', 'page:lucro_por_festa'],
   },
   { id: 'recreacao', label: 'Recreação', descricao: 'Controle de tempo e valor das crianças, caixa do dia e relatórios. Vendida à parte.', keys: ['page:recreacao', 'page:recreacao_familias', 'page:recreacao_config', 'action:recreacao.'] },

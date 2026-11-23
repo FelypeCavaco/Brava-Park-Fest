@@ -241,7 +241,7 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
         .lte('payment_date', ate),
       supabase
         .from('other_incomes')
-        .select('id, amount, received_date, payment_method, description')
+        .select('id, amount, received_date, payment_method, description, kind')
         .eq('unit_id', unitId)
         .gte('received_date', de)
         .lte('received_date', ate),
@@ -257,10 +257,48 @@ export function NovoLancamento({ unitDbIds, defaultUnit, categoriasUsadas, onSav
       const desc = String(o.description ?? '').toLowerCase()
       const textoParecido = t.length > 2 && desc.length > 2 && (desc.includes(t) || t.includes(desc))
       if (!valorParecido(valorNum, Number(o.amount)) && !textoParecido) continue
-      achados.push({ id: o.id, onde: 'Entrada lançada à mão', reservationId: null, quem: o.description || 'Entrada', data: o.received_date, valor: Number(o.amount), forma: o.payment_method ?? '' })
+      achados.push({ id: o.id, onde: o.kind === 'bar' ? 'Venda no bar (já está no Financeiro)' : 'Entrada lançada à mão', reservationId: null, quem: o.description || 'Entrada', data: o.received_date, valor: Number(o.amount), forma: o.payment_method ?? '' })
     }
+    for (const b of await barDoDiaParecido(unitId)) if (!achados.some((a) => a.id === b.id)) achados.push(b)
     achados.sort((a, b) => a.data.localeCompare(b.data))
     return achados.length ? achados : null
+  }
+
+  // Vendas no bar (migração 101): a maquininha e o Pix depositam o total do dia
+  // de uma vez, às vezes já sem a taxa, e o crédito pode cair até 30 dias depois.
+  // Compara o valor com o total do dia de cada forma de pagamento.
+  async function barDoDiaParecido(unitId: string): Promise<EntradaParecida[]> {
+    const [{ data: vendas, error }, { data: taxas }] = await Promise.all([
+      supabase.from('other_incomes').select('amount, received_date, payment_method').eq('unit_id', unitId).eq('kind', 'bar')
+        .gte('received_date', maisDias(pagoEm, -32)).lte('received_date', maisDias(pagoEm, JANELA_DIAS)),
+      supabase.from('payment_method_fees').select('payment_method, fee_percent'),
+    ])
+    if (error || !vendas?.length) return []
+    const taxa: Record<string, number> = {}
+    for (const x of (taxas ?? []) as any[]) taxa[x.payment_method] = Number(x.fee_percent) || 0
+    const grupos = new Map<string, { data: string; forma: string; total: number; n: number }>()
+    for (const v of vendas as any[]) {
+      const k = `${v.received_date}|${v.payment_method ?? ''}`
+      const g = grupos.get(k) ?? { data: v.received_date, forma: v.payment_method ?? '', total: 0, n: 0 }
+      g.total += Number(v.amount); g.n += 1
+      grupos.set(k, g)
+    }
+    const out: EntradaParecida[] = []
+    for (const g of grupos.values()) {
+      const dentro = g.forma === 'cartao_credito' ? g.data <= pagoEm : g.data >= maisDias(pagoEm, -JANELA_DIAS)
+      if (!dentro) continue
+      const liquido = Math.round(g.total * (1 - (taxa[g.forma] ?? 0) / 100) * 100) / 100
+      const bate = valorParecido(valorNum, g.total) ? 'total' : taxa[g.forma] && valorParecido(valorNum, liquido) ? 'liquido' : null
+      if (!bate) continue
+      const nomeForma = PAYMENT_METHOD_LABEL[g.forma as PaymentMethod] ?? g.forma
+      out.push({
+        id: `bar-${g.data}-${g.forma}`, reservationId: null, data: g.data, forma: g.forma,
+        onde: 'Vendas no bar do dia (já estão no Financeiro)',
+        quem: `${g.n} ${g.n === 1 ? 'venda' : 'vendas'} no ${nomeForma.toLowerCase()} somando ${brl(g.total)}${bate === 'liquido' ? `, que dá ${brl(liquido)} sem a taxa de ${String(taxa[g.forma]).replace('.', ',')}%` : ''}`,
+        valor: bate === 'liquido' ? liquido : g.total,
+      })
+    }
+    return out
   }
 
   function limpar(tudo: boolean) {

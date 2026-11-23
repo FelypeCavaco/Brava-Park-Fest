@@ -45,6 +45,7 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
       { key: 'action:festa.pagamentos', label: 'Registrar/remover pagamentos', group: 'Central da festa' },
       { key: 'action:festa.itens_extras', label: 'Adicionar itens extras', group: 'Central da festa' },
       { key: 'action:festa.consumo_pos_festa', label: 'Lançar consumo pós-festa', group: 'Central da festa' },
+      { key: 'action:festa.vendas_bar', label: 'Vender bebidas no bar durante a festa (e cancelar venda)', group: 'Central da festa' },
       { key: 'action:festa.checklist', label: 'Marcar itens do checklist', group: 'Central da festa' },
       { key: 'action:festa.equipe', label: 'Gerenciar escala da equipe', group: 'Central da festa' },
       { key: 'action:festa.documentos', label: 'Anexar/remover documentos', group: 'Central da festa' },
@@ -155,6 +156,12 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     group: 'Relatório de aniversariantes',
     items: [{ key: 'page:relatorio_aniversariantes', label: 'Ver Relatório de aniversariantes', group: 'Relatório de aniversariantes', route: '/relatorio-aniversariantes' }],
   },
+  {
+    group: 'Recreação',
+    items: [
+      { key: 'page:recreacao_config', label: 'Configurar a recreação (planos de cobrança, regras da casa e itens do balcão)', group: 'Recreação', route: '/recreacao/configuracao' },
+    ],
+  },
 ]
 
 export const ALL_PERMISSIONS: PermissionDef[] = PERMISSION_GROUPS.flatMap((g) => g.items)
@@ -188,5 +195,6 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/fornecedores', key: 'page:fornecedores' },
   { test: (p) => p === '/escalas', key: 'page:escalas' },
   { test: (p) => p === '/relatorio-aniversariantes', key: 'page:relatorio_aniversariantes' },
+  { test: (p) => p === '/recreacao/configuracao', key: 'page:recreacao_config' },
   // /usuarios não entra aqui: continua sendo administrador-only, fixo no código
 ]

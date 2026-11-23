@@ -47,6 +47,7 @@ export function PlatPlanos({ d }: { d: PainelDados }) {
     if (!editando) return
     const preco = parseDecimal(editando.preco)
     if (preco === null || preco < 0) return setErro('Informe o preço por mês.')
+    if (!editando.modulos.includes('festas') && !editando.modulos.includes('recreacao')) return setErro('Marque Gestão de festas, Recreação ou as duas: sem nenhuma, a casa não teria o que usar.')
     const { error } = await supabase.rpc('platform_plan_save', {
       p_dados: {
         id: editando.id, nome: editando.nome, preco, unidades_incluidas: Number(editando.unidades) || 1,
@@ -69,7 +70,7 @@ export function PlatPlanos({ d }: { d: PainelDados }) {
 
   const novo = () => {
     setErro(null)
-    setEditando({ id: '', nome: '', preco: '', unidades: '1', usuarios: '', adicional: '', destaque: false, ativo: true, ordem: planos.length + 1, modulos: ['agenda'] })
+    setEditando({ id: '', nome: '', preco: '', unidades: '1', usuarios: '', adicional: '', destaque: false, ativo: true, ordem: planos.length + 1, modulos: ['festas', 'agenda'] })
   }
   const editar = (p: Plano) => {
     setErro(null)

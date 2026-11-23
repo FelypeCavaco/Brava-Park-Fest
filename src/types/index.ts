@@ -385,6 +385,8 @@ export interface InventoryItem {
   consumption_type: 'por_convidado' | 'por_festa'
   // Entra na Lista de compras quando fica abaixo do mínimo?
   notify_shopping: boolean
+  // Preço de venda no bar da festa (migração 101). null = não vende.
+  sale_price: number | null
 }
 
 export const SUPPLIER_SERVICE_TYPES = ['Buffet externo', 'DJ', 'Fotógrafo', 'Decorador', 'Outro'] as const

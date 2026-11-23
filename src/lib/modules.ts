@@ -1,7 +1,8 @@
 // Funções que o administrador geral liga ou desliga por empresa (painel da
 // plataforma). Desligada, some do menu, das telas e dos atalhos daquela
-// empresa — até para o administrador dela. O núcleo (reservas, clientes,
-// pacotes, pagamentos, financeiro) não entra aqui: é sempre ligado.
+// empresa — até para o administrador dela. "Gestão de festas" e "Recreação"
+// são as duas partes grandes (migração 100): a casa pode ter uma ou as duas.
+// O financeiro fica sempre ligado.
 export interface ModuloOpcional {
   id: string
   label: string
@@ -11,6 +12,14 @@ export interface ModuloOpcional {
 }
 
 export const MODULOS: ModuloOpcional[] = [
+  {
+    id: 'festas',
+    label: 'Gestão de festas',
+    descricao: 'Reservas, clientes, pacotes, contratos, pagamentos e o portal da família.',
+    keys: ['page:lembretes', 'page:reservas', 'action:reservas.', 'page:festa_detalhe', 'action:festa.', 'page:clientes', 'action:clientes.',
+      'page:pacotes', 'action:pacotes.', 'page:contratos', 'page:pagamentos', 'page:portal_avisos', 'page:relatorio_aniversariantes', 'page:lucro_por_festa'],
+  },
+  { id: 'recreacao', label: 'Recreação', descricao: 'Controle de tempo e valor das crianças, caixa do dia e relatórios. Vendida à parte.', keys: ['page:recreacao', 'page:recreacao_config', 'action:recreacao.'] },
   { id: 'agenda', label: 'Agenda', descricao: 'Calendário de visitas e compromissos, com aviso no Painel.', keys: ['page:visitas'] },
   { id: 'comissoes', label: 'Comissões', descricao: 'Comissão por festa cadastrada e repasse semanal.', keys: ['page:comissoes', 'action:comissoes.'] },
   { id: 'marketing', label: 'Marketing e funil', descricao: 'Ocupação, perfil das festas, canais, tráfego, CAC e funil de vendas.', keys: ['page:marketing', 'page:funil'] },

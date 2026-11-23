@@ -285,6 +285,8 @@ export function ClientPortal() {
   const [valorComprovante, setValorComprovante] = useState('')
   // Pix que o cliente gerou e ainda não mandou comprovante (aviso no portal).
   const [pixPendentes, setPixPendentes] = useState<{ id: string; amount: number; created_at: string }[]>([])
+  // quando o cliente acabou de gerar o Pix nesta tela, o aviso do próprio QR code já basta
+  const [geradoAgora, setGeradoAgora] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [arquivo, setArquivo] = useState<File | null>(null)
   // avaliação
@@ -563,6 +565,7 @@ export function ClientPortal() {
   // Cliente tocou em "Gerar Pix": registra para a equipe achar a festa pelo valor e horário.
   // Se o registro falhar, o Pix continua valendo (nunca bloqueia o pagamento).
   async function registrarPix(valor: number, rotulo: string) {
+    setGeradoAgora(true)
     try {
       await supabase.rpc('portal_register_pix', { p_token: token, p_amount: valor, p_label: rotulo })
     } catch {
@@ -1006,7 +1009,7 @@ export function ClientPortal() {
               {d.saldo > 0.005 && (
                 <section className={`${card} p-4 space-y-3`} style={{ borderColor: C.borda }}>
                   <p className="font-semibold">Pagar com Pix</p>
-                  {pixPendentes.length > 0 && !jaPaguei && (
+                  {pixPendentes.length > 0 && !jaPaguei && !geradoAgora && (
                     <div className="rounded-xl px-3 py-2.5 text-[13px] space-y-2" style={{ background: '#FFF3CD', color: '#6B4A00' }} role="status">
                       <p>
                         <b>Você gerou um Pix de {brl(pixPendentes[0].amount)}</b> em {new Date(pixPendentes[0].created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} e ainda não enviou o comprovante.

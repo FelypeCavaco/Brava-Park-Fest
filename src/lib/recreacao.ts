@@ -1,0 +1,171 @@
+// Recreação (migração 100): formatos dos planos de cobrança, modelos prontos e
+// a lista de funções que o administrador geral liga/desliga por casa.
+// O CÁLCULO da cobrança não fica aqui: é feito no banco (rec_simular /
+// rec_calcular), para a conta ser sempre a mesma em qualquer tela.
+
+export interface Faixa {
+  ate: number | null // null = sem limite (só a última)
+  valor: number
+  tol: number
+  depois: 'avanca' | 'trava'
+}
+
+export interface RegraRec {
+  nome: string
+  cobranca: 'entrada' | 'saida'
+  modelo: 'faixas' | 'blocos'
+  arred: 'seg' | 'min_ini' | 'min_comp'
+  pausa: boolean
+  limite: number // 0 = sem limite
+  limiteAcao: 'alertar' | 'bloquear' | 'autorizacao'
+  // pago na entrada
+  valor: number
+  incl: number | null // null = sem limite de tempo (diária)
+  tolIncl: number
+  depois: 'excedente' | 'trava'
+  exc: { modelo: 'faixas' | 'blocos'; faixas: Faixa[]; B: number; Vb: number; tolCada: number; teto: number }
+  // pago na saída
+  faixas: Faixa[]
+  V0: number
+  M0: number
+  tol: number
+  Vb: number
+  B: number
+  tolCada: number
+  teto: number
+}
+
+export interface PlanoRec {
+  id: string
+  nome: string
+  descricao: string | null
+  ativo: boolean
+  ordem: number
+  regra: RegraRec
+  versao: number
+  atualizado_em: string
+  atualizado_por: string | null
+}
+
+export interface ItemRec { id: string; nome: string; preco: number; ativo: boolean; ordem: number }
+
+export interface ResultadoCalc { s: number; total: number; linhas: { d: string; v: number }[]; expl: string[] }
+export interface Simulacao {
+  regra: RegraRec
+  validacao: { erros: string[]; avisos: string[] }
+  frase: string
+  calc?: ResultadoCalc
+  pontos?: { nome: string; s: number; conta: number; total: number; expl: string | null }[]
+}
+
+const faixasPadrao: Faixa[] = [
+  { ate: 30, valor: 25, tol: 5, depois: 'avanca' },
+  { ate: null, valor: 35, tol: 0, depois: 'avanca' },
+]
+
+export const REGRA_BASE: RegraRec = {
+  nome: '', cobranca: 'saida', modelo: 'faixas', arred: 'min_ini', pausa: true, limite: 0, limiteAcao: 'alertar',
+  valor: 35, incl: 60, tolIncl: 10, depois: 'excedente',
+  exc: { modelo: 'faixas', faixas: [{ ate: 15, valor: 8, tol: 0, depois: 'avanca' }, { ate: null, valor: 15, tol: 0, depois: 'avanca' }], B: 15, Vb: 8, tolCada: 0, teto: 0 },
+  faixas: faixasPadrao, V0: 25, M0: 30, tol: 5, Vb: 8, B: 15, tolCada: 0, teto: 0,
+}
+
+const copia = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
+
+// Pontos de partida. Tudo pode ser mudado depois.
+export const MODELOS: { id: string; titulo: string; resumo: string; regra: RegraRec }[] = [
+  {
+    id: 'hora',
+    titulo: 'Hora fechada',
+    resumo: 'Paga 1 hora na entrada. Passou da tolerância, cobra o excedente na saída.',
+    regra: { ...copia(REGRA_BASE), nome: '1 hora', cobranca: 'entrada', valor: 35, incl: 60, tolIncl: 10, depois: 'excedente', limite: 240,
+      exc: { modelo: 'faixas', faixas: [{ ate: 15, valor: 8, tol: 0, depois: 'avanca' }, { ate: 30, valor: 14, tol: 0, depois: 'avanca' }, { ate: 45, valor: 20, tol: 0, depois: 'avanca' }, { ate: null, valor: 25, tol: 0, depois: 'avanca' }], B: 15, Vb: 8, tolCada: 0, teto: 0 } },
+  },
+  {
+    id: 'faixas',
+    titulo: 'Faixas de tempo',
+    resumo: 'Paga na saída. O tempo total escolhe uma faixa, e o valor dela é o total.',
+    regra: { ...copia(REGRA_BASE), nome: 'Por faixas', cobranca: 'saida', modelo: 'faixas',
+      faixas: [{ ate: 30, valor: 25, tol: 5, depois: 'avanca' }, { ate: 60, valor: 35, tol: 10, depois: 'avanca' }, { ate: 120, valor: 50, tol: 5, depois: 'avanca' }, { ate: null, valor: 60, tol: 0, depois: 'avanca' }] },
+  },
+  {
+    id: 'blocos',
+    titulo: 'Meia hora + blocos',
+    resumo: 'Paga na saída: um valor pela primeira meia hora e mais um tanto a cada 15 minutos.',
+    regra: { ...copia(REGRA_BASE), nome: 'Por tempo', cobranca: 'saida', modelo: 'blocos', V0: 25, M0: 30, tol: 5, Vb: 8, B: 15, tolCada: 0, teto: 70 },
+  },
+  {
+    id: 'diaria',
+    titulo: 'Diária',
+    resumo: 'Paga na entrada e brinca o dia inteiro, sem contar tempo.',
+    regra: { ...copia(REGRA_BASE), nome: 'Diária', cobranca: 'entrada', valor: 70, incl: null, tolIncl: 0, pausa: false },
+  },
+]
+
+export const ARREDONDAMENTO: [RegraRec['arred'], string][] = [
+  ['min_ini', 'Arredonda para o minuto começado (60:01 conta 61 min)'],
+  ['min_comp', 'Conta só minutos completos (60:59 conta 60 min)'],
+  ['seg', 'Tempo exato, em segundos'],
+]
+
+export const ACAO_LIMITE: [RegraRec['limiteAcao'], string][] = [
+  ['alertar', 'Só avisa no painel'],
+  ['bloquear', 'Não deixa estender além'],
+  ['autorizacao', 'Precisa do gerente para passar'],
+]
+
+// ---------- Funções da recreação (só o administrador geral muda) ----------
+export type FuncoesRec = Record<string, boolean | number | string>
+
+export type CampoFuncao =
+  | { k: string; label: string; tipo: 'bool' }
+  | { k: string; label: string; tipo: 'num'; sufixo: string }
+  | { k: string; label: string; tipo: 'hora' }
+  | { k: string; label: string; tipo: 'opcao'; opcoes: [string, string][] }
+
+export const FUNCOES_REC: { grupo: string; itens: CampoFuncao[] }[] = [
+  { grupo: 'Segurança na entrega', itens: [
+    { k: 'codigo', label: 'Pedir o código de retirada na saída', tipo: 'bool' },
+    { k: 'qr', label: 'QR code de retirada (no WhatsApp e no cupom)', tipo: 'bool' },
+    { k: 'foto', label: 'Foto da criança', tipo: 'opcao', opcoes: [['nao', 'Não tirar foto'], ['cadastro', 'Tirar uma vez, no cadastro'], ['entrada', 'Tirar a cada entrada']] },
+    { k: 'fotoObrig', label: 'Foto obrigatória para dar entrada', tipo: 'bool' },
+    { k: 'fotoDias', label: 'Apagar as fotos depois de', tipo: 'num', sufixo: 'dias' },
+  ] },
+  { grupo: 'Página do responsável', itens: [
+    { k: 'paginaPais', label: 'Mandar o link da página do responsável', tipo: 'bool' },
+    { k: 'pedirTempo', label: 'Botão “Pedir mais tempo”', tipo: 'bool' },
+    { k: 'chegando', label: 'Botão “Estou chegando” (avisa a recepção)', tipo: 'bool' },
+    { k: 'ocorrPais', label: 'Mostrar as ocorrências na página do responsável', tipo: 'bool' },
+  ] },
+  { grupo: 'Ocorrências com as crianças', itens: [
+    { k: 'ocorr', label: 'Registrar ocorrências (machucado, briga, mal-estar…)', tipo: 'bool' },
+    { k: 'ocorrCiente', label: 'O responsável confirma que está ciente na saída', tipo: 'bool' },
+  ] },
+  { grupo: 'Caixa', itens: [
+    { k: 'caixaObrig', label: 'Só dar entrada com o caixa aberto', tipo: 'bool' },
+    { k: 'cego', label: 'Fechamento cego (o atendente conta antes de ver o esperado)', tipo: 'bool' },
+    { k: 'lembrete', label: 'Lembrete para fechar o caixa', tipo: 'bool' },
+    { k: 'horaFecha', label: 'Fim do expediente', tipo: 'hora' },
+    { k: 'lembreteMin', label: 'Avisar antes do fim', tipo: 'num', sufixo: 'min' },
+    { k: 'troca', label: 'Trocar de atendente sem fechar o caixa', tipo: 'bool' },
+    { k: 'trocaConta', label: 'Na troca, contar o dinheiro da gaveta', tipo: 'bool' },
+  ] },
+  { grupo: 'Internet', itens: [
+    { k: 'offline', label: 'Continuar funcionando sem internet (guarda no aparelho e envia depois)', tipo: 'bool' },
+  ] },
+]
+
+// "1 hora", "2 horas", "1h30", "45 min"
+export function fmtMin(m: number | null) {
+  if (m == null) return 'sem limite'
+  if (m === 60) return '1 hora'
+  if (m > 60 && m % 60 === 0) return `${m / 60} horas`
+  const h = Math.floor(m / 60), r = Math.round(m % 60)
+  return h ? `${h}h${String(r).padStart(2, '0')}` : `${r} min`
+}
+
+// 4925 -> "1:22:05"
+export function relogio(seg: number) {
+  const s = Math.max(0, Math.floor(seg))
+  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}

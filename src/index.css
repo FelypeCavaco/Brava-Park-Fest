@@ -196,3 +196,18 @@ h4 {
     display: none;
   }
 }
+
+/* Campo de formulário (recreação e telas novas): mesmo visual dos campos do sistema,
+   com o anel roxo do Festou ao focar. */
+@layer components {
+  .campo {
+    @apply w-full border border-line rounded-lg px-3 py-2 text-sm bg-surface transition-shadow outline-none;
+  }
+  .campo:focus,
+  .campo:focus-within {
+    @apply border-purple/50 ring-2 ring-purple/15;
+  }
+  .campo:disabled {
+    @apply bg-paper text-muted;
+  }
+}

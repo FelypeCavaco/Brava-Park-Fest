@@ -40,6 +40,7 @@ const Funnel = lazyPage(() => import('./pages/Funnel').then((m) => ({ default: m
 const Settlements = lazyPage(() => import('./pages/Settlements').then((m) => ({ default: m.Settlements })))
 const Commissions = lazyPage(() => import('./pages/Commissions').then((m) => ({ default: m.Commissions })))
 const MarketingHub = lazyPage(() => import('./pages/MarketingHub').then((m) => ({ default: m.MarketingHub })))
+const RecreacaoConfig = lazyPage(() => import('./pages/RecreacaoConfig').then((m) => ({ default: m.RecreacaoConfig })))
 const ConsumptionAverages = lazyPage(() => import('./pages/ConsumptionAverages').then((m) => ({ default: m.ConsumptionAverages })))
 
 function RedirectToPortal() {
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/guia" element={<GuiaFestou />} />
           <Route path="/marketing" element={<MarketingHub />} />
           <Route path="/funil" element={<Funnel />} />
+          <Route path="/recreacao/configuracao" element={<RecreacaoConfig />} />
         </Route>
       </Route>
     </Routes>

@@ -23,6 +23,9 @@ interface Festa {
   valorFirmado: number
   extras: number
   consumo: number
+  // Bebidas vendidas no bar e pagas na hora (migração 101): receita da festa
+  // que não entra no valor devido pelo dono.
+  bar: number
   // Fora da conta do lucro (marcado na tela; fica gravado até desmarcar).
   excluida: boolean
   excluidaPor: string | null
@@ -67,7 +70,7 @@ export function Profitability({ embutido = false }: { embutido?: boolean } = {})
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: reservationsData, error: resErr }, { data: costsData }, { data: consData }, { data: avgData }] = await Promise.all([
+    const [{ data: reservationsData, error: resErr }, { data: costsData }, { data: consData }, { data: avgData }, { data: barData }] = await Promise.all([
       supabase
         .from('reservations')
         .select('id, unit_id, event_date, final_value, guest_count, courtesy_guests, profit_excluded, profit_excluded_by, profit_excluded_at, client:clients(name), reservation_extra_items(quantity, price_snapshot), reservation_consumption(quantity, unit_price)')
@@ -76,6 +79,7 @@ export function Profitability({ embutido = false }: { embutido?: boolean } = {})
       supabase.from('reservation_costs').select('*'),
       supabase.from('reservation_stock_consumption').select('reservation_id, inventory_item_id, total_cost, no_cost'),
       supabase.rpc('consumption_averages', { p_unit: null, p_limit: 10 }),
+      supabase.from('other_incomes').select('reservation_id, amount').eq('kind', 'bar'),
     ])
 
     if (resErr) {
@@ -83,6 +87,10 @@ export function Profitability({ embutido = false }: { embutido?: boolean } = {})
       setLoading(false)
       return
     }
+
+    // sem a 101 a consulta volta erro e o bar fica zerado
+    const barPorFesta: Record<string, number> = {}
+    for (const b of (barData ?? []) as any[]) if (b.reservation_id) barPorFesta[b.reservation_id] = (barPorFesta[b.reservation_id] ?? 0) + Number(b.amount)
 
     setFestas(
       (reservationsData ?? []).map((r: any) => ({
@@ -95,7 +103,9 @@ export function Profitability({ embutido = false }: { embutido?: boolean } = {})
         valorFirmado: Number(r.final_value) || 0,
         extras: (r.reservation_extra_items ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.price_snapshot), 0),
         consumo: (r.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0),
+        bar: barPorFesta[r.id] ?? 0,
         valorContrato:
+          (barPorFesta[r.id] ?? 0) +
           (Number(r.final_value) || 0) +
           (r.reservation_extra_items ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.price_snapshot), 0) +
           (r.reservation_consumption ?? []).reduce((s: number, x: any) => s + Number(x.quantity) * Number(x.unit_price), 0),
@@ -327,9 +337,9 @@ export function Profitability({ embutido = false }: { embutido?: boolean } = {})
                 <td className="py-3 text-muted">{r.data}</td>
                 <td className="py-3">
                   {currency(r.valorContrato)}
-                  {r.extras + r.consumo > 0 && (
+                  {r.extras + r.consumo + r.bar > 0 && (
                     <span className="block text-[11px] text-muted">
-                      {currency(r.valorFirmado)} firmado{r.extras > 0 ? ` + ${currency(r.extras)} extras` : ''}{r.consumo > 0 ? ` + ${currency(r.consumo)} consumo` : ''}
+                      {currency(r.valorFirmado)} firmado{r.extras > 0 ? ` + ${currency(r.extras)} extras` : ''}{r.consumo > 0 ? ` + ${currency(r.consumo)} consumo` : ''}{r.bar > 0 ? ` + ${currency(r.bar)} bar pago na hora` : ''}
                     </span>
                   )}
                 </td>

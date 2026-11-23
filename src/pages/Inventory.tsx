@@ -40,6 +40,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   transferencia_saida: 'Transferência (saída)',
   transferencia_entrada: 'Transferência (entrada)',
   cadastro: 'Cadastro do item',
+  venda_bar: 'Venda no bar',
+  venda_bar_cancelada: 'Venda no bar cancelada',
 }
 
 interface Movement {
@@ -87,6 +89,7 @@ export function Inventory() {
   const [editSupplier, setEditSupplier] = useState('')
   const [editConsumptionType, setEditConsumptionType] = useState<'por_convidado' | 'por_festa'>('por_convidado')
   const [editNotifyShopping, setEditNotifyShopping] = useState(true)
+  const [editSalePrice, setEditSalePrice] = useState('')
   const [notifyShopping, setNotifyShopping] = useState(true)
 
   const [transferringItem, setTransferringItem] = useState<InventoryItem | null>(null)
@@ -168,6 +171,7 @@ export function Inventory() {
         last_unit_cost: i.last_unit_cost != null ? Number(i.last_unit_cost) : null,
         consumption_type: i.consumption_type ?? 'por_convidado',
         notify_shopping: i.notify_shopping !== false,
+        sale_price: i.sale_price != null ? Number(i.sale_price) : null,
       })),
     )
     setLoading(false)
@@ -298,6 +302,7 @@ export function Inventory() {
           last_unit_cost: item.last_unit_cost,
           consumption_type: item.consumption_type,
           notify_shopping: item.notify_shopping,
+          sale_price: item.sale_price,
         })
         await loadItems()
       },
@@ -313,6 +318,7 @@ export function Inventory() {
     setEditSupplier(item.supplier ?? '')
     setEditConsumptionType(item.consumption_type)
     setEditNotifyShopping(item.notify_shopping)
+    setEditSalePrice(item.sale_price != null ? String(item.sale_price).replace('.', ',') : '')
   }
 
   async function handleSaveEditItem(e: FormEvent) {
@@ -326,6 +332,7 @@ export function Inventory() {
       supplier: editSupplier.trim() || null,
       consumption_type: editConsumptionType,
       notify_shopping: editNotifyShopping,
+      sale_price: editSalePrice.trim() ? parseDecimal(editSalePrice) : null,
     }
     const { error } = await supabase.from('inventory_items').update(updates).eq('id', editingItem.id)
     if (error) {
@@ -696,7 +703,7 @@ export function Inventory() {
                     <tr key={i.id}>
                       <td className="py-3 font-medium">
                         {i.name}
-                        <p className="text-xs text-muted font-normal">{i.category}{i.supplier ? ` · ${i.supplier}` : ''}</p>
+                        <p className="text-xs text-muted font-normal">{i.category}{i.supplier ? ` · ${i.supplier}` : ''}{i.sale_price != null && <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-light text-amber px-1.5 text-[10px] font-semibold">bar {brl(i.sale_price)}</span>}</p>
                       </td>
                       <td className="py-3">
                         <div className="flex items-center gap-2">
@@ -931,6 +938,11 @@ export function Inventory() {
               <div>
                 <label className="block text-xs text-muted mb-1">Fornecedor (opcional)</label>
                 <input type="text" value={editSupplier} onChange={(e) => setEditSupplier(e.target.value)} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Preço de venda no bar (opcional)</label>
+                <input type="text" inputMode="decimal" value={editSalePrice} onChange={(e) => setEditSalePrice(e.target.value)} placeholder={`Ex.: 8,00 por ${editUnitOfMeasure || 'un'}`} className="w-full border border-line rounded-lg px-3 py-2 text-sm" />
+                <p className="text-[11px] text-muted mt-1">Com preço, o item aparece em Vendas no bar, na Central da festa. Vendeu: o estoque baixa e o lucro entra na festa.</p>
               </div>
               <label className="flex items-start gap-2 text-sm bg-paper rounded-lg px-3 py-2.5 cursor-pointer">
                 <input type="checkbox" checked={editNotifyShopping} onChange={(e) => setEditNotifyShopping(e.target.checked)} className="mt-0.5" />

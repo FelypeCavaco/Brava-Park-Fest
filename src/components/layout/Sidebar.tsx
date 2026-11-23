@@ -34,6 +34,8 @@ import {
   Building2,
   Download,
   BookOpen,
+  Timer,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useUnit, UNITS, allUnitsLabel } from '../../lib/UnitContext'
 import { useAuth } from '../../lib/AuthContext'
@@ -116,6 +118,15 @@ const groups: Group[] = [
       { to: '/fornecedores', label: 'Fornecedores', icon: Truck },
       { to: '/escalas', label: 'Escalas', icon: ClipboardCheck },
       { to: '/relatorio-aniversariantes', label: 'Relatório de aniversariantes', icon: Cake },
+    ],
+  },
+  {
+    // Só aparece quando o administrador geral liga a recreação para a casa.
+    id: 'recreacao',
+    label: 'Recreação',
+    icon: Timer,
+    items: [
+      { to: '/recreacao/configuracao', label: 'Planos e configuração', icon: SlidersHorizontal },
     ],
   },
   {

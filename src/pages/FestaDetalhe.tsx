@@ -42,6 +42,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useModulo } from '../lib/useModulo'
 import { useUndo } from '../lib/UndoContext'
 import { SendReviewModal } from '../components/SendReviewModal'
+import { VendasBar, type TotaisBar } from '../components/VendasBar'
 import { monthBounds } from '../lib/monthUtils'
 import { downloadPdf } from '../lib/pdfExport'
 import { escHtml } from '../lib/format'
@@ -187,7 +188,8 @@ function paymentMethodLabel(method: string | null) {
 const EVENT_TYPES = ['Aniversário infantil', 'Debutante', 'Casamento', 'Corporativo', 'Outro']
 
 interface CostItem { id: string; description: string; amount: number; fixed?: boolean }
-interface ConsumptionItem { id: string; item: string; quantity: number; unitPrice: number }
+// bar: lançado pelas Vendas no bar (na conta do dono); só sai cancelando a venda
+interface ConsumptionItem { id: string; item: string; quantity: number; unitPrice: number; bar?: boolean }
 interface ChecklistItem { id: string; description: string; done: boolean; dueDate: string | null }
 interface StaffRow {
   id: string
@@ -260,6 +262,8 @@ interface StockConsumptionEntry {
   // Custo congelado no momento do consumo (só informativo, Lucro por festa).
   totalCost: number | null
   noCost: boolean
+  // 'bar' = baixa de uma venda no bar (não aparece no consumo pós-festa)
+  origem?: string
 }
 
 interface RefundExpense {
@@ -399,6 +403,7 @@ export function FestaDetalhe() {
 
   const [unitInventoryItems, setUnitInventoryItems] = useState<InventoryItemLite[]>([])
   const [stockConsumption, setStockConsumption] = useState<StockConsumptionEntry[]>([])
+  const [barTotais, setBarTotais] = useState<TotaisBar>({ pagoNaHora: 0, naConta: 0, custo: 0 })
   const [consumptionForm, setConsumptionForm] = useState<Record<string, string>>({})
   // Como a quantidade é informada: o que foi consumido, ou o que sobrou no
   // estoque depois da festa (consumido = estoque antes − o que sobrou).
@@ -1115,7 +1120,7 @@ export function FestaDetalhe() {
 
   async function loadConsumption() {
     const { data } = await supabase.from('reservation_consumption').select('*').eq('reservation_id', id)
-    setConsumption((data ?? []).map((c) => ({ id: c.id, item: c.item, quantity: Number(c.quantity), unitPrice: Number(c.unit_price) })))
+    setConsumption((data ?? []).map((c) => ({ id: c.id, item: c.item, quantity: Number(c.quantity), unitPrice: Number(c.unit_price), bar: !!c.bar_venda_id })))
   }
 
   async function loadChecklist() {
@@ -1182,11 +1187,16 @@ export function FestaDetalhe() {
 
   // Insumos do estoque gastos na festa (Consumo pós-festa), pelo custo congelado
   // de cada lançamento. Só gerencial: no caixa a compra já foi contada.
-  const totalInsumos = stockConsumption.reduce((s, c) => s + (c.hasInventoryLink && !c.noCost && c.totalCost != null ? c.totalCost : 0), 0)
-  const insumosSemCusto = stockConsumption.filter((c) => c.hasInventoryLink && (c.noCost || c.totalCost == null)).length
+  // As bebidas vendidas no bar ficam separadas: custo do bar.
+  const consumoPosFesta = stockConsumption.filter((c) => c.origem !== 'bar')
+  const custoDe = (l: StockConsumptionEntry[]) => l.reduce((s, c) => s + (c.hasInventoryLink && !c.noCost && c.totalCost != null ? c.totalCost : 0), 0)
+  const totalInsumos = custoDe(consumoPosFesta)
+  const custoBar = custoDe(stockConsumption.filter((c) => c.origem === 'bar'))
+  const insumosSemCusto = consumoPosFesta.filter((c) => c.hasInventoryLink && (c.noCost || c.totalCost == null)).length
   const totalCustosLancados = costs.reduce((s, c) => s + c.amount, 0)
-  const totalCustos = totalCustosLancados + totalInsumos
-  const lucroEstimado = totalContrato - totalCustos
+  const totalCustos = totalCustosLancados + totalInsumos + custoBar
+  // A venda paga na hora no bar não entra no valor da festa (já foi paga), mas é receita dela.
+  const lucroEstimado = totalContrato + barTotais.pagoNaHora - totalCustos
 
   const checklistConcluidos = checklist.filter((c) => c.done).length
 
@@ -1433,7 +1443,7 @@ export function FestaDetalhe() {
   async function loadStockConsumption() {
     const { data } = await supabase
       .from('reservation_stock_consumption')
-      .select('id, item_name, quantity, inventory_item_id, total_cost, no_cost')
+      .select('id, item_name, quantity, inventory_item_id, total_cost, no_cost, origem')
       .eq('reservation_id', id)
       .order('created_at', { ascending: false })
     setStockConsumption(
@@ -1444,6 +1454,7 @@ export function FestaDetalhe() {
         hasInventoryLink: c.inventory_item_id !== null,
         totalCost: c.total_cost != null ? Number(c.total_cost) : null,
         noCost: !!c.no_cost,
+        origem: c.origem ?? 'consumo',
       })),
     )
   }
@@ -3236,14 +3247,19 @@ export function FestaDetalhe() {
             </Can>
           </Card>
 
-          <Card title="Consumo do dia (ex: chopp cobrado por litro)" action={<Beer className="w-4 h-4 text-amber" />}>
+          {festa && (
+            <VendasBar reservationId={festa.id} unitId={festa.unitId} onTotais={setBarTotais}
+              onMudou={() => { loadConsumption(); loadStockConsumption(); loadUnitInventory(festa.unitId) }} />
+          )}
+
+          <Card title="Consumo do dia lançado à mão" action={<Beer className="w-4 h-4 text-amber" />}>
             <p className="text-xs text-muted mb-3">
-              Para festas em que o cliente escolhe pagar pelo que for consumido, lance aqui — o valor entra
-              automaticamente no total da festa e fecha junto com o pagamento final.
+              Para cobrar do dono da festa algo que não está no estoque. O valor entra no total da festa e fecha junto com
+              o pagamento final. Bebidas do estoque: use <b>Vendas no bar</b>, que já baixa o estoque.
             </p>
             <table className="w-full text-sm mb-3">
               <tbody className="divide-y divide-line">
-                {consumption.map((c) => (
+                {consumption.filter((c) => !c.bar).map((c) => (
                   <tr key={c.id}>
                     <td className="py-2">{c.item}</td>
                     <td className="py-2 text-muted">{c.quantity} un</td>
@@ -3256,12 +3272,15 @@ export function FestaDetalhe() {
                     </td>
                   </tr>
                 ))}
-                {consumption.length === 0 && (
-                  <tr><td colSpan={5} className="py-3 text-center text-muted">Nenhum consumo lançado ainda.</td></tr>
+                {consumption.filter((c) => !c.bar).length === 0 && (
+                  <tr><td colSpan={5} className="py-3 text-center text-muted">Nenhum consumo lançado à mão.</td></tr>
                 )}
               </tbody>
             </table>
-            <p className="text-sm font-semibold mb-3">Total do consumo: {currency(totalConsumo)}</p>
+            <p className="text-sm font-semibold mb-3">
+              Total do consumo: {currency(totalConsumo)}
+              {barTotais.naConta > 0 && <span className="block text-[11px] font-normal text-muted">inclui {currency(barTotais.naConta)} do bar na conta do dono</span>}
+            </p>
             <form onSubmit={handleAddConsumo} className="flex flex-wrap gap-2">
               <input value={consumoItem} onChange={(e) => setConsumoItem(e.target.value)} placeholder="Item" className="border border-line rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[140px]" />
               <input type="number" value={consumoQtd} onChange={(e) => setConsumoQtd(e.target.value)} placeholder="Qtd" className="w-20 border border-line rounded-lg px-3 py-1.5 text-sm" />
@@ -3311,6 +3330,18 @@ export function FestaDetalhe() {
                     <button onClick={() => setTab('estoque')} className="text-xs text-purple font-medium whitespace-nowrap">Ver consumo</button>
                   </td>
                 </tr>
+                {(custoBar > 0 || barTotais.pagoNaHora > 0) && (
+                  <tr className="bg-paper/60">
+                    <td className="py-2">
+                      Bebidas vendidas no bar (custo)
+                      <span className="block text-[11px] text-muted">
+                        {barTotais.pagoNaHora > 0 ? `${currency(barTotais.pagoNaHora)} pagos na hora entram no lucro` : 'vendas na conta do dono já estão no valor da festa'}
+                      </span>
+                    </td>
+                    <td className="py-2 text-danger">{currency(custoBar)}</td>
+                    <td />
+                  </tr>
+                )}
               </tbody>
             </table>
             {costSuggestions.filter((s) => !costs.some((c) => c.description === s.category || c.description.startsWith(`${s.category} — `))).length > 0 && (
@@ -3368,7 +3399,8 @@ export function FestaDetalhe() {
             <div className="flex items-center justify-between pt-3 border-t border-line">
               <span className="text-sm text-muted">
                 Custos totais: {currency(totalCustos)}
-                {totalInsumos > 0 && <span className="block text-[11px]">{currency(totalCustosLancados)} lançados + {currency(totalInsumos)} de insumos</span>}
+                {(totalInsumos > 0 || custoBar > 0) && <span className="block text-[11px]">{currency(totalCustosLancados)} lançados + {currency(totalInsumos)} de insumos{custoBar > 0 ? ` + ${currency(custoBar)} do bar` : ''}</span>}
+                {barTotais.pagoNaHora > 0 && <span className="block text-[11px]">Receita: valor da festa + {currency(barTotais.pagoNaHora)} do bar pagos na hora</span>}
               </span>
               <span className={`font-display font-semibold ${lucroEstimado >= 0 ? 'text-teal' : 'text-danger'}`}>
                 Lucro estimado: {currency(lucroEstimado)}
@@ -3747,8 +3779,8 @@ export function FestaDetalhe() {
 
           {(() => {
             const convidados = (festa.convidados ?? 0) + (festa.courtesyGuests ?? 0)
-            const custoTotal = stockConsumption.reduce((s, c) => s + (c.totalCost ?? 0), 0)
-            const semCusto = stockConsumption.filter((c) => c.hasInventoryLink && c.noCost).length
+            const custoTotal = consumoPosFesta.reduce((s, c) => s + (c.totalCost ?? 0), 0)
+            const semCusto = consumoPosFesta.filter((c) => c.hasInventoryLink && c.noCost).length
             return (
               <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-paper rounded-lg px-3 py-2">
@@ -3803,7 +3835,7 @@ export function FestaDetalhe() {
 
           <p className="text-sm font-semibold mb-2">Histórico desta festa</p>
           <ul className="divide-y divide-line">
-            {stockConsumption.map((c) => (
+            {consumoPosFesta.map((c) => (
               <li key={c.id} className="py-2.5 flex items-center justify-between text-sm gap-3">
                 {editingConsumptionId === c.id ? (
                   <div className="flex items-center gap-2 flex-1">

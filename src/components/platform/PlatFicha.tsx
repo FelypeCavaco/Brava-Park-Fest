@@ -13,6 +13,7 @@ import { CompanySetup } from './CompanySetup'
 import { CompanyContract } from './CompanyContract'
 import { dataBr, diasSemUso, progressoImplantacao, SEM_USO_ALERTA, type Empresa } from './platformTypes'
 import { Numero } from './PlatVisaoGeral'
+import { RecreacaoFuncoes } from './PlatRecreacao'
 
 // Ficha de uma casa: tudo sobre ela num lugar só, em abas.
 
@@ -296,6 +297,8 @@ function PlanoEFuncoes({ d, c }: { d: PainelDados; c: Empresa }) {
           <Button className="mt-3" onClick={salvarManual} disabled={busy}>Salvar funções</Button>
         </Card>
       )}
+
+      <RecreacaoFuncoes companyId={c.id} ligada={!c.disabled_modules.includes('recreacao')} />
     </div>
   )
 }

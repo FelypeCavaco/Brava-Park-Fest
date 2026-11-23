@@ -8,6 +8,7 @@ import { RequireAuth } from './components/layout/RequireAuth'
 import { Login } from './pages/Login'
 const TermsPage = lazyPage(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })))
 const ClientPortal = lazyPage(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })))
+const RecreacaoPais = lazyPage(() => import('./pages/RecreacaoPais').then((m) => ({ default: m.RecreacaoPais })))
 const ReviewPublic = lazyPage(() => import('./pages/ReviewPublic').then((m) => ({ default: m.ReviewPublic })))
 const Dashboard = lazyPage(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const DailyReminders = lazyPage(() => import('./pages/DailyReminders').then((m) => ({ default: m.DailyReminders })))
@@ -60,6 +61,7 @@ export default function App() {
       {/* Links antigos da lista de convidados agora abrem o portal do cliente. */}
       <Route path="/lista-convidados/:token" element={<RedirectToPortal />} />
       <Route path="/avaliacao/:token" element={<ReviewPublic />} />
+      <Route path="/r/:token" element={<RecreacaoPais />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>

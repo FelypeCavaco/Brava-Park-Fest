@@ -4,9 +4,10 @@ import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { FamiliaEditor } from './FamiliaEditor'
+import { QrImg, qrParaImpressao } from './QrRec'
 import { brl, friendlyDbError } from '../../lib/format'
 import {
-  FORMAS_REC, fmtMin, horaMin, idadeAnos, idadeTexto, linkWhatsApp, mascaraCpf, mascaraTelefone, nomeForma,
+  FORMAS_REC, fmtMin, horaMin, idadeAnos, idadeTexto, linkPais, linkWhatsApp, mascaraCpf, mascaraTelefone, nomeForma,
   type FamiliaRec, type FuncoesRec, type PlanoRec,
 } from '../../lib/recreacao'
 
@@ -112,16 +113,19 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
   if (res) {
     const nomes = res.visitas.map((v) => v.nome.split(' ')[0])
     const ate = res.visitas.find((v) => v.ate)?.ate
+    const link = linkPais(res.token)
     const msg = `Oi, ${res.responsavel.split(' ')[0]}! ${nomes.join(' e ')} ${nomes.length > 1 ? 'entraram' : 'entrou'} na recreação às ${horaMin(res.entrada_em)}`
       + `${res.visitas.some((v) => v.pulseira) ? ` (pulseira${res.visitas.length > 1 ? 's' : ''} ${res.visitas.map((v) => v.pulseira ?? '—').join(' e ')})` : ''}.`
       + `${ate ? ` Tempo combinado até ${horaMin(ate)}.` : ''}`
       + `${funcoes.codigo ? `\n\nCódigo de retirada: ${res.codigo}\nSó entregamos a criança com esse código.` : ''}`
-    function imprimir() {
+      + `${funcoes.paginaPais !== false ? `\n\nAcompanhe o tempo, o valor e o QR da retirada por aqui:\n${link}` : ''}`
+    async function imprimir() {
       const w = window.open('', '_blank', 'width=360,height=640')
       if (!w) return setErro('O navegador bloqueou a janela de impressão. Libere as janelas deste site.')
+      const qr = funcoes.qr !== false ? await qrParaImpressao(link).catch(() => '') : ''
       const largura = String(regras.impressora) === '80' ? '72mm' : '48mm'
       w.document.write(`<!doctype html><meta charset="utf-8"><title>Etiqueta</title><style>body{font:12px/1.4 monospace;margin:0;padding:6px;width:${largura}}h1{font-size:13px;margin:0 0 4px}.c{border-top:1px dashed #000;margin-top:8px;padding-top:6px}.cod{font-size:18px;font-weight:bold;letter-spacing:3px}@media print{@page{margin:2mm}}</style>`
-        + res!.visitas.map((v) => `<div class="c"><h1>${nomeCasa} · RECREAÇÃO</h1>${v.pulseira ? `<b>PULSEIRA ${v.pulseira}</b><br>` : ''}${v.nome.toUpperCase()} (${idadeTexto(v.nascimento)})<br>${v.cuidados ? `<b>⚠ ${v.cuidados.toUpperCase()}</b><br>` : ''}Entrada: ${horaMin(res!.entrada_em)}<br>Plano: ${v.plano}${v.ate ? `<br>Até: ${horaMin(v.ate)}` : ''}<br>Responsável: ${res!.responsavel}<br>${mascaraTelefone(res!.telefone)}${funcoes.codigo ? `<br><span class="cod">${res!.codigo}</span><br>código de retirada` : ''}</div>`).join('')
+        + res!.visitas.map((v) => `<div class="c"><h1>${nomeCasa} · RECREAÇÃO</h1>${v.pulseira ? `<b>PULSEIRA ${v.pulseira}</b><br>` : ''}${v.nome.toUpperCase()} (${idadeTexto(v.nascimento)})<br>${v.cuidados ? `<b>⚠ ${v.cuidados.toUpperCase()}</b><br>` : ''}Entrada: ${horaMin(res!.entrada_em)}<br>Plano: ${v.plano}${v.ate ? `<br>Até: ${horaMin(v.ate)}` : ''}<br>Responsável: ${res!.responsavel}<br>${mascaraTelefone(res!.telefone)}${funcoes.codigo ? `<br><span class="cod">${res!.codigo}</span><br>código de retirada` : ''}${qr ? `<br><img src="${qr}" width="110" height="110">` : ''}</div>`).join('')
         + `<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),400)}<\/script>`)
       w.document.close()
     }
@@ -137,6 +141,12 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
             <div className="text-center">
               <p className="text-xs text-muted">Código de retirada</p>
               <p className="font-display text-4xl font-black tracking-[0.3em] text-ink">{res.codigo}</p>
+            </div>
+          )}
+          {funcoes.qr !== false && (
+            <div className="text-center">
+              <QrImg texto={link} tamanho={96} className="rounded-lg bg-white p-1" />
+              <p className="text-[11px] text-muted mt-0.5">QR da retirada</p>
             </div>
           )}
         </div>

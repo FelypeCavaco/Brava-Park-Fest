@@ -235,7 +235,15 @@ export interface VisitaRec {
   pausa: { inicio: string; motivo: string; por: string | null } | null
   conta: ContaRec; proxima: { em: number; total: number } | null
   ocorrencias: { id: string; tipo: string; descricao: string; providencia: string | null; em: string; por: string | null }[]
+  chegando_em: string | null; pedido_min: number | null; pedido_em: string | null
   agora: string
+}
+
+// Página do responsável (link no WhatsApp e QR da retirada)
+export const linkPais = (token: string) => `${window.location.origin}/r/${token}`
+// O leitor de QR (ou o leitor de mesa que "digita") entrega o link: aqui sai só o token.
+export function tokenDoTexto(t: string): string | null {
+  return t.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0].toLowerCase() ?? null
 }
 export const FORMAS_REC: [string, string][] = [['pix', 'Pix'], ['cartao_debito', 'Débito'], ['cartao_credito', 'Crédito'], ['dinheiro', 'Dinheiro']]
 export const nomeForma = (f: string | null | undefined) => FORMAS_REC.find((x) => x[0] === f)?.[1] ?? f ?? ''

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users } from 'lucide-react'
+import { Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit } from '../lib/UnitContext'
@@ -8,8 +8,9 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { EntradaRec } from '../components/recreacao/EntradaRec'
 import { SaidaRec } from '../components/recreacao/SaidaRec'
+import { LeitorQr, podeLerQr } from '../components/recreacao/QrRec'
 import { brl, friendlyDbError } from '../lib/format'
-import { cronometro, fmtMin, horaMin, idadeTexto, linkWhatsApp, type FuncoesRec, type VisitaRec } from '../lib/recreacao'
+import { cronometro, fmtMin, horaMin, idadeTexto, linkWhatsApp, tokenDoTexto, type FuncoesRec, type VisitaRec } from '../lib/recreacao'
 
 interface Config { ligada: boolean; funcoes: FuncoesRec; regras: Record<string, string | number>; termo: string }
 type Estado = { cor: 'vd' | 'am' | 'vm' | 'cz'; etiqueta: string; info: string; valor: number }
@@ -31,7 +32,8 @@ export function RecreacaoPainel() {
   const [buscadoEm, setBuscadoEm] = useState(Date.now())
   const [agora, setAgora] = useState(Date.now())
   const [fotos, setFotos] = useState<Record<string, string>>({})
-  const [filtro, setFiltro] = useState<'todos' | 'am' | 'vm' | 'cuidado'>('todos')
+  const [filtro, setFiltro] = useState<'todos' | 'am' | 'vm' | 'cuidado' | 'chegando'>('todos')
+  const [lendo, setLendo] = useState(false)
   const [busca, setBusca] = useState('')
   const [painel, setPainel] = useState<null | { tipo: 'entrada' } | { tipo: 'saida'; visitas: string[]; marcadas: string[]; codigo?: string }>(null)
   const [acao, setAcao] = useState<Acao>(null)
@@ -39,6 +41,7 @@ export function RecreacaoPainel() {
   // cada ação começa com o texto em branco (o motivo de uma criança não passa para outra)
   const abrir = (a: Acao) => { setTexto({ a: '', b: '', c: 'Queda ou machucado leve' }); setAcao(a) }
   const [codigo, setCodigo] = useState('')
+  const codigoOk = /^\d{4}$/.test(codigo) || !!tokenDoTexto(codigo)
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const pedindo = useRef(false)
@@ -103,6 +106,7 @@ export function RecreacaoPainel() {
     if (filtro === 'am' && e?.cor !== 'am') return false
     if (filtro === 'vm' && e?.cor !== 'vm') return false
     if (filtro === 'cuidado' && !v.crianca.cuidados) return false
+    if (filtro === 'chegando' && !v.chegando_em) return false
     const t = busca.trim().toLowerCase()
     return !t || v.crianca.nome.toLowerCase().includes(t) || (v.pulseira ?? '') === t || v.familia.responsavel.toLowerCase().includes(t)
   })
@@ -116,12 +120,25 @@ export function RecreacaoPainel() {
     setMsg({ ok: true, texto: ok }); setAcao(null); setTexto({ a: '', b: '', c: 'Queda ou machucado leve' }); carregar()
     return data ?? true
   }
-  async function porCodigo() {
-    const { data, error } = await supabase.rpc('rec_visitas_por_codigo', { p_codigo: codigo })
-    if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
-    const ids = (data ?? []) as string[]
-    if (!ids.length) return setMsg({ ok: false, texto: 'Nenhuma criança dentro com esse código. Confira com o responsável.' })
-    setPainel({ tipo: 'saida', visitas: ids, marcadas: ids, codigo }); setCodigo('')
+  // Vale o código de 4 dígitos digitado, ou o QR (lido pela câmera ou pelo leitor de mesa,
+  // que "digita" o link): ler o QR prova que o responsável tem o celular com o link.
+  async function porCodigo(texto = codigo) {
+    const t = texto.trim()
+    const token = tokenDoTexto(t)
+    let ids: string[] = [], cod = t
+    if (token) {
+      const { data, error } = await supabase.rpc('rec_visitas_por_token', { p_token: token })
+      if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
+      const r = data as { codigo: string | null; visitas: string[] } | null
+      ids = r?.visitas ?? []; cod = r?.codigo ?? ''
+      if (!ids.length) return setMsg({ ok: false, texto: 'Esse QR não tem ninguém dentro agora (a saída já foi feita ou o link é antigo).' })
+    } else {
+      const { data, error } = await supabase.rpc('rec_visitas_por_codigo', { p_codigo: t })
+      if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
+      ids = (data ?? []) as string[]
+      if (!ids.length) return setMsg({ ok: false, texto: 'Nenhuma criança dentro com esse código. Confira com o responsável.' })
+    }
+    setPainel({ tipo: 'saida', visitas: ids, marcadas: ids, codigo: cod }); setCodigo('')
   }
   function abrirSaida(v: VisitaRec) {
     const grupo = (lista ?? []).filter((x) => x.grupo === v.grupo).map((x) => x.id)
@@ -140,10 +157,12 @@ export function RecreacaoPainel() {
         </div>
         {pode && (
           <div className="flex flex-wrap gap-2">
-            <form onSubmit={(e) => { e.preventDefault(); if (codigo.length === 4) porCodigo() }} className="flex items-center gap-1.5 rounded-xl border border-line bg-surface pl-3 pr-1 h-11">
+            <form onSubmit={(e) => { e.preventDefault(); if (codigoOk) porCodigo() }} className="flex items-center gap-1.5 rounded-xl border border-line bg-surface pl-3 pr-1 h-11">
               <KeyRound className="w-4 h-4 text-muted" />
-              <input className="w-20 bg-transparent outline-none font-display font-bold tracking-[0.3em] placeholder:tracking-normal placeholder:font-normal" inputMode="numeric" maxLength={4} placeholder="Código" value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-label="Código de retirada" />
-              <Button type="submit" variant="secondary" className="!py-1.5 !px-3" disabled={codigo.length !== 4}><LogOut className="w-4 h-4" />Saída</Button>
+              {/* aceita os 4 dígitos ou o link do QR (leitor de mesa) */}
+              <input className={`w-20 bg-transparent outline-none placeholder:tracking-normal placeholder:font-normal ${/^\d*$/.test(codigo) ? 'font-display font-bold tracking-[0.3em]' : 'text-xs'}`} inputMode="text" maxLength={120} placeholder="Código" value={codigo} onChange={(e) => setCodigo(e.target.value)} aria-label="Código de retirada" />
+              <Button type="submit" variant="secondary" className="!py-1.5 !px-3" disabled={!codigoOk}><LogOut className="w-4 h-4" />Saída</Button>
+              {cfg?.funcoes.qr !== false && podeLerQr() && <button type="button" onClick={() => setLendo(true)} className="h-8 w-8 rounded-lg text-purple hover:bg-purple-light flex items-center justify-center" aria-label="Ler QR com a câmera" title="Ler QR com a câmera"><ScanLine className="w-4 h-4" /></button>}
             </form>
             <Button onClick={() => setPainel({ tipo: 'entrada' })} className="!h-11"><LogIn className="w-4 h-4" />Nova entrada</Button>
           </div>
@@ -163,7 +182,7 @@ export function RecreacaoPainel() {
       {acao && <PainelAcao acao={acao} texto={texto} setTexto={setTexto} cfg={cfg} rodar={rodar} fechar={() => setAcao(null)} />}
 
       <div className="flex flex-wrap items-center gap-2">
-        {([['todos', 'Todos'], ['am', 'Perto de mudar'], ['vm', 'Cobrando a mais'], ['cuidado', 'Alergia ou cuidado']] as const).map(([k, l]) => (
+        {([['todos', 'Todos'], ['am', 'Perto de mudar'], ['vm', 'Cobrando a mais'], ['cuidado', 'Alergia ou cuidado'], ...((lista ?? []).some((v) => v.chegando_em) ? [['chegando', `Chegando (${(lista ?? []).filter((v) => v.chegando_em).length})`]] : [])] as [typeof filtro, string][]).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setFiltro(k)} className={`px-3 h-8 rounded-full text-sm font-semibold border ${filtro === k ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{l}</button>
         ))}
         <div className="relative ml-auto w-full sm:w-64">
@@ -191,6 +210,16 @@ export function RecreacaoPainel() {
                 </div>
                 {v.crianca.cuidados && <p className="text-xs font-bold text-danger bg-danger-light rounded-lg px-2 py-1"><AlertTriangle className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{v.crianca.cuidados}</p>}
                 {v.ocorrencias.length > 0 && <p className="text-xs font-semibold text-amber">{v.ocorrencias.length} ocorrência{v.ocorrencias.length > 1 ? 's' : ''}: {v.ocorrencias[v.ocorrencias.length - 1].tipo.toLowerCase()}</p>}
+                {v.chegando_em && <p className="text-xs font-bold text-teal bg-teal-light rounded-lg px-2 py-1"><MapPin className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />Responsável chegando para buscar · avisou às {horaMin(v.chegando_em)}</p>}
+                {v.pedido_min && (
+                  <div className="rounded-lg bg-amber-light text-amber px-2.5 py-2 text-xs font-bold flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                    <span className="flex-1 min-w-[9rem]"><Hourglass className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{v.familia.responsavel.split(' ')[0]} pediu mais {fmtMin(v.pedido_min)}</span>
+                    {pode && <>
+                      <button type="button" className="rounded-lg bg-amber text-white px-2.5 py-1 hover:opacity-90" onClick={() => rodar('rec_estender', { p_visita: v.id, p_minutos: v.pedido_min }, `Tempo de ${v.crianca.nome.split(' ')[0]} estendido em ${fmtMin(v.pedido_min!)}.`)}>Aceitar</button>
+                      <button type="button" className="rounded-lg border border-amber/40 px-2.5 py-1 hover:bg-white/60" onClick={() => rodar('rec_pedido_recusar', { p_visita: v.id }, 'Pedido recusado.')}>Recusar</button>
+                    </>}
+                  </div>
+                )}
                 <div className="flex items-baseline justify-between gap-2">
                   <span className={`font-display text-3xl font-bold tabular-nums ${c.rel}`}>{cronometro(segTotal(v))}</span>
                   <span className={`text-xs font-bold rounded-full px-2.5 py-1 ${c.chip}`}>{e.etiqueta}</span>
@@ -214,6 +243,8 @@ export function RecreacaoPainel() {
           })}
         </div>
       )}
+
+      {lendo && <LeitorQr onFechar={() => setLendo(false)} onLido={(t) => { setLendo(false); porCodigo(t) }} />}
 
       {painel && cfg && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 overflow-y-auto">

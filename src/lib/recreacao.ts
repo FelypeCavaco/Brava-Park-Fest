@@ -169,3 +169,56 @@ export function relogio(seg: number) {
   const s = Math.max(0, Math.floor(seg))
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
+
+// ---------- Famílias (migração 102) ----------
+export interface CriancaRec { id?: string; nome: string; nascimento: string; cuidados: string | null; foto_path?: string | null; ativo: boolean }
+export interface AutorizadoRec { id?: string; nome: string; documento: string | null; parentesco: string | null; ativo: boolean }
+export interface FamiliaRec {
+  id?: string; responsavel: string; cpf: string | null; telefone: string | null; email: string | null
+  imagem_autorizada: boolean; termo_aceito_em?: string | null; termo_registrado_por?: string | null; observacoes: string | null
+  origem?: string; criado_em?: string; criado_por?: string | null; atualizado_em?: string; atualizado_por?: string | null
+  criancas: CriancaRec[]; autorizados: AutorizadoRec[]
+}
+export interface Parecida { id: string; responsavel: string; cpf: string | null; telefone: string | null; criancas: string[]; motivos: string[]; bloqueia: boolean }
+
+export const soDigitos = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
+export function mascaraCpf(s: string | null | undefined) {
+  const d = soDigitos(s).slice(0, 11)
+  return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4')
+}
+export function mascaraTelefone(s: string | null | undefined) {
+  const d = soDigitos(s).slice(0, 11)
+  if (d.length <= 2) return d.length ? `(${d}` : ''
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+}
+export function cpfValido(s: string | null | undefined) {
+  const d = soDigitos(s)
+  if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false
+  for (const k of [9, 10]) {
+    let soma = 0
+    for (let i = 0; i < k; i++) soma += Number(d[i]) * (k + 1 - i)
+    const r = soma % 11
+    if ((r < 2 ? 0 : 11 - r) !== Number(d[k])) return false
+  }
+  return true
+}
+// idade em anos (ou meses, para bebês)
+export function idadeTexto(nasc: string) {
+  if (!nasc) return ''
+  const [y, m, d] = nasc.split('-').map(Number)
+  const h = new Date()
+  let anos = h.getFullYear() - y
+  if (h.getMonth() + 1 < m || (h.getMonth() + 1 === m && h.getDate() < d)) anos--
+  if (anos >= 1) return `${anos} ${anos === 1 ? 'ano' : 'anos'}`
+  const meses = Math.max(0, (h.getFullYear() - y) * 12 + h.getMonth() + 1 - m - (h.getDate() < d ? 1 : 0))
+  return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
+}
+export function idadeAnos(nasc: string) {
+  const [y, m, d] = nasc.split('-').map(Number)
+  const h = new Date()
+  let anos = h.getFullYear() - y
+  if (h.getMonth() + 1 < m || (h.getMonth() + 1 === m && h.getDate() < d)) anos--
+  return anos
+}

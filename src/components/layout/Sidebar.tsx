@@ -126,6 +126,7 @@ const groups: Group[] = [
     label: 'Recreação',
     icon: Timer,
     items: [
+      { to: '/recreacao/familias', label: 'Famílias', icon: Users },
       { to: '/recreacao/configuracao', label: 'Planos e configuração', icon: SlidersHorizontal },
     ],
   },

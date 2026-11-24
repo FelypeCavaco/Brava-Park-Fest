@@ -42,6 +42,7 @@ const Settlements = lazyPage(() => import('./pages/Settlements').then((m) => ({ 
 const Commissions = lazyPage(() => import('./pages/Commissions').then((m) => ({ default: m.Commissions })))
 const MarketingHub = lazyPage(() => import('./pages/MarketingHub').then((m) => ({ default: m.MarketingHub })))
 const RecreacaoPainel = lazyPage(() => import('./pages/RecreacaoPainel').then((m) => ({ default: m.RecreacaoPainel })))
+const RecreacaoRelatorios = lazyPage(() => import('./pages/RecreacaoRelatorios').then((m) => ({ default: m.RecreacaoRelatorios })))
 const RecreacaoCaixa = lazyPage(() => import('./pages/RecreacaoCaixa').then((m) => ({ default: m.RecreacaoCaixa })))
 const RecreacaoFamilias = lazyPage(() => import('./pages/RecreacaoFamilias').then((m) => ({ default: m.RecreacaoFamilias })))
 const RecreacaoConfig = lazyPage(() => import('./pages/RecreacaoConfig').then((m) => ({ default: m.RecreacaoConfig })))
@@ -101,6 +102,7 @@ export default function App() {
           <Route path="/recreacao/configuracao" element={<RecreacaoConfig />} />
           <Route path="/recreacao/familias" element={<RecreacaoFamilias />} />
           <Route path="/recreacao/caixa" element={<RecreacaoCaixa />} />
+          <Route path="/recreacao/relatorios" element={<RecreacaoRelatorios />} />
           <Route path="/recreacao" element={<RecreacaoPainel />} />
         </Route>
       </Route>

@@ -46,6 +46,7 @@ function origemDaEntrada(kind?: string | null) {
   if (kind === 'acerto_unidades') return 'Acerto entre unidades'
   if (kind === 'bar') return 'Vendas no bar'
   if (kind === 'recreacao') return 'Recreação'
+  if (kind === 'extrato') return 'Extrato do banco'
   return 'Outra entrada'
 }
 export interface ContaAberta { vencimento: string; categoria: string; descricao: string; fornecedor: string; valor: number; atrasada: boolean }

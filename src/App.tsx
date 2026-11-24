@@ -26,6 +26,7 @@ const Packages = lazyPage(() => import('./pages/Packages').then((m) => ({ defaul
 const Contracts = lazyPage(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
 const Payments = lazyPage(() => import('./pages/Payments').then((m) => ({ default: m.Payments })))
 const Finance = lazyPage(() => import('./pages/Finance').then((m) => ({ default: m.Finance })))
+const BankStatement = lazyPage(() => import('./pages/BankStatement').then((m) => ({ default: m.BankStatement })))
 const FinanceiroRecreacao = lazyPage(() => import('./pages/FinanceiroRecreacao').then((m) => ({ default: m.FinanceiroRecreacao })))
 const FestaFixedCosts = lazyPage(() => import('./pages/FestaFixedCosts').then((m) => ({ default: m.FestaFixedCosts })))
 const MonthlyResult = lazyPage(() => import('./pages/MonthlyResult').then((m) => ({ default: m.MonthlyResult })))
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="/satisfacao" element={<Feedback />} />
           <Route path="/pagamentos" element={<Payments />} />
           <Route path="/financeiro" element={<FinanceiroRota />} />
+          <Route path="/extrato-banco" element={<BankStatement />} />
           <Route path="/despesas-fixas-festas" element={<FestaFixedCosts />} />
           <Route path="/resultado-do-mes" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=caixa" tela={<MonthlyResult />} />} />
           <Route path="/lucro-por-festa" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=festa" tela={<Profitability />} />} />

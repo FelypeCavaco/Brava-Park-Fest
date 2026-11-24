@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Filter,
   Wallet,
+  Landmark,
   BarChart3,
   Banknote,
   FileSpreadsheet,
@@ -101,6 +102,7 @@ const groups: Group[] = [
     icon: Banknote,
     items: [
       { to: '/financeiro', label: 'Financeiro', icon: Banknote },
+      { to: '/extrato-banco', label: 'Extrato do banco', icon: Landmark },
       { to: '/pagamentos', label: 'Pagamentos', icon: Wallet },
       { to: '/despesas-fixas-festas', label: 'Despesa fixa das festas', icon: Repeat },
       { to: '/acertos-entre-unidades', label: 'Acertos entre unidades', icon: ArrowLeftRight },

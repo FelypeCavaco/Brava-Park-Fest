@@ -29,7 +29,7 @@ const novaChave = () => Math.random().toString(36).slice(2)
 const vazia = (): Crianca => ({ chave: novaChave(), nome: '', nascimento: '', cuidados: '', ativo: true })
 
 // Reduz a foto antes de enviar (o celular tira fotos enormes).
-async function reduzir(arquivo: File): Promise<Blob> {
+export async function reduzir(arquivo: File): Promise<Blob> {
   const url = URL.createObjectURL(arquivo)
   try {
     const img = await new Promise<HTMLImageElement>((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = url })

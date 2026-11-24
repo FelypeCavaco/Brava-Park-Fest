@@ -129,7 +129,7 @@ export const FUNCOES_REC: { grupo: string; itens: CampoFuncao[] }[] = [
     { k: 'qr', label: 'QR code de retirada (no WhatsApp e no cupom)', tipo: 'bool' },
     { k: 'foto', label: 'Foto da criança', tipo: 'opcao', opcoes: [['nao', 'Não tirar foto'], ['cadastro', 'Tirar uma vez, no cadastro'], ['entrada', 'Tirar a cada entrada']] },
     { k: 'fotoObrig', label: 'Foto obrigatória para dar entrada', tipo: 'bool' },
-    { k: 'fotoDias', label: 'Apagar as fotos depois de', tipo: 'num', sufixo: 'dias' },
+    { k: 'fotoDias', label: 'Apagar a foto de cada entrada depois de', tipo: 'num', sufixo: 'dias' },
   ] },
   { grupo: 'Página do responsável', itens: [
     { k: 'paginaPais', label: 'Mandar o link da página do responsável', tipo: 'bool' },

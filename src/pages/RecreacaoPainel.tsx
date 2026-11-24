@@ -71,6 +71,18 @@ export function RecreacaoPainel() {
   }, [unitId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { carregar(); const t = setInterval(carregar, 15000); return () => clearInterval(t) }, [carregar])
 
+  // apaga as fotos de entrada que passaram do prazo da casa (uma vez ao abrir o painel)
+  useEffect(() => {
+    if (!pode || cfg?.funcoes.foto !== 'entrada') return
+    ;(async () => {
+      const { data } = await supabase.rpc('rec_fotos_vencidas')
+      const paths = (data ?? []) as string[]
+      if (!paths.length) return
+      const { error } = await supabase.storage.from('recreacao-fotos').remove(paths)
+      if (!error) await supabase.rpc('rec_fotos_limpar', { p_paths: paths })
+    })()
+  }, [pode, cfg?.funcoes.foto]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // situação do caixa da unidade (avisa quando está fechado ou esquecido de ontem)
   const [caixa, setCaixa] = useState<{ aberto: boolean; obrigatorio: boolean; decidir?: boolean } | null>(null)
   useEffect(() => {

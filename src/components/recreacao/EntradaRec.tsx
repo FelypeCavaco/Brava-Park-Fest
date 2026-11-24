@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Plus, UserRound, Pencil, AlertTriangle, Check, X, MessageCircle, Printer, LogIn, ArrowLeft } from 'lucide-react'
+import { Camera, Search, Plus, UserRound, Pencil, AlertTriangle, Check, X, MessageCircle, Printer, LogIn, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
-import { FamiliaEditor } from './FamiliaEditor'
+import { FamiliaEditor, reduzir } from './FamiliaEditor'
+import { useCompany } from '../../lib/CompanyContext'
 import { QrImg, qrParaImpressao } from './QrRec'
 import { brl, friendlyDbError } from '../../lib/format'
 import {
@@ -31,6 +32,8 @@ interface Resultado { codigo: string; grupo: string; token: string; entrada_em: 
 export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, dentro, nomeCasa, onFechar, onConcluida }: Props) {
   const { can } = useAuth()
   const gerente = can('action:recreacao.gerente')
+  const { brand } = useCompany()
+  const [fotosEnt, setFotosEnt] = useState<Record<string, { blob: Blob; url: string }>>({}) // criança -> foto desta entrada
   // com mais de uma unidade e o sistema em 'todas', a recepção escolhe (não vem nenhuma marcada)
   const [unidade, setUnidade] = useState(unidadeInicial ?? (unidades.length === 1 ? unidades[0].id : ''))
   const [busca, setBusca] = useState('')
@@ -91,20 +94,41 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
       if (!p) out.push(`Escolha o plano de ${c?.nome.split(' ')[0]}.`)
       else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && !e.forma) out.push(`Escolha como ${c?.nome.split(' ')[0]} paga.`)
       if (e.usarExcecao && e.excecao.trim().length < 3) out.push('Escreva o motivo da exceção.')
-      if (funcoes.foto !== 'nao' && funcoes.fotoObrig && !c?.foto_path) out.push(`Tire a foto de ${c?.nome.split(' ')[0]} (no cadastro).`)
+      if (funcoes.fotoObrig && funcoes.foto === 'cadastro' && !c?.foto_path) out.push(`Tire a foto de ${c?.nome.split(' ')[0]} (no cadastro).`)
+      if (funcoes.fotoObrig && funcoes.foto === 'entrada' && !fotosEnt[cid]) out.push(`Tire a foto de ${c?.nome.split(' ')[0]}.`)
     }
     return out
-  }, [linhas, unidade, familia, planos, funcoes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linhas, unidade, familia, planos, funcoes, fotosEnt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function confirmar() {
     if (!familia || pendencias.length) return
     setSalvando(true); setErro(null)
+    // foto tirada nesta entrada: sobe antes, e o caminho vai junto com a entrada
+    const caminhos: Record<string, string> = {}
+    if (funcoes.foto === 'entrada' && brand.companyId) {
+      for (const [cid] of linhas) {
+        const f = fotosEnt[cid]
+        if (!f) continue
+        const path = `${brand.companyId}/entrada/${crypto.randomUUID()}.jpg`
+        const up = await supabase.storage.from('recreacao-fotos').upload(path, f.blob, { contentType: 'image/jpeg' })
+        if (up.error) {
+          if (funcoes.fotoObrig) { setSalvando(false); return setErro('A foto não subiu. Confira a internet e tente de novo.') }
+          continue
+        }
+        caminhos[cid] = path
+      }
+    }
     const { data, error } = await supabase.rpc('rec_entrada', {
       p_unit: unidade, p_familia: familia.id,
-      p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null })),
+      p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null, foto: caminhos[cid] ?? null })),
     })
     setSalvando(false)
-    if (error) return setErro(friendlyDbError(error.message))
+    if (error) {
+      const feitos = Object.values(caminhos)
+      if (feitos.length) supabase.storage.from('recreacao-fotos').remove(feitos)
+      return setErro(friendlyDbError(error.message))
+    }
+    setFotosEnt({})
     setRes(data as Resultado)
     onConcluida()
   }
@@ -260,6 +284,18 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
                           </select>
                         </label>
                         <label className="text-xs font-medium text-muted">Pulseira nº<input className="campo mt-1" value={e.pulseira} onChange={(ev) => set({ pulseira: ev.target.value })} /></label>
+                        {funcoes.foto === 'entrada' && (
+                          <label className="sm:col-span-2 flex items-center gap-3 cursor-pointer text-xs font-medium text-muted">
+                            <span className={`relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed ${fotosEnt[c.id!] ? 'border-transparent' : 'border-line bg-surface'}`}>
+                              {fotosEnt[c.id!] ? <img src={fotosEnt[c.id!].url} alt={`Foto de ${c.nome}`} className="w-full h-full object-cover" /> : <Camera className="w-5 h-5" />}
+                            </span>
+                            <span>{fotosEnt[c.id!] ? 'Trocar a foto de hoje' : `Tirar a foto de hoje${funcoes.fotoObrig ? ' (obrigatória)' : ''}`}</span>
+                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={async (ev) => {
+                              const arq = ev.target.files?.[0]; if (!arq) return
+                              try { const blob = await reduzir(arq); setFotosEnt((m) => ({ ...m, [c.id!]: { blob, url: URL.createObjectURL(blob) } })) } catch { setErro('Não consegui ler a foto. Tente de novo.') }
+                            }} />
+                          </label>
+                        )}
                         {p && p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && (
                           <div className="sm:col-span-2 space-y-2">
                             {!e.usarExcecao && (

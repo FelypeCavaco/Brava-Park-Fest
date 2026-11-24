@@ -7,6 +7,18 @@ import { BrandLogo } from '../components/BrandLogo'
 import { useCompany } from '../lib/CompanyContext'
 import mascotImg from '../assets/mascote-theo.png'
 
+// Separa senha errada de problema de conexão: quem digitou certo não pode achar que errou a senha.
+function mensagemDeLogin(e: { message?: string; status?: number; name?: string }): string {
+  const msg = (e.message ?? '').toLowerCase()
+  const rede = !e.status || e.status === 0 || e.name === 'AuthRetryableFetchError' || /failed to fetch|network|load failed|fetch failed|timeout|timed out/.test(msg)
+  if (rede) return 'Não conseguimos conectar ao sistema. Isso não é a sua senha: confira a internet e tente de novo. Se o Wi-Fi estiver ligado mas sem resposta, tente pelos dados do celular.'
+  if (e.status === 429 || /rate limit|too many/.test(msg)) return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.'
+  if (e.status && e.status >= 500) return 'O sistema está com instabilidade no momento. A sua senha não foi o problema: tente de novo em alguns minutos.'
+  if (/email not confirmed/.test(msg)) return 'Este e-mail ainda não foi confirmado. Procure quem administra a sua conta.'
+  if (/invalid login credentials|invalid credentials/.test(msg) || e.status === 400) return 'E-mail ou senha incorretos. Confira e tente de novo.'
+  return 'Não foi possível entrar. Confira o e-mail e a senha e tente de novo.'
+}
+
 export function Login() {
   const { brand } = useCompany()
   const [email, setEmail] = useState('')
@@ -31,11 +43,16 @@ export function Login() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    let error: { message?: string; status?: number; name?: string } | null = null
+    try {
+      error = (await supabase.auth.signInWithPassword({ email, password })).error
+    } catch (err) {
+      error = err as { message?: string }
+    }
 
     setLoading(false)
     if (error) {
-      setError('Não foi possível entrar. Confira o email e a senha.')
+      setError(mensagemDeLogin(error))
       return
     }
     navigate(from, { replace: true })

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Wallet, Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit } from '../lib/UnitContext'
@@ -69,6 +70,14 @@ export function RecreacaoPainel() {
     }
   }, [unitId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { carregar(); const t = setInterval(carregar, 15000); return () => clearInterval(t) }, [carregar])
+
+  // situação do caixa da unidade (avisa quando está fechado ou esquecido de ontem)
+  const [caixa, setCaixa] = useState<{ aberto: boolean; obrigatorio: boolean; decidir?: boolean } | null>(null)
+  useEffect(() => {
+    if (!unitId || !can('page:recreacao_caixa')) { setCaixa(null); return }
+    const ler = () => supabase.rpc('rec_caixa_atual', { p_unit: unitId }).then(({ data }) => setCaixa((data as typeof caixa) ?? null))
+    ler(); const t = setInterval(ler, 30000); return () => clearInterval(t)
+  }, [unitId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t) }, [])
 
   // tempo andando entre uma busca e outra (pausado não anda)
@@ -176,6 +185,12 @@ export function RecreacaoPainel() {
         <Numero rotulo="Com alergia ou cuidado" valor={String((lista ?? []).filter((v) => v.crianca.cuidados).length)} dica="aparecem em vermelho" />
       </div>
 
+      {caixa && (!caixa.aberto || caixa.decidir) && (caixa.obrigatorio || caixa.decidir) && (
+        <Link to="/recreacao/caixa" className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold ${caixa.aberto ? 'bg-amber-light text-amber' : 'bg-danger-light text-danger'}`}>
+          <Wallet className="w-4 h-4 shrink-0" />
+          {caixa.aberto ? 'O caixa de um dia anterior continua aberto. Toque para fechar ou manter aberto.' : 'O caixa está fechado. Toque para abrir antes de dar entrada.'}
+        </Link>
+      )}
       {erro && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{erro}</div>}
       {msg && <div className={`text-sm rounded-lg px-4 py-2.5 flex justify-between gap-2 ${msg.ok ? 'bg-teal-light text-teal' : 'bg-danger-light text-danger'}`}>{msg.texto}<button onClick={() => setMsg(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button></div>}
 

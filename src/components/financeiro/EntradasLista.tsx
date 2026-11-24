@@ -15,11 +15,11 @@ import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '../../types'
 //   • Acertos entre unidades e multa e juros (mudam só pelas telas deles).
 
 export interface EntradaManual { id: string; unit_id: string; category: string | null; description: string; amount: number; received_date: string; payment_method: string | null }
-type Origem = 'festa' | 'manual' | 'acerto' | 'multa' | 'bar'
+type Origem = 'festa' | 'manual' | 'acerto' | 'multa' | 'bar' | 'recreacao'
 interface Linha { id: string; origem: Origem; categoria: string; data: string; quem: string; detalhe: string; forma: string | null; valor: number; unidade: string; reservationId: string | null; manual: EntradaManual | null }
 
-const ROTULO: Record<Origem, string> = { festa: 'Pagamento de festa', manual: 'Lançada à mão', acerto: 'Acerto entre unidades', multa: 'Multa e juros', bar: 'Vendas no bar' }
-const COR: Record<Origem, string> = { festa: 'bg-teal-light text-teal', manual: 'bg-purple-light text-purple', acerto: 'bg-paper text-ink/70', multa: 'bg-amber-light text-amber', bar: 'bg-orange-light text-ink' }
+const ROTULO: Record<Origem, string> = { festa: 'Pagamento de festa', manual: 'Lançada à mão', acerto: 'Acerto entre unidades', multa: 'Multa e juros', bar: 'Vendas no bar', recreacao: 'Recreação' }
+const COR: Record<Origem, string> = { festa: 'bg-teal-light text-teal', manual: 'bg-purple-light text-purple', acerto: 'bg-paper text-ink/70', multa: 'bg-amber-light text-amber', bar: 'bg-orange-light text-ink', recreacao: 'bg-purple-light text-purple' }
 
 function brl(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -96,7 +96,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
         })
       }
       for (const x of (o.data ?? []) as any[]) {
-        const origem: Origem = x.kind === 'manual' ? 'manual' : x.kind === 'multa_juros' ? 'multa' : x.kind === 'bar' ? 'bar' : 'acerto'
+        const origem: Origem = x.kind === 'manual' ? 'manual' : x.kind === 'multa_juros' ? 'multa' : x.kind === 'bar' ? 'bar' : x.kind === 'recreacao' ? 'recreacao' : 'acerto'
         lista.push({
           id: `o-${x.id}`,
           origem,
@@ -142,7 +142,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
   const visiveis = useMemo(() => base.filter((l) => categoriaAtiva === 'todas' || l.categoria === categoriaAtiva), [base, categoriaAtiva])
 
   const totais = useMemo(() => {
-    const t: Record<'todas' | Origem, { n: number; v: number }> = { todas: { n: 0, v: 0 }, festa: { n: 0, v: 0 }, manual: { n: 0, v: 0 }, acerto: { n: 0, v: 0 }, multa: { n: 0, v: 0 }, bar: { n: 0, v: 0 } }
+    const t: Record<'todas' | Origem, { n: number; v: number }> = { todas: { n: 0, v: 0 }, festa: { n: 0, v: 0 }, manual: { n: 0, v: 0 }, acerto: { n: 0, v: 0 }, multa: { n: 0, v: 0 }, bar: { n: 0, v: 0 }, recreacao: { n: 0, v: 0 } }
     for (const l of linhas ?? []) {
       t.todas.n++
       t.todas.v += l.valor
@@ -167,7 +167,7 @@ export function ListaDeEntradas({ slugs, unitDbIds, recarga, onEditar, onRemover
           <input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} className="border border-line rounded-lg px-2 h-8 text-sm bg-surface" />
         </label>
         <div className="inline-flex flex-wrap rounded-lg border border-line bg-surface p-0.5 gap-0.5" role="tablist" aria-label="Tipo de entrada">
-          {(['todas', 'festa', 'manual', 'bar', 'acerto', 'multa'] as const).map((k) => (
+          {(['todas', 'festa', 'manual', 'bar', 'recreacao', 'acerto', 'multa'] as const).map((k) => (
             <button key={k} type="button" role="tab" aria-selected={filtro === k} onClick={() => setFiltro(k)} className={`px-2.5 h-7 rounded-md text-xs font-medium whitespace-nowrap ${filtro === k ? 'bg-purple text-white' : 'text-ink/70 hover:bg-paper'}`}>
               {k === 'todas' ? 'Todas' : k === 'festa' ? 'Pagamentos de festas' : k === 'manual' ? 'Lançadas à mão' : k === 'acerto' ? 'Acertos' : 'Multa e juros'} ({totais[k].n})
             </button>

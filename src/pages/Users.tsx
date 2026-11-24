@@ -12,7 +12,7 @@ import { useModulo } from '../lib/useModulo'
 import type { Role } from '../types'
 
 // Modelo pronto: quem trabalha só no balcão da recreação.
-const RECEPCAO_RECREACAO = ['page:recreacao', 'action:recreacao.operar', 'page:recreacao_familias', 'action:recreacao.familias_editar']
+const RECEPCAO_RECREACAO = ['page:recreacao', 'action:recreacao.operar', 'page:recreacao_familias', 'action:recreacao.familias_editar', 'page:recreacao_caixa', 'action:recreacao.caixa']
 
 interface UserRow {
   id: string

@@ -128,6 +128,7 @@ const groups: Group[] = [
     items: [
       { to: '/recreacao', label: 'Painel ao vivo', icon: Timer, end: true },
       { to: '/recreacao/familias', label: 'Famílias', icon: Users },
+      { to: '/recreacao/caixa', label: 'Caixa', icon: Wallet },
       { to: '/recreacao/configuracao', label: 'Planos e configuração', icon: SlidersHorizontal },
     ],
   },

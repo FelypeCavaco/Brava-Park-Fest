@@ -167,6 +167,8 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
       { key: 'page:recreacao_familias', label: 'Ver e procurar as famílias da recreação', group: 'Recreação', route: '/recreacao/familias' },
       { key: 'action:recreacao.familias_editar', label: 'Cadastrar e editar famílias (responsável, crianças, quem pode buscar e foto)', group: 'Recreação' },
       { key: 'action:recreacao.familias_juntar', label: 'Juntar cadastros repetidos (restrita)', group: 'Recreação' },
+      { key: 'page:recreacao_caixa', label: 'Ver o caixa da recreação e o histórico dos fechamentos', group: 'Recreação', route: '/recreacao/caixa' },
+      { key: 'action:recreacao.caixa', label: 'Operar o caixa: abrir, retirada e reforço, trocar de atendente e fechar', group: 'Recreação' },
       { key: 'page:recreacao_config', label: 'Configurar a recreação (planos de cobrança, regras da casa e itens do balcão)', group: 'Recreação', route: '/recreacao/configuracao' },
     ],
   },
@@ -205,6 +207,7 @@ export const PAGE_PERMISSION_BY_PATH: { test: (pathname: string) => boolean; key
   { test: (p) => p === '/relatorio-aniversariantes', key: 'page:relatorio_aniversariantes' },
   { test: (p) => p === '/recreacao/configuracao', key: 'page:recreacao_config' },
   { test: (p) => p === '/recreacao/familias', key: 'page:recreacao_familias' },
+  { test: (p) => p === '/recreacao/caixa', key: 'page:recreacao_caixa' },
   { test: (p) => p === '/recreacao', key: 'page:recreacao' },
   // /usuarios não entra aqui: continua sendo administrador-only, fixo no código
 ]

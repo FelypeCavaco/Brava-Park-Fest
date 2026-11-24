@@ -10,7 +10,7 @@ import { TermsAcceptScreen } from './TermsAcceptScreen'
 import { TERMOS_VERSAO } from '../../lib/termosUso'
 
 // Ordem de preferência quando o Painel não está liberado para o perfil.
-const TELAS_INICIAIS = ['/recreacao', '/recreacao/familias', '/reservas', '/lembretes', '/visitas', '/clientes', '/financeiro', '/estoque', '/escalas', '/recreacao/configuracao']
+const TELAS_INICIAIS = ['/recreacao', '/recreacao/familias', '/recreacao/caixa', '/reservas', '/lembretes', '/visitas', '/clientes', '/financeiro', '/estoque', '/escalas', '/recreacao/configuracao']
 
 export function RequireAuth() {
   const { session, loading, profile, profileLoading, can, permissionsLoading } = useAuth()

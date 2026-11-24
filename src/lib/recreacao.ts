@@ -124,6 +124,9 @@ export type CampoFuncao =
   | { k: string; label: string; tipo: 'opcao'; opcoes: [string, string][] }
 
 export const FUNCOES_REC: { grupo: string; itens: CampoFuncao[] }[] = [
+  { grupo: 'Cadastro das famílias', itens: [
+    { k: 'autocadastro', label: 'Autocadastro por QR (o responsável preenche no celular e a recepção confere)', tipo: 'bool' },
+  ] },
   { grupo: 'Segurança na entrega', itens: [
     { k: 'codigo', label: 'Pedir o código de retirada na saída', tipo: 'bool' },
     { k: 'qr', label: 'QR code de retirada (no WhatsApp e no cupom)', tipo: 'bool' },
@@ -241,6 +244,8 @@ export interface VisitaRec {
 
 // Página do responsável (link no WhatsApp e QR da retirada)
 export const linkPais = (token: string) => `${window.location.origin}/r/${token}`
+// Autocadastro: o QR da casa leva a esta página
+export const linkCadastro = (token: string) => `${window.location.origin}/cadastro/${token}`
 // O leitor de QR (ou o leitor de mesa que "digita") entrega o link: aqui sai só o token.
 export function tokenDoTexto(t: string): string | null {
   return t.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0].toLowerCase() ?? null

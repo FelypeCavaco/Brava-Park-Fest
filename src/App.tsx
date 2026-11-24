@@ -9,6 +9,7 @@ import { RequireAuth } from './components/layout/RequireAuth'
 import { Login } from './pages/Login'
 const TermsPage = lazyPage(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })))
 const ClientPortal = lazyPage(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })))
+const RecreacaoCadastro = lazyPage(() => import('./pages/RecreacaoCadastro').then((m) => ({ default: m.RecreacaoCadastro })))
 const RecreacaoPais = lazyPage(() => import('./pages/RecreacaoPais').then((m) => ({ default: m.RecreacaoPais })))
 const ReviewPublic = lazyPage(() => import('./pages/ReviewPublic').then((m) => ({ default: m.ReviewPublic })))
 const Dashboard = lazyPage(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
@@ -66,6 +67,7 @@ export default function App() {
       <Route path="/lista-convidados/:token" element={<RedirectToPortal />} />
       <Route path="/avaliacao/:token" element={<ReviewPublic />} />
       <Route path="/r/:token" element={<RecreacaoPais />} />
+      <Route path="/cadastro/:token" element={<RecreacaoCadastro />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>

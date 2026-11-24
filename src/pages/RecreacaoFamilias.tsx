@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Users, Search, Plus, AlertTriangle, ChevronRight, ArrowLeft, Check, X } from 'lucide-react'
+import { QrCode, Users, Search, Plus, AlertTriangle, ChevronRight, ArrowLeft, Check, X } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { FamiliaEditor } from '../components/recreacao/FamiliaEditor'
+import { PreCadastros, QrAutocadastro } from '../components/recreacao/PreCadastros'
+import { useCompany } from '../lib/CompanyContext'
 import { friendlyDbError } from '../lib/format'
 import { idadeTexto, mascaraCpf, mascaraTelefone, type FamiliaRec, type FuncoesRec } from '../lib/recreacao'
 
@@ -12,6 +14,8 @@ interface Config { ligada: boolean; funcoes: FuncoesRec; regras: Record<string, 
 
 export function RecreacaoFamilias() {
   const { can } = useAuth()
+  const { brand } = useCompany()
+  const [qrAberto, setQrAberto] = useState(false)
   const [cfg, setCfg] = useState<Config | null>(null)
   const [texto, setTexto] = useState('')
   const [lista, setLista] = useState<FamiliaRec[] | null>(null)
@@ -68,7 +72,10 @@ export function RecreacaoFamilias() {
                 placeholder="CPF, telefone, nome do responsável ou da criança" aria-label="Procurar família" />
             </div>
             {can('action:recreacao.familias_editar') && <Button onClick={() => setAberta({ id: null })} className="!py-3"><Plus className="w-4 h-4" />Nova família</Button>}
+            {can('action:recreacao.familias_editar') && cfg?.funcoes.autocadastro === true && <Button variant="secondary" onClick={() => setQrAberto(true)} className="!py-3"><QrCode className="w-4 h-4" />QR de autocadastro</Button>}
           </div>
+
+          {can('action:recreacao.familias_editar') && cfg?.funcoes.autocadastro === true && <PreCadastros onMudou={() => buscar(texto)} />}
 
           <p className="text-xs text-muted -mt-3">{texto.trim() ? `Resultado da busca${lista ? ` (${lista.length})` : ''}` : 'Últimas famílias cadastradas ou alteradas'}</p>
 
@@ -109,6 +116,7 @@ export function RecreacaoFamilias() {
           )}
         </>
       )}
+      {qrAberto && <QrAutocadastro nomeCasa={brand.name || 'Recreação'} onFechar={() => setQrAberto(false)} />}
     </div>
   )
 }

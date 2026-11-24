@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button'
 import { BrandLogo } from '../components/BrandLogo'
 import { useCompany } from '../lib/CompanyContext'
 import mascotImg from '../assets/mascote-theo.png'
+import { desmarcarEntrada, marcarEntrada } from '../components/CarregamentoEntrada'
 
 // Separa senha errada de problema de conexão: quem digitou certo não pode achar que errou a senha.
 function mensagemDeLogin(e: { message?: string; status?: number; name?: string }): string {
@@ -44,6 +45,8 @@ export function Login() {
     setLoading(true)
 
     let error: { message?: string; status?: number; name?: string } | null = null
+    // a tela de carregamento aparece assim que a sessão abrir
+    marcarEntrada()
     try {
       error = (await supabase.auth.signInWithPassword({ email, password })).error
     } catch (err) {
@@ -52,6 +55,7 @@ export function Login() {
 
     setLoading(false)
     if (error) {
+      desmarcarEntrada()
       setError(mensagemDeLogin(error))
       return
     }

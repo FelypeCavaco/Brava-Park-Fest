@@ -7,6 +7,7 @@ import { lazyPage, PageLoading } from './lib/lazyPage'
 import { AppLayout } from './components/layout/AppLayout'
 import { RequireAuth } from './components/layout/RequireAuth'
 import { Login } from './pages/Login'
+import { CarregamentoEntrada } from './components/CarregamentoEntrada'
 const TermsPage = lazyPage(() => import('./pages/TermsPage').then((m) => ({ default: m.TermsPage })))
 const ClientPortal = lazyPage(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })))
 const RecreacaoCadastro = lazyPage(() => import('./pages/RecreacaoCadastro').then((m) => ({ default: m.RecreacaoCadastro })))
@@ -59,6 +60,8 @@ function RedirectToPortal() {
 
 export default function App() {
   return (
+    <>
+    <CarregamentoEntrada />
     <Suspense fallback={<PageLoading />}>
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -114,6 +117,7 @@ export default function App() {
       </Route>
     </Routes>
     </Suspense>
+    </>
   )
 }
 

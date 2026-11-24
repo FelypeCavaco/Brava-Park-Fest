@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Wallet, Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
+import { filaEnviar, filaLer, filaSalvar, ehErroDeRede, type ItemFila } from '../lib/recOffline'
+import { WifiOff, Wallet, Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit } from '../lib/UnitContext'
@@ -47,6 +48,10 @@ export function RecreacaoPainel() {
   const [erro, setErro] = useState<string | null>(null)
   const pedindo = useRef(false)
 
+  const emp = brand.companyId ?? ''
+  const usaOffline = cfg?.funcoes.offline === true && !!emp
+  const [semNet, setSemNet] = useState(false)
+  const [fila, setFila] = useState<ItemFila[]>([])
   const unitId = selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null
   const unidades = units.map((u) => ({ id: unitDbIds[u.id]?.unitId, nome: u.name })).filter((u) => !!u.id) as { id: string; nome: string }[]
   const pode = can('action:recreacao.operar')
@@ -60,7 +65,12 @@ export function RecreacaoPainel() {
     pedindo.current = true
     const { data, error } = await supabase.rpc('rec_painel', { p_unit: unitId })
     pedindo.current = false
-    if (error) return setErro(friendlyDbError(error.message))
+    if (error) {
+      // sem sinal: o painel continua na tela com os últimos dados (os cronômetros seguem andando)
+      if (ehErroDeRede(error.message) && usaOffline) { setSemNet(true); return }
+      return setErro(friendlyDbError(error.message))
+    }
+    setSemNet(false); setErro(null)
     const l = (data ?? []) as VisitaRec[]
     setLista(l); setBuscadoEm(Date.now())
     const faltam = l.filter((v) => v.crianca.foto_path && !fotos[v.crianca.foto_path])
@@ -68,7 +78,24 @@ export function RecreacaoPainel() {
       const { data: urls } = await supabase.storage.from('recreacao-fotos').createSignedUrls(faltam.map((v) => v.crianca.foto_path!), 3600)
       if (urls) setFotos((f) => ({ ...f, ...Object.fromEntries(faltam.map((v, i) => [v.crianca.foto_path!, urls[i]?.signedUrl ?? ''])) }))
     }
-  }, [unitId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [unitId, usaOffline]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fila de entradas feitas sem internet: some da tela quando o servidor aceita
+  const sincronizar = useCallback(async () => {
+    if (!usaOffline || !filaLer(emp).length) return
+    const r = await filaEnviar(emp)
+    if (r.enviadas) { setMsg({ ok: true, texto: `${r.enviadas} entrada${r.enviadas > 1 ? 's' : ''} feita${r.enviadas > 1 ? 's' : ''} sem internet ${r.enviadas > 1 ? 'foram enviadas' : 'foi enviada'}.` }); carregar() }
+    if (r.semRede) setSemNet(true)
+  }, [emp, usaOffline, carregar])
+  useEffect(() => {
+    if (!usaOffline) return
+    const ler = () => setFila(filaLer(emp))
+    ler(); sincronizar()
+    const on = () => { setSemNet(false); sincronizar(); carregar() }, off = () => setSemNet(true)
+    window.addEventListener('rec-fila', ler); window.addEventListener('online', on); window.addEventListener('offline', off)
+    const t = setInterval(sincronizar, 20000)
+    return () => { window.removeEventListener('rec-fila', ler); window.removeEventListener('online', on); window.removeEventListener('offline', off); clearInterval(t) }
+  }, [usaOffline, emp, sincronizar]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { carregar(); const t = setInterval(carregar, 15000); return () => clearInterval(t) }, [carregar])
 
   // apaga as fotos de entrada que passaram do prazo da casa (uma vez ao abrir o painel)
@@ -197,6 +224,23 @@ export function RecreacaoPainel() {
         <Numero rotulo="Com alergia ou cuidado" valor={String((lista ?? []).filter((v) => v.crianca.cuidados).length)} dica="aparecem em vermelho" />
       </div>
 
+      {(semNet || fila.length > 0) && usaOffline && (
+        <div className="rounded-card border-2 border-amber bg-amber-light p-4 space-y-2">
+          <p className="font-semibold text-amber flex items-center gap-2"><WifiOff className="w-5 h-5 shrink-0" />{semNet ? 'Sem internet.' : 'Entradas aguardando envio.'}</p>
+          {semNet && <p className="text-sm text-ink">O painel segue contando o tempo com os últimos dados. Novas entradas ficam guardadas neste aparelho e vão sozinhas quando o sinal voltar. A saída só funciona com internet, porque a conta é a do servidor.</p>}
+          {fila.map((i) => (
+            <div key={i.local} className="rounded-lg bg-surface/70 px-3 py-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-semibold">{i.nomes.map((n) => n.split(' ')[0]).join(' e ')}</span>
+              <span className="text-muted">entrou às {horaMin(i.entrada_em)} · código {i.codigo}</span>
+              {i.erro ? <span className="text-danger font-semibold flex-1 min-w-[10rem]">Não foi aceita: {friendlyDbError(i.erro)}</span> : <span className="text-amber font-semibold">aguardando</span>}
+              {i.erro && <>
+                <button type="button" className="rounded-lg border border-line px-2.5 py-1 font-semibold" onClick={() => { filaSalvar(emp, filaLer(emp).map((x) => (x.local === i.local ? { ...x, erro: undefined } : x))); sincronizar() }}>Tentar de novo</button>
+                <button type="button" className="rounded-lg border border-danger/40 text-danger px-2.5 py-1 font-semibold" onClick={() => { if (window.confirm('Descartar esta entrada? Ela não será registrada no sistema. Faça isso só se a criança já foi registrada de outra forma.')) filaSalvar(emp, filaLer(emp).filter((x) => x.local !== i.local)) }}>Descartar</button>
+              </>}
+            </div>
+          ))}
+        </div>
+      )}
       {caixa && (!caixa.aberto || caixa.decidir) && (caixa.obrigatorio || caixa.decidir) && (
         <Link to="/recreacao/caixa" className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold ${caixa.aberto ? 'bg-amber-light text-amber' : 'bg-danger-light text-danger'}`}>
           <Wallet className="w-4 h-4 shrink-0" />

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Camera, Search, Plus, UserRound, Pencil, AlertTriangle, Check, X, MessageCircle, Printer, LogIn, ArrowLeft } from 'lucide-react'
+import { WifiOff, Camera, Search, Plus, UserRound, Pencil, AlertTriangle, Check, X, MessageCircle, Printer, LogIn, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { FamiliaEditor, reduzir } from './FamiliaEditor'
 import { useCompany } from '../../lib/CompanyContext'
+import { cacheBuscar, cacheFamilias, cachePlanos, cachePlanosLer, codigoLocal, ehErroDeRede, filaAdd, filaLer } from '../../lib/recOffline'
 import { QrImg, qrParaImpressao } from './QrRec'
 import { brl, friendlyDbError } from '../../lib/format'
 import {
@@ -44,11 +45,23 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
   const [marcadas, setMarcadas] = useState<Record<string, Escolha>>({})
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
-  const [res, setRes] = useState<Resultado | null>(null)
+  const [res, setRes] = useState<(Resultado & { offline?: boolean; codigoMudou?: boolean }) | null>(null)
+  const emp = brand.companyId ?? ''
+  const usaOffline = funcoes.offline === true && !!emp
+  const [semNet, setSemNet] = useState(!navigator.onLine)
+  useEffect(() => {
+    const on = () => setSemNet(false), off = () => setSemNet(true)
+    window.addEventListener('online', on); window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  const naFila = usaOffline ? filaLer(emp).flatMap((i) => i.criancas.map((c) => c.crianca)) : []
 
   useEffect(() => {
     supabase.from('rec_planos').select('id, nome, descricao, ativo, ordem, regra, versao, atualizado_em, atualizado_por').eq('ativo', true).order('ordem')
-      .then(({ data }) => setPlanos((data ?? []) as PlanoRec[]))
+      .then(({ data, error }) => {
+        if (error || !data) { if (usaOffline) { const c = cachePlanosLer(emp); if (c.length) setPlanos(c) } return }
+        setPlanos(data as PlanoRec[]); if (usaOffline) cachePlanos(emp, data as PlanoRec[])
+      })
   }, [])
   // planos chegaram depois de marcar: põe o primeiro como padrão
   useEffect(() => {
@@ -59,7 +72,11 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
     if (familia || editando) return
     const t = setTimeout(async () => {
       const { data, error } = await supabase.rpc('rec_familias_buscar', { p_texto: busca, p_limite: 8 })
-      if (error) return setErro(friendlyDbError(error.message))
+      if (error) {
+        if (usaOffline && ehErroDeRede(error.message)) { setSemNet(true); setAchadas(cacheBuscar(emp, busca)); return }
+        return setErro(friendlyDbError(error.message))
+      }
+      if (usaOffline) cacheFamilias(emp, (data ?? []) as FamiliaRec[])
       setAchadas((data ?? []) as FamiliaRec[])
       // CPF completo e uma família só: abre direto
       if (busca.replace(/\D/g, '').length === 11 && (data ?? []).length === 1) abrir((data as FamiliaRec[])[0])
@@ -69,7 +86,8 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
 
   function abrir(f: FamiliaRec) {
     setFamilia(f); setErro(null)
-    const podem = f.criancas.filter((c) => c.ativo && !dentro.includes(c.id!))
+    if (usaOffline) cacheFamilias(emp, [f])
+    const podem = f.criancas.filter((c) => c.ativo && !dentro.includes(c.id!) && !naFila.includes(c.id!))
     const padrao = planos[0]?.id ?? ''
     // uma criança só: já vem marcada; mais de uma: a recepção marca quem entra
     setMarcadas(podem.length === 1 ? { [podem[0].id!]: { plano: padrao, pulseira: '', forma: '', excecao: '', usarExcecao: false } } : {})
@@ -95,13 +113,37 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
       else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && !e.forma) out.push(`Escolha como ${c?.nome.split(' ')[0]} paga.`)
       if (e.usarExcecao && e.excecao.trim().length < 3) out.push('Escreva o motivo da exceção.')
       if (funcoes.fotoObrig && funcoes.foto === 'cadastro' && !c?.foto_path) out.push(`Tire a foto de ${c?.nome.split(' ')[0]} (no cadastro).`)
-      if (funcoes.fotoObrig && funcoes.foto === 'entrada' && !fotosEnt[cid]) out.push(`Tire a foto de ${c?.nome.split(' ')[0]}.`)
+      if (funcoes.fotoObrig && funcoes.foto === 'entrada' && !fotosEnt[cid]) out.push(semNet ? 'Sem internet: a foto obrigatória precisa de sinal.' : `Tire a foto de ${c?.nome.split(' ')[0]}.`)
     }
     return out
-  }, [linhas, unidade, familia, planos, funcoes, fotosEnt]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linhas, unidade, familia, planos, funcoes, fotosEnt, semNet]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // sem sinal: guarda no aparelho com a hora real e o código; o envio é automático quando a internet volta
+  function guardarSemInternet() {
+    const cods = filaLer(emp).map((i) => i.codigo)
+    const codigo = codigoLocal(cods), token = crypto.randomUUID(), agora = new Date()
+    const item = {
+      local: crypto.randomUUID(), unit: unidade, familia: familia!.id!, entrada_em: agora.toISOString(), codigo, token, responsavel: familia!.responsavel, criado: Date.now(),
+      nomes: linhas.map(([cid]) => familia!.criancas.find((x) => x.id === cid)?.nome ?? ''),
+      criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null })),
+    }
+    filaAdd(emp, item)
+    setRes({
+      codigo, grupo: item.local, token, entrada_em: item.entrada_em, responsavel: familia!.responsavel, telefone: familia!.telefone ?? '', offline: true,
+      visitas: linhas.map(([cid, e]) => {
+        const c = familia!.criancas.find((x) => x.id === cid)!, p = planoDe(e.plano)
+        const pago = p && p.regra.cobranca === 'entrada' && !e.usarExcecao ? Number(p.regra.valor) : 0
+        return { id: cid, nome: c.nome, pulseira: e.pulseira || null, plano: p?.nome ?? '', pago, cuidados: c.cuidados, nascimento: c.nascimento,
+          ate: p && p.regra.cobranca === 'entrada' && p.regra.incl ? new Date(agora.getTime() + Number(p.regra.incl) * 60000).toISOString() : null }
+      }),
+    })
+    setFotosEnt({})
+    onConcluida()
+  }
 
   async function confirmar() {
     if (!familia || pendencias.length) return
+    if (usaOffline && semNet) return guardarSemInternet()
     setSalvando(true); setErro(null)
     // foto tirada nesta entrada: sobe antes, e o caminho vai junto com a entrada
     const caminhos: Record<string, string> = {}
@@ -123,6 +165,11 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
       p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null, foto: caminhos[cid] ?? null })),
     })
     setSalvando(false)
+    if (error && usaOffline && ehErroDeRede(error.message)) {
+      setSemNet(true)
+      if (funcoes.fotoObrig && funcoes.foto === 'entrada') return setErro('A internet caiu e a foto obrigatória precisa de sinal. Tente de novo quando voltar.')
+      return guardarSemInternet()
+    }
     if (error) {
       const feitos = Object.values(caminhos)
       if (feitos.length) supabase.storage.from('recreacao-fotos').remove(feitos)
@@ -159,7 +206,7 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
           <span className="w-12 h-12 rounded-full bg-teal text-white flex items-center justify-center"><Check className="w-6 h-6" /></span>
           <div className="flex-1 min-w-[12rem]">
             <p className="font-semibold text-teal">Entrada registrada às {horaMin(res.entrada_em)}</p>
-            <p className="text-sm">{nomes.join(' e ')} já {nomes.length > 1 ? 'aparecem' : 'aparece'} no painel. O preço de cada um ficou guardado como estava agora.</p>
+            <p className="text-sm">{res.offline ? `${nomes.join(' e ')} ${nomes.length > 1 ? 'aparecem' : 'aparece'} no painel quando o sinal voltar.` : `${nomes.join(' e ')} já ${nomes.length > 1 ? 'aparecem' : 'aparece'} no painel. O preço de cada um ficou guardado como estava agora.`}</p>
           </div>
           {funcoes.codigo && (
             <div className="text-center">
@@ -174,6 +221,12 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
             </div>
           )}
         </div>
+        {res.offline && (
+          <div className="rounded-xl bg-amber-light text-amber px-4 py-3 text-sm font-semibold flex gap-2">
+            <WifiOff className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Sem internet: a entrada ficou guardada neste aparelho, com a hora certa, e será enviada sozinha quando o sinal voltar. Não limpe os dados do navegador até lá. O link do WhatsApp só abre depois do envio.</span>
+          </div>
+        )}
         <ul className="divide-y divide-line rounded-xl border border-line">
           {res.visitas.map((v) => (
             <li key={v.id} className="px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-1 text-sm items-center">

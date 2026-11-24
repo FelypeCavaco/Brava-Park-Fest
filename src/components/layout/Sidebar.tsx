@@ -43,6 +43,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { canAccessRoute } from '../../lib/permissions'
 import { BrandLogo } from '../BrandLogo'
 import { useCompany } from '../../lib/CompanyContext'
+import { moduloLigado } from '../../lib/modules'
 
 interface LinkItem {
   to: string
@@ -191,6 +192,8 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   // Financeiro: somem do menu para quem entra no Financeiro (quem não entra
   // continua vendo a tela antiga).
   const dentroDoFinanceiro = can('page:financeiro') ? ['/resultado-do-mes', '/lucro-por-festa', '/relatorios'] : []
+  // casa só com recreação: some o que é só de festa
+  if (!moduloLigado('festas', brand.disabledModules)) dentroDoFinanceiro.push('/despesas-fixas-festas')
   const visibleGroups = groups
     .map((g) => ({ ...g, items: g.items.filter((i) => !dentroDoFinanceiro.includes(i.to) && (foraDaEmpresa ? false : canAccessRoute(role, can, i.to) && (i.to !== '/plataforma' || isPlatformAdmin))) }))
     .filter((g) => g.items.length > 0)

@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import { useModulo } from './lib/useModulo'
 import type { ReactElement } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuth } from './lib/AuthContext'
@@ -24,6 +25,7 @@ const Packages = lazyPage(() => import('./pages/Packages').then((m) => ({ defaul
 const Contracts = lazyPage(() => import('./pages/Contracts').then((m) => ({ default: m.Contracts })))
 const Payments = lazyPage(() => import('./pages/Payments').then((m) => ({ default: m.Payments })))
 const Finance = lazyPage(() => import('./pages/Finance').then((m) => ({ default: m.Finance })))
+const FinanceiroRecreacao = lazyPage(() => import('./pages/FinanceiroRecreacao').then((m) => ({ default: m.FinanceiroRecreacao })))
 const FestaFixedCosts = lazyPage(() => import('./pages/FestaFixedCosts').then((m) => ({ default: m.FestaFixedCosts })))
 const MonthlyResult = lazyPage(() => import('./pages/MonthlyResult').then((m) => ({ default: m.MonthlyResult })))
 const Profitability = lazyPage(() => import('./pages/Profitability').then((m) => ({ default: m.Profitability })))
@@ -80,7 +82,7 @@ export default function App() {
           <Route path="/propostas" element={<Proposals />} />
           <Route path="/satisfacao" element={<Feedback />} />
           <Route path="/pagamentos" element={<Payments />} />
-          <Route path="/financeiro" element={<Finance />} />
+          <Route path="/financeiro" element={<FinanceiroRota />} />
           <Route path="/despesas-fixas-festas" element={<FestaFixedCosts />} />
           <Route path="/resultado-do-mes" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=caixa" tela={<MonthlyResult />} />} />
           <Route path="/lucro-por-festa" element={<TelaOuAbaDoFinanceiro aba="resultado&sub=festa" tela={<Profitability />} />} />
@@ -118,4 +120,9 @@ function TelaOuAbaDoFinanceiro({ aba, tela }: { aba: string; tela: ReactElement 
   const { can, permissionsLoading } = useAuth()
   if (permissionsLoading) return <PageLoading />
   return can('page:financeiro') ? <Navigate to={`/financeiro?aba=${aba}`} replace /> : tela
+}// Casas só com a recreação (sem a gestão de festas) usam o financeiro básico.
+function FinanceiroRota() {
+  return useModulo('festas') ? <Finance /> : <FinanceiroRecreacao />
 }
+
+

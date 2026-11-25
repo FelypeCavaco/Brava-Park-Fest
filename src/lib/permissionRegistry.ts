@@ -161,8 +161,9 @@ export const PERMISSION_GROUPS: { group: string; items: PermissionDef[] }[] = [
     items: [
       { key: 'page:recreacao', label: 'Ver o painel ao vivo da recreação (quem está dentro)', group: 'Recreação', route: '/recreacao' },
       { key: 'action:recreacao.operar', label: 'Dar entrada e saída, pausar, estender o tempo e registrar ocorrência', group: 'Recreação' },
-      { key: 'action:recreacao.desconto', label: 'Dar desconto na saída (com motivo)', group: 'Recreação' },
+      { key: 'action:recreacao.desconto', label: 'Dar desconto ou acréscimo na saída, em R$ ou % (com motivo)', group: 'Recreação' },
       { key: 'action:recreacao.cancelar', label: 'Cancelar uma entrada (com motivo e estorno)', group: 'Recreação' },
+      { key: 'action:recreacao.estornar', label: 'Estornar dinheiro de uma criança que já saiu, total ou parcial (com motivo; restrita)', group: 'Recreação' },
       { key: 'action:recreacao.gerente', label: 'Gerente: liberar criança sem código, cobrar tudo na saída e passar do limite (restrita)', group: 'Recreação' },
       { key: 'page:recreacao_familias', label: 'Ver e procurar as famílias da recreação', group: 'Recreação', route: '/recreacao/familias' },
       { key: 'action:recreacao.familias_editar', label: 'Cadastrar e editar famílias (responsável, crianças, quem pode buscar e foto)', group: 'Recreação' },

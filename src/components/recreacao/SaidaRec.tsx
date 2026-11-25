@@ -30,7 +30,8 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
   const [buscou, setBuscou] = useState('')
   const [ciente, setCiente] = useState(false)
   const [extras, setExtras] = useState<Record<string, Record<string, number>>>({}) // visita -> item -> qtd
-  const [desc, setDesc] = useState<Record<string, { valor: string; motivo: string }>>({})
+  const [desc, setDesc] = useState<Record<string, Ajuste>>({})
+  const [acr, setAcr] = useState<Record<string, Ajuste>>({})
   const [modo, setModo] = useState<'junto' | 'separado'>('junto')
   const [forma, setForma] = useState('pix')
   const [formas, setFormas] = useState<Record<string, string>>({})
@@ -73,8 +74,10 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
 
   const escolhidas = vs.filter((v) => sel.includes(v.id))
   const itensTotal = (vid: string) => Object.entries(extras[vid] ?? {}).reduce((s, [iid, q]) => s + q * Number(itens.find((i) => i.id === iid)?.preco ?? 0), 0)
-  const descNum = (vid: string) => parseDecimal(desc[vid]?.valor ?? '') ?? 0
-  const totalDe = (v: VisitaRec) => Math.max(0, Number(v.conta.total) + itensTotal(v.id) - descNum(v.id))
+  const baseDe = (v: VisitaRec) => Number(v.conta.total) + itensTotal(v.id)
+  const descNum = (v: VisitaRec) => valorAjuste(desc[v.id], baseDe(v), true)
+  const acrNum = (v: VisitaRec) => valorAjuste(acr[v.id], baseDe(v), false)
+  const totalDe = (v: VisitaRec) => Math.max(0, baseDe(v) - descNum(v) + acrNum(v))
   const aPagar = (v: VisitaRec) => Math.max(0, totalDe(v) - Number(v.pago_entrada))
   const somaPagar = escolhidas.reduce((s, v) => s + aPagar(v), 0)
   const ocorrencias = escolhidas.flatMap((v) => v.ocorrencias.map((o) => ({ ...o, nome: v.crianca.nome })))
@@ -86,7 +89,9 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     : precisaCodigo && !semCodigo && codigo.length !== 4 ? 'Digite o código de retirada.'
     : semCodigo && (semCodigo.documento.trim().length < 3 || semCodigo.motivo.trim().length < 3) ? 'Informe o documento e o motivo.'
     : funcoes.ocorrCiente !== false && ocorrencias.length && !ciente ? 'Marque que o responsável está ciente da ocorrência.'
-    : escolhidas.some((v) => descNum(v.id) > 0 && (desc[v.id]?.motivo ?? '').trim().length < 3) ? 'Escreva o motivo do desconto.'
+    : escolhidas.some((v) => descNum(v) > 0 && (desc[v.id]?.motivo ?? '').trim().length < 3) ? 'Escreva o motivo do desconto.'
+    : escolhidas.some((v) => acrNum(v) > 0 && (acr[v.id]?.motivo ?? '').trim().length < 3) ? 'Escreva o motivo do acréscimo.'
+    : escolhidas.some((v) => (desc[v.id]?.tipo === 'pct' && (parseDecimal(desc[v.id]?.valor ?? '') ?? 0) > 100)) ? 'O desconto em porcentagem não pode passar de 100%.'
     : somaPagar > 0 && modo === 'separado' && escolhidas.some((v) => aPagar(v) > 0 && !formas[v.id]) ? 'Escolha a forma de pagamento de cada criança.'
     : null
 
@@ -96,7 +101,8 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     const porVisita = Object.fromEntries(escolhidas.map((v) => [v.id, {
       forma: modo === 'junto' ? forma : formas[v.id] ?? null,
       itens: Object.entries(extras[v.id] ?? {}).filter(([, q]) => q > 0).map(([item, quantidade]) => ({ item, quantidade })),
-      desconto: descNum(v.id) > 0 ? { valor: descNum(v.id), motivo: desc[v.id]?.motivo } : null,
+      desconto: descNum(v) > 0 ? { tipo: desc[v.id]?.tipo ?? 'valor', valor: parseDecimal(desc[v.id]?.valor ?? '') ?? 0, motivo: desc[v.id]?.motivo } : null,
+      acrescimo: acrNum(v) > 0 ? { tipo: acr[v.id]?.tipo ?? 'valor', valor: parseDecimal(acr[v.id]?.valor ?? '') ?? 0, motivo: acr[v.id]?.motivo } : null,
     }]))
     const { data, error } = await supabase.rpc('rec_saida', {
       p_visitas: escolhidas.map((v) => v.id),
@@ -181,7 +187,8 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
             <div className="text-sm space-y-1">
               {v.conta.linhas.map((l, i) => <div key={i} className="flex justify-between gap-3"><span className="text-ink/80">{l.d}</span><span className="tabular-nums">{brl(Number(l.v))}</span></div>)}
               {Object.entries(extras[v.id] ?? {}).filter(([, q]) => q > 0).map(([iid, q]) => { const it = itens.find((i) => i.id === iid)!; return <div key={iid} className="flex justify-between"><span className="text-ink/80">{q}× {it.nome}</span><span className="tabular-nums">{brl(q * Number(it.preco))}</span></div> })}
-              {descNum(v.id) > 0 && <div className="flex justify-between text-teal"><span>Desconto</span><span className="tabular-nums">−{brl(descNum(v.id))}</span></div>}
+              {descNum(v) > 0 && <div className="flex justify-between text-teal"><span>Desconto{desc[v.id]?.tipo === 'pct' ? ` (${desc[v.id]?.valor}%)` : ''}</span><span className="tabular-nums">−{brl(descNum(v))}</span></div>}
+              {acrNum(v) > 0 && <div className="flex justify-between text-amber"><span>Acréscimo{acr[v.id]?.tipo === 'pct' ? ` (${acr[v.id]?.valor}%)` : ''}</span><span className="tabular-nums">+{brl(acrNum(v))}</span></div>}
               {Number(v.pago_entrada) > 0 && <div className="flex justify-between text-muted"><span>Já pago na entrada</span><span className="tabular-nums">−{brl(Number(v.pago_entrada))}</span></div>}
               <div className="flex justify-between font-semibold pt-1 border-t border-line"><span>A pagar</span><span className="tabular-nums">{brl(aPagar(v))}</span></div>
             </div>
@@ -203,9 +210,9 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
               </div>
             )}
             {can('action:recreacao.desconto') && (
-              <div className="flex flex-wrap gap-2">
-                <input className="campo !w-28" inputMode="decimal" placeholder="Desconto R$" value={desc[v.id]?.valor ?? ''} onChange={(e) => setDesc((d) => ({ ...d, [v.id]: { valor: e.target.value, motivo: d[v.id]?.motivo ?? '' } }))} aria-label="Desconto" />
-                {descNum(v.id) > 0 && <input className="campo flex-1 min-w-[12rem]" placeholder="Motivo do desconto (obrigatório)" value={desc[v.id]?.motivo ?? ''} onChange={(e) => setDesc((d) => ({ ...d, [v.id]: { valor: d[v.id]?.valor ?? '', motivo: e.target.value } }))} />}
+              <div className="space-y-2">
+                <CampoAjuste rotulo="Desconto" v={desc[v.id]} onChange={(a) => setDesc((d) => ({ ...d, [v.id]: a }))} />
+                <CampoAjuste rotulo="Acréscimo" v={acr[v.id]} onChange={(a) => setAcr((d) => ({ ...d, [v.id]: a }))} />
               </div>
             )}
             {modo === 'separado' && aPagar(v) > 0 && (
@@ -248,6 +255,31 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
         <Button variant="ghost" onClick={onFechar}>Voltar</Button>
         <Button onClick={confirmar} disabled={salvando || !!pendencia}>{salvando ? 'Registrando...' : <><LogOut className="w-4 h-4" />Confirmar saída</>}</Button>
       </div>
+    </div>
+  )
+}
+
+// Desconto e acréscimo: em reais ou em porcentagem da conta (tempo + itens).
+interface Ajuste { tipo: 'valor' | 'pct'; valor: string; motivo: string }
+function valorAjuste(a: Ajuste | undefined, base: number, limita: boolean): number {
+  const n = parseDecimal(a?.valor ?? '') ?? 0
+  if (!(n > 0)) return 0
+  const v = a?.tipo === 'pct' ? Math.round(base * n) / 100 : Math.round(n * 100) / 100
+  return limita ? Math.min(v, base) : v
+}
+function CampoAjuste({ rotulo, v, onChange }: { rotulo: string; v: Ajuste | undefined; onChange: (a: Ajuste) => void }) {
+  const a: Ajuste = v ?? { tipo: 'valor', valor: '', motivo: '' }
+  const tem = (parseDecimal(a.valor) ?? 0) > 0
+  return (
+    <div className="flex flex-wrap gap-2 items-center">
+      <span className="text-sm font-semibold w-20">{rotulo}</span>
+      <div className="flex gap-1 p-1 bg-paper rounded-lg" role="group" aria-label={`${rotulo} em reais ou porcentagem`}>
+        {(['valor', 'pct'] as const).map((t) => (
+          <button key={t} type="button" onClick={() => onChange({ ...a, tipo: t })} className={`px-2.5 h-7 rounded-md text-xs font-bold ${a.tipo === t ? 'bg-surface shadow-sm text-purple' : 'text-muted'}`}>{t === 'valor' ? 'R$' : '%'}</button>
+        ))}
+      </div>
+      <input className="campo !w-24" inputMode="decimal" placeholder={a.tipo === 'pct' ? '0 %' : 'R$ 0,00'} value={a.valor} onChange={(e) => onChange({ ...a, valor: e.target.value })} aria-label={`${rotulo} ${a.tipo === 'pct' ? 'em porcentagem' : 'em reais'}`} />
+      {tem && <input className="campo flex-1 min-w-[12rem]" placeholder={`Motivo do ${rotulo.toLowerCase()} (obrigatório)`} value={a.motivo} onChange={(e) => onChange({ ...a, motivo: e.target.value })} />}
     </div>
   )
 }

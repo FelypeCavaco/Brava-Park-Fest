@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Wallet, LockOpen, Lock, ArrowDownToLine, ArrowUpFromLine, Repeat, History, AlertTriangle, Check, X, Clock, ArrowLeft, Copy, EyeOff, Users } from 'lucide-react'
+import { Wallet, LockOpen, Lock, ArrowDownToLine, ArrowUpFromLine, Repeat, History, AlertTriangle, Check, X, Clock, ArrowLeft, Copy, EyeOff, Users, Undo2, Search } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit } from '../lib/UnitContext'
@@ -24,13 +24,16 @@ interface Situacao {
   lembrete?: { ligado: boolean; hora: string; min: number }
   troca?: boolean; troca_conta?: boolean
 }
+interface Estorno { id: string; crianca: string; responsavel: string; valor: number; forma: string; motivo: string; em: string; por: string }
+interface Achada { id: string; nome: string; responsavel: string; saida_em: string; total: number; pago: number; estornado: number; formas: Record<string, number> }
 interface Relatorio {
   caixa: { id: string; unidade: string; dia: string; aberto_em: string; aberto_por: string; fechado_em: string | null; fechado_por: string | null; fundo: number; status: string; obs: string | null; manter_motivo: string | null }
   totais: { formas: Record<string, Forma>; fundo: number; sangrias: number; suprimentos: number; dinheiro_esperado: number; recebido: number }
   esperado: Record<string, number> | null; contado: Record<string, number> | null; diferenca: Record<string, number> | null; diferenca_total: number | null
   turnos: { atendente: string; inicio: string; fim: string | null; contado: number | null; esperado: number | null; diferenca: number | null; recebido: number }[]
   movs: { tipo: string; valor: number; motivo: string; em: string; por: string }[]
-  resumo: { entradas: number; saidas: number; cancelamentos: number; descontos: number; itens: number; ocorrencias: number; ainda_dentro: number }
+  estornos?: Estorno[]
+  resumo: { estornos?: number; acrescimos?: number; entradas: number; saidas: number; cancelamentos: number; descontos: number; itens: number; ocorrencias: number; ainda_dentro: number }
 }
 interface Hist { id: string; dia: string; aberto_em: string; aberto_por: string; fechado_em: string | null; fechado_por: string | null; status: string; fundo: number; diferenca_total: number | null; obs: string | null; recebido: number }
 
@@ -53,7 +56,12 @@ export function RecreacaoCaixa() {
   const [msg, setMsg] = useState<string | null>(null)
   const [agora, setAgora] = useState(Date.now())
   const [tela, setTela] = useState<'caixa' | 'historico'>('caixa')
-  const [painel, setPainel] = useState<null | 'mov' | 'troca' | 'fechar' | 'manter'>(null)
+  const [painel, setPainel] = useState<null | 'mov' | 'troca' | 'fechar' | 'manter' | 'estorno'>(null)
+  const [estornos, setEstornos] = useState<Estorno[]>([])
+  const [busca, setBusca] = useState('')
+  const [achadas, setAchadas] = useState<Achada[] | null>(null)
+  const [est, setEst] = useState<{ id: string; forma: string; valor: string; motivo: string } | null>(null)
+  const podeEstornar = can('action:recreacao.estornar')
   const [rel, setRel] = useState<Relatorio | null>(null)
   const [hist, setHist] = useState<Hist[] | null>(null)
   const [ocupado, setOcupado] = useState(false)
@@ -73,6 +81,8 @@ export function RecreacaoCaixa() {
     const { data, error } = await supabase.rpc('rec_caixa_atual', { p_unit: unitId })
     if (error) return setErro(friendlyDbError(error.message))
     setErro(null); setS(data as Situacao)
+    const cx = (data as Situacao).caixa?.id
+    if (cx) { const r = await supabase.rpc('rec_estornos_do_caixa', { p_caixa: cx }); setEstornos((r.data ?? []) as Estorno[]) } else setEstornos([])
   }, [unitId])
   useEffect(() => { setS(null); setRel(null); setPainel(null); carregar() }, [carregar])
   useEffect(() => { const t = setInterval(carregar, 30000); return () => clearInterval(t) }, [carregar])
@@ -107,6 +117,17 @@ export function RecreacaoCaixa() {
   async function manterAberto() {
     const r = await chamar('rec_caixa_manter', { p_caixa: s!.caixa!.id, p_motivo: manter }, 'Combinado: o caixa continua aberto.')
     if (r) { setS(r as Situacao); setPainel(null); setManter('') }
+  }
+  async function procurar() {
+    const { data, error } = await supabase.rpc('rec_estorno_buscar', { p_unit: unitId, p_busca: busca })
+    if (error) return setErro(friendlyDbError(error.message))
+    setAchadas((data ?? []) as Achada[])
+  }
+  async function estornar() {
+    const v = num(est!.valor)
+    if (!(v > 0)) return setErro('Informe um valor maior que zero.')
+    const r = await chamar('rec_estornar', { p_visita: est!.id, p_valor: v, p_forma: est!.forma, p_motivo: est!.motivo }, 'Estorno registrado. O valor saiu do caixa.')
+    if (r) { setEst(null); await carregar(); await procurar() }
   }
   async function fechar() {
     const c: Record<string, number> = {}
@@ -233,8 +254,38 @@ export function RecreacaoCaixa() {
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => { setMov({ tipo: 'sangria', valor: '', motivo: '' }); setPainel('mov') }}><ArrowUpFromLine className="w-4 h-4" />Retirada ou reforço</Button>
                 {s.troca && <Button variant="secondary" onClick={() => setPainel('troca')}><Repeat className="w-4 h-4" />Trocar de atendente</Button>}
+                {podeEstornar && <Button variant="secondary" onClick={() => { setPainel('estorno'); setAchadas(null); setBusca(''); setEst(null) }}><Undo2 className="w-4 h-4" />Estornar</Button>}
                 <Button onClick={() => setPainel('fechar')}><Lock className="w-4 h-4" />Fechar o caixa</Button>
               </div>
+            )}
+
+            {painel === 'estorno' && podeEstornar && (
+              <Card>
+                <h2 className="font-semibold">Estornar dinheiro de uma criança que já saiu</h2>
+                <p className="text-sm text-muted mt-1 mb-3">O valor devolvido sai deste caixa na hora e aparece no relatório do fechamento. O motivo é sempre obrigatório.</p>
+                <div className="flex gap-2">
+                  <input className="campo !py-2.5 flex-1" placeholder="Nome da criança ou do responsável" value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && procurar()} aria-label="Procurar criança" autoFocus />
+                  <Button onClick={procurar}><Search className="w-4 h-4" />Procurar</Button>
+                </div>
+                {achadas && achadas.length === 0 && <p className="text-sm text-muted mt-3">Ninguém com dinheiro a devolver nos últimos 60 dias.</p>}
+                <ul className="divide-y divide-line mt-3">{(achadas ?? []).map((a) => (
+                  <li key={a.id} className="py-3 space-y-2">
+                    <div className="flex flex-wrap items-baseline gap-x-3"><b>{a.nome}</b><span className="text-xs text-muted flex-1">{a.responsavel} · saiu {new Date(a.saida_em).toLocaleDateString('pt-BR')} às {horaMin(a.saida_em)} · conta {brl(Number(a.total))}</span><span className="text-sm font-semibold">pago {brl(Number(a.pago))}</span></div>
+                    {est?.id === a.id ? (
+                      <div className="space-y-2 rounded-xl bg-paper/60 p-3">
+                        <div className="flex flex-wrap gap-1.5">{Object.entries(a.formas).map(([k, vv]) => <button key={k} type="button" onClick={() => setEst({ ...est, forma: k, valor: String(vv).replace('.', ',') })} className={`px-3 h-8 rounded-full text-xs font-semibold border ${est.forma === k ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{nomeForma(k)} · {brl(Number(vv))}</button>)}</div>
+                        <div className="grid sm:grid-cols-[9rem_1fr] gap-2">
+                          <input className="campo !py-2.5" inputMode="decimal" placeholder="Valor R$" value={est.valor} onChange={(e) => setEst({ ...est, valor: e.target.value })} aria-label="Valor a estornar" />
+                          <input className="campo !py-2.5" placeholder="Motivo do estorno (obrigatório)" value={est.motivo} onChange={(e) => setEst({ ...est, motivo: e.target.value })} aria-label="Motivo do estorno" />
+                        </div>
+                        <p className="text-[11px] text-muted">Total: o valor inteiro da forma escolhida. Parcial: digite só o valor que será devolvido.</p>
+                        <div className="flex gap-2"><Button onClick={estornar} disabled={ocupado || est.motivo.trim().length < 3 || !est.forma}><Undo2 className="w-4 h-4" />Confirmar estorno</Button><Button variant="secondary" onClick={() => setEst(null)}>Voltar</Button></div>
+                      </div>
+                    ) : <Button variant="secondary" onClick={() => { const [k, vv] = Object.entries(a.formas)[0]; setEst({ id: a.id, forma: k, valor: String(vv).replace('.', ','), motivo: '' }) }}>Estornar</Button>}
+                  </li>
+                ))}</ul>
+                <div className="mt-3"><Button variant="secondary" onClick={() => setPainel(null)}>Fechar</Button></div>
+              </Card>
             )}
 
             {painel === 'mov' && (
@@ -309,6 +360,8 @@ export function RecreacaoCaixa() {
             )}
             {!s.ver_esperado && <p className="text-xs text-muted flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" />Fechamento cego ligado: os totais ficam escondidos até a contagem, para a conferência valer.</p>}
 
+            {estornos.length > 0 && <ListaEstornos titulo="Estornos de hoje" lista={estornos} />}
+
             {(s.movs?.length ?? 0) > 0 && (
               <Card>
                 <h2 className="font-semibold mb-2">Retiradas e reforços de hoje</h2>
@@ -337,6 +390,24 @@ function Cartao({ rotulo, valor, dica, oculto }: { rotulo: string; valor: string
   )
 }
 
+function ListaEstornos({ titulo, lista }: { titulo: string; lista: Estorno[] }) {
+  const soma = lista.reduce((t, e) => t + Number(e.valor), 0)
+  return (
+    <Card>
+      <div className="flex justify-between items-baseline mb-2"><h3 className="font-semibold">{titulo}</h3><span className="text-sm font-bold text-danger">− {brl(soma)}</span></div>
+      <ul className="divide-y divide-line text-sm">{lista.map((e) => (
+        <li key={e.id} className="py-2 flex flex-wrap gap-x-3 gap-y-0.5">
+          <span className="font-bold text-danger">− {brl(Number(e.valor))}</span>
+          <span className="font-semibold">{e.crianca}</span>
+          <span className="text-xs text-muted self-center">{nomeForma(e.forma)}</span>
+          <span className="flex-1 min-w-[8rem]">{e.motivo}</span>
+          <span className="text-xs text-muted">{e.por} · {horaMin(e.em)}</span>
+        </li>
+      ))}</ul>
+    </Card>
+  )
+}
+
 function RelatorioView({ r, onVoltar }: { r: Relatorio; onVoltar: () => void }) {
   const fechado = r.caixa.status === 'fechado'
   const formas = Object.entries(r.totais.formas)
@@ -346,6 +417,7 @@ function RelatorioView({ r, onVoltar }: { r: Relatorio; onVoltar: () => void }) 
     `Aberto por ${r.caixa.aberto_por} às ${horaMin(r.caixa.aberto_em)}${r.caixa.fechado_em ? ` · fechado por ${r.caixa.fechado_por} às ${horaMin(r.caixa.fechado_em)}` : ''}`,
     `Recebido: ${brl(Number(r.totais.recebido))}`,
     ...todas.map((k) => `${nomeForma(k)}: esperado ${brl(Number(r.esperado?.[k] ?? 0))} · contado ${brl(Number(r.contado?.[k] ?? 0))}${r.diferenca?.[k] ? ` (${Number(r.diferenca[k]) > 0 ? 'sobrou' : 'faltou'} ${brl(Math.abs(Number(r.diferenca[k])))})` : ''}`),
+    ...(r.estornos ?? []).map((e) => `Estorno: ${brl(Number(e.valor))} (${nomeForma(e.forma)}) de ${e.crianca}, motivo: ${e.motivo}, por ${e.por}`),
     `Crianças: ${r.resumo.entradas} entradas, ${r.resumo.saidas} saídas, ${r.resumo.cancelamentos} cancelamentos, ${r.resumo.ocorrencias} ocorrências`,
     r.caixa.obs ? `Obs.: ${r.caixa.obs}` : '',
   ].filter(Boolean).join('\n')
@@ -398,6 +470,7 @@ function RelatorioView({ r, onVoltar }: { r: Relatorio; onVoltar: () => void }) 
           ))}</ul>
         </Card>
       )}
+      {(r.estornos?.length ?? 0) > 0 && <ListaEstornos titulo="Estornos" lista={r.estornos!} />}
       {r.movs.length > 0 && (
         <Card>
           <h3 className="font-semibold mb-2">Retiradas e reforços</h3>

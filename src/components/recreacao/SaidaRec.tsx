@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { brl, friendlyDbError, parseDecimal } from '../../lib/format'
+import { PagamentoDividido, alocar, partesBatem, partesIniciais, partesNum, type Parte } from './PagamentoDividido'
 import { imprimirSaida, papelDe } from '../../lib/recImpressao'
 import { FORMAS_REC, limparFotosVencidas, cronometro, idadeTexto, nomeForma, type FamiliaRec, type FuncoesRec, type ItemRec, type VisitaRec } from '../../lib/recreacao'
 
@@ -39,6 +40,9 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
   const [forma, setForma] = useState('pix')
   const [formas, setFormas] = useState<Record<string, string>>({})
   const [recebido, setRecebido] = useState('')
+  const [dividirJunto, setDividirJunto] = useState(false)
+  const [partesJunto, setPartesJunto] = useState<Parte[]>(partesIniciais())
+  const [dividirKid, setDividirKid] = useState<Record<string, Parte[] | undefined>>({}) // criança -> partes (quando paga em mais de uma forma)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
@@ -95,14 +99,29 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     : escolhidas.some((v) => descNum(v) > 0 && (desc[v.id]?.motivo ?? '').trim().length < 3) ? 'Escreva o motivo do desconto.'
     : escolhidas.some((v) => acrNum(v) > 0 && (acr[v.id]?.motivo ?? '').trim().length < 3) ? 'Escreva o motivo do acréscimo.'
     : escolhidas.some((v) => (desc[v.id]?.tipo === 'pct' && (parseDecimal(desc[v.id]?.valor ?? '') ?? 0) > 100)) ? 'O desconto em porcentagem não pode passar de 100%.'
-    : somaPagar > 0 && modo === 'separado' && escolhidas.some((v) => aPagar(v) > 0 && !formas[v.id]) ? 'Escolha a forma de pagamento de cada criança.'
+    : somaPagar > 0 && modo === 'junto' && dividirJunto && !partesBatem(partesJunto, somaPagar) ? `Confira a divisão do pagamento: a soma precisa fechar ${brl(somaPagar)}.`
+    : somaPagar > 0 && modo === 'separado' && escolhidas.some((v) => aPagar(v) > 0 && dividirKid[v.id] && !partesBatem(dividirKid[v.id]!, aPagar(v))) ? 'Confira a divisão do pagamento: a soma precisa fechar o valor de cada criança.'
+    : somaPagar > 0 && modo === 'separado' && escolhidas.some((v) => aPagar(v) > 0 && !dividirKid[v.id] && !formas[v.id]) ? 'Escolha a forma de pagamento de cada criança.'
     : null
+
+  // pagamento em mais de uma forma (null = uma forma só)
+  const devidos = escolhidas.filter((v) => aPagar(v) > 0)
+  const pagsDe = (v: VisitaRec) => {
+    if (aPagar(v) <= 0) return null
+    if (modo === 'junto') {
+      if (!dividirJunto) return null
+      return alocar(partesNum(partesJunto), devidos.map(aPagar))[devidos.findIndex((x) => x.id === v.id)] ?? []
+    }
+    const p = dividirKid[v.id]
+    return p ? partesNum(p) : null
+  }
 
   async function confirmar() {
     if (pendencia) return
     setSalvando(true); setErro(null)
     const porVisita = Object.fromEntries(escolhidas.map((v) => [v.id, {
-      forma: modo === 'junto' ? forma : formas[v.id] ?? null,
+      forma: pagsDe(v) ? null : modo === 'junto' ? forma : formas[v.id] ?? null,
+      ...(pagsDe(v) ? { pagamentos: pagsDe(v) } : {}),
       itens: Object.entries(extras[v.id] ?? {}).filter(([, q]) => q > 0).map(([item, quantidade]) => ({ item, quantidade })),
       desconto: descNum(v) > 0 ? { tipo: desc[v.id]?.tipo ?? 'valor', valor: parseDecimal(desc[v.id]?.valor ?? '') ?? 0, motivo: desc[v.id]?.motivo } : null,
       acrescimo: acrNum(v) > 0 ? { tipo: acr[v.id]?.tipo ?? 'valor', valor: parseDecimal(acr[v.id]?.valor ?? '') ?? 0, motivo: acr[v.id]?.motivo } : null,
@@ -114,7 +133,7 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     setSalvando(false)
     if (error) { await carregar(); return setErro(friendlyDbError(error.message)) }
     if (funcoes.fotoGuarda === 'saida') limparFotosVencidas().catch(() => {}) // a casa quer apagar a foto logo na saída
-    const resp = data as { pagar: number; saida_em: string; visitas: { id: string; pagou_agora: number; forma: string | null }[] }
+    const resp = data as { pagar: number; saida_em: string; visitas: { id: string; pagou_agora: number; forma: string | null; pagamentos?: { forma: string; valor: number }[] }[] }
     const papel = papelDe(regras?.impressora)
     if (papel && regras?.imprimeSaida !== 'nao') {
       // comprovante de saída: hora, tempo, itens e valor cobrado
@@ -127,7 +146,7 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
             itens: Object.entries(extras[v.id] ?? {}).filter(([, q]) => q > 0).map(([iid, q]) => { const it = itens.find((i) => i.id === iid)!; return { d: `${q}x ${it.nome}`, v: q * Number(it.preco) } }),
             desconto: descNum(v), descontoRotulo: desc[v.id]?.tipo === 'pct' ? `Desconto (${desc[v.id]?.valor}%)` : 'Desconto',
             acrescimo: acrNum(v), acrescimoRotulo: acr[v.id]?.tipo === 'pct' ? `Acréscimo (${acr[v.id]?.valor}%)` : 'Acréscimo',
-            total: totalDe(v), pagoEntrada: Number(v.pago_entrada), pagoAgora: Number(r?.pagou_agora ?? 0), forma: r?.forma,
+            total: totalDe(v), pagoEntrada: Number(v.pago_entrada), pagoAgora: Number(r?.pagou_agora ?? 0), forma: r?.pagamentos && r.pagamentos.length > 1 ? r.pagamentos.map((x) => nomeForma(x.forma)).join(' + ') : r?.forma,
           }
         }),
       })
@@ -237,9 +256,16 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
                 <CampoAjuste rotulo="Acréscimo" v={acr[v.id]} onChange={(a) => setAcr((d) => ({ ...d, [v.id]: a }))} />
               </div>
             )}
-            {modo === 'separado' && aPagar(v) > 0 && (
+            {modo === 'separado' && aPagar(v) > 0 && dividirKid[v.id] && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-muted">Pagamento dividido de {brl(aPagar(v))}<button type="button" onClick={() => setDividirKid((d) => ({ ...d, [v.id]: undefined }))} className="font-semibold text-purple underline">Pagar numa forma só</button></div>
+                <PagamentoDividido total={aPagar(v)} partes={dividirKid[v.id]!} onChange={(p) => setDividirKid((d) => ({ ...d, [v.id]: p }))} />
+              </div>
+            )}
+            {modo === 'separado' && aPagar(v) > 0 && !dividirKid[v.id] && (
               <div className="flex flex-wrap gap-1.5">
                 {FORMAS_REC.map(([f, l]) => <button key={f} type="button" onClick={() => setFormas((x) => ({ ...x, [v.id]: f }))} className={`px-3 h-8 rounded-full text-xs font-semibold border ${formas[v.id] === f ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{l}</button>)}
+                <button type="button" onClick={() => setDividirKid((d) => ({ ...d, [v.id]: partesIniciais() }))} className="px-3 h-8 rounded-full text-xs font-semibold border border-dashed border-purple/50 text-purple">Dividir em 2 formas</button>
               </div>
             )}
           </div>
@@ -254,9 +280,16 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
               {(['junto', 'separado'] as const).map((m) => <button key={m} type="button" onClick={() => setModo(m)} className={`px-3 h-8 rounded-md text-sm font-semibold ${modo === m ? 'bg-surface shadow-sm text-purple' : 'text-muted'}`}>{m === 'junto' ? 'Pagar tudo junto' : 'Cada criança separado'}</button>)}
             </div>
           )}
-          {modo === 'junto' && (
+          {modo === 'junto' && dividirJunto && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-muted">Pagamento dividido de {brl(somaPagar)}<button type="button" onClick={() => setDividirJunto(false)} className="font-semibold text-purple underline">Pagar numa forma só</button></div>
+              <PagamentoDividido total={somaPagar} partes={partesJunto} onChange={setPartesJunto} />
+            </div>
+          )}
+          {modo === 'junto' && !dividirJunto && (
             <div className="flex flex-wrap items-center gap-1.5">
               {FORMAS_REC.map(([f, l]) => <button key={f} type="button" onClick={() => setForma(f)} className={`px-3 h-9 rounded-full text-sm font-semibold border ${forma === f ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{l}</button>)}
+              <button type="button" onClick={() => setDividirJunto(true)} className="px-3 h-9 rounded-full text-sm font-semibold border border-dashed border-purple/50 text-purple">Dividir em 2 formas</button>
               {forma === 'dinheiro' && (
                 <span className="flex items-center gap-2 ml-2 text-sm">Recebido <input className="campo !w-28" inputMode="decimal" value={recebido} onChange={(e) => setRecebido(e.target.value)} placeholder="R$" aria-label="Valor recebido" />
                   {rec != null && <b className={rec >= somaPagar ? 'text-teal' : 'text-danger'}>{rec >= somaPagar ? `Troco ${brl(rec - somaPagar)}` : `Faltam ${brl(somaPagar - rec)}`}</b>}</span>

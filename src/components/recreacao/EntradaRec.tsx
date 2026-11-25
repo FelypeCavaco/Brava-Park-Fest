@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { FamiliaEditor, reduzir } from './FamiliaEditor'
 import { FotoBotao } from './FotoCamera'
+import { PagamentoDividido, partesIniciais, partesBatem, partesNum, type Parte } from './PagamentoDividido'
 import { imprimirEntrada, papelDe } from '../../lib/recImpressao'
 import { useCompany } from '../../lib/CompanyContext'
 import { cacheBuscar, cacheFamilias, cachePlanos, cachePlanosLer, codigoLocal, ehErroDeRede, filaAdd, filaLer } from '../../lib/recOffline'
@@ -29,7 +30,7 @@ interface Props {
   onFechar: () => void
   onConcluida: () => void
 }
-interface Escolha { plano: string; pulseira: string; forma: string; excecao: string; usarExcecao: boolean }
+interface Escolha { plano: string; pulseira: string; forma: string; excecao: string; usarExcecao: boolean; dividir?: boolean; partes?: Parte[] }
 interface Resultado { codigo: string; grupo: string; token: string; entrada_em: string; responsavel: string; telefone: string; visitas: { id: string; nome: string; pulseira: string | null; plano: string; pago: number; cuidados: string | null; nascimento: string; ate: string | null }[] }
 
 export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, dentro, nomeCasa, onFechar, onConcluida }: Props) {
@@ -112,7 +113,8 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
       const c = familia?.criancas.find((x) => x.id === cid)
       const p = planoDe(e.plano)
       if (!p) out.push(`Escolha o plano de ${c?.nome.split(' ')[0]}.`)
-      else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && !e.forma) out.push(`Escolha como ${c?.nome.split(' ')[0]} paga.`)
+      else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && e.dividir && !partesBatem(e.partes ?? [], Number(p.regra.valor))) out.push(`Confira a divisão do pagamento de ${c?.nome.split(' ')[0]}: a soma precisa fechar ${brl(Number(p.regra.valor))}.`)
+      else if (p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && !e.usarExcecao && !e.dividir && !e.forma) out.push(`Escolha como ${c?.nome.split(' ')[0]} paga.`)
       if (e.usarExcecao && e.excecao.trim().length < 3) out.push('Escreva o motivo da exceção.')
       if (funcoes.fotoObrig && funcoes.foto === 'cadastro' && !c?.foto_path) out.push(`Tire a foto de ${c?.nome.split(' ')[0]} (no cadastro).`)
       if (funcoes.fotoObrig && funcoes.foto === 'entrada' && !fotosEnt[cid]) out.push(semNet ? 'Sem internet: a foto obrigatória precisa de sinal.' : `Tire a foto de ${c?.nome.split(' ')[0]}.`)
@@ -127,7 +129,7 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
     const item = {
       local: crypto.randomUUID(), unit: unidade, familia: familia!.id!, entrada_em: agora.toISOString(), codigo, token, responsavel: familia!.responsavel, criado: Date.now(),
       nomes: linhas.map(([cid]) => familia!.criancas.find((x) => x.id === cid)?.nome ?? ''),
-      criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null })),
+      criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao || e.dividir ? null : e.forma || null, ...(e.dividir && !e.usarExcecao ? { pagamentos: partesNum(e.partes ?? []) } : {}), excecao: e.usarExcecao ? e.excecao : null })),
     }
     filaAdd(emp, item)
     setRes({
@@ -164,7 +166,7 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
     }
     const { data, error } = await supabase.rpc('rec_entrada', {
       p_unit: unidade, p_familia: familia.id,
-      p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao ? null : e.forma || null, excecao: e.usarExcecao ? e.excecao : null, foto: caminhos[cid] ?? null })),
+      p_criancas: linhas.map(([cid, e]) => ({ crianca: cid, plano: e.plano, pulseira: e.pulseira, forma: e.usarExcecao || e.dividir ? null : e.forma || null, ...(e.dividir && !e.usarExcecao ? { pagamentos: partesNum(e.partes ?? []) } : {}), excecao: e.usarExcecao ? e.excecao : null, foto: caminhos[cid] ?? null })),
     })
     setSalvando(false)
     if (error && usaOffline && ehErroDeRede(error.message)) {
@@ -352,12 +354,19 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
                         )}
                         {p && p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && (
                           <div className="sm:col-span-2 space-y-2">
-                            {!e.usarExcecao && (
+                            {!e.usarExcecao && !e.dividir && (
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="text-xs text-muted mr-1">Paga agora {brl(Number(p.regra.valor))} no:</span>
                                 {FORMAS_REC.map(([v, l]) => (
                                   <button key={v} type="button" onClick={() => set({ forma: v })} className={`px-3 h-8 rounded-full text-xs font-semibold border ${e.forma === v ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{l}</button>
                                 ))}
+                                <button type="button" onClick={() => set({ dividir: true, partes: partesIniciais() })} className="px-3 h-8 rounded-full text-xs font-semibold border border-dashed border-purple/50 text-purple">Dividir em 2 formas</button>
+                              </div>
+                            )}
+                            {!e.usarExcecao && e.dividir && (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 text-xs text-muted">Pagamento dividido de {brl(Number(p.regra.valor))}<button type="button" onClick={() => set({ dividir: false })} className="font-semibold text-purple underline">Pagar numa forma só</button></div>
+                                <PagamentoDividido total={Number(p.regra.valor)} partes={e.partes ?? partesIniciais()} onChange={(partes) => set({ partes })} />
                               </div>
                             )}
                             {gerente && (

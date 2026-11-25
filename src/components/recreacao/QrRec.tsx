@@ -27,22 +27,26 @@ export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void
         if (!navigator.mediaDevices?.getUserMedia) { setErro('Este navegador não deixa usar a câmera aqui. Abra o sistema pelo Chrome ou pelo Safari (não por dentro de outro aplicativo) ou use o leitor de mesa.'); return }
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
         if (parar) return stream.getTracks().forEach((t) => t.stop())
-        const el = video.current!; el.srcObject = stream; await el.play()
+        const el = video.current!; el.srcObject = stream; await el.play().catch(() => {})
+        // leitor do próprio navegador, quando funciona; se não existir ou falhar (comum no Chrome do computador), vale o jsQR
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nativo = 'BarcodeDetector' in window ? new (window as any).BarcodeDetector({ formats: ['qr_code'] }) : null
-        const jsqr = nativo ? null : (await import('jsqr')).default
+        let nativo: any = null
+        try { if ('BarcodeDetector' in window) nativo = new (window as any).BarcodeDetector({ formats: ['qr_code'] }) } catch { nativo = null } // eslint-disable-line @typescript-eslint/no-explicit-any
+        const jsqr = (await import('jsqr')).default
         const tela = document.createElement('canvas'); const ctx = tela.getContext('2d', { willReadFrequently: true })!
         const olhar = async () => {
           if (parar) return
-          try {
-            if (nativo) { const r = await nativo.detect(el); if (r[0]?.rawValue) { onLido(r[0].rawValue); return } }
-            else if (jsqr && el.videoWidth) {
+          if (nativo) {
+            try { const r = await nativo.detect(el); if (r[0]?.rawValue) { onLido(r[0].rawValue); return } } catch { nativo = null }
+          }
+          if (!nativo && el.videoWidth) {
+            try {
               const esc = Math.min(1, 640 / el.videoWidth); tela.width = Math.round(el.videoWidth * esc); tela.height = Math.round(el.videoHeight * esc)
               ctx.drawImage(el, 0, 0, tela.width, tela.height)
               const r = jsqr(ctx.getImageData(0, 0, tela.width, tela.height).data, tela.width, tela.height, { inversionAttempts: 'dontInvert' })
               if (r?.data) { onLido(r.data); return }
-            }
-          } catch { /* quadro sem imagem ainda */ }
+            } catch { /* quadro sem imagem ainda */ }
+          }
           timer = window.setTimeout(olhar, nativo ? 200 : 250)
         }
         olhar()
@@ -80,5 +84,5 @@ export function mensagemCamera(e: unknown): string {
   if (nome === 'NotAllowedError' || nome === 'SecurityError') return 'A câmera está bloqueada para este site. Toque no cadeado ao lado do endereço, libere a câmera e atualize a página (se acabou de liberar, feche e abra o leitor de novo).'
   if (nome === 'NotFoundError' || nome === 'OverconstrainedError') return 'Não encontrei nenhuma câmera neste aparelho.'
   if (nome === 'NotReadableError' || nome === 'AbortError') return 'A câmera está sendo usada por outro programa ou aba. Feche o outro e tente de novo.'
-  return 'Não consegui abrir a câmera. Libere a câmera para este site (cadeado ao lado do endereço) ou use o leitor de mesa.'
+  return `Não consegui abrir a câmera${nome ? ` (${nome})` : ''}. Libere a câmera para este site (cadeado ao lado do endereço) ou use o leitor de mesa.`
 }

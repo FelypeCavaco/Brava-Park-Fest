@@ -10,7 +10,7 @@ export interface ItemFila {
   local: string
   unit: string
   familia: string
-  criancas: { crianca: string; plano: string; pulseira: string; forma: string | null; excecao: string | null }[]
+  criancas: { crianca: string; plano: string; pulseira: string; forma: string | null; pagamentos?: { forma: string; valor: number }[]; excecao: string | null }[]
   entrada_em: string
   codigo: string
   token: string

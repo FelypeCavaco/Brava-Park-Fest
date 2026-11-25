@@ -621,9 +621,23 @@ function Regras({ cfg, onSalvo }: { cfg: Config; onSalvo: (c: Config) => void })
           </Campo>
           <Campo label="Impressora térmica">
             <select className="campo" value={String(r.impressora)} onChange={(e) => setR({ ...r, impressora: e.target.value })}>
-              <option value="nao">Não uso impressora</option><option value="58">58 mm (cupom pequeno)</option><option value="80">80 mm (cupom grande)</option>
+              <option value="nao">Não uso impressora</option><option value="58">58 mm (cupom pequeno)</option><option value="80">80 mm (cupom grande)</option><option value="a4">Folha A4 (impressora comum)</option>
             </select>
           </Campo>
+          {String(r.impressora) !== 'nao' && (
+            <>
+              <Campo label="Imprimir o termo de responsabilidade na entrada" dica="Sai uma via do termo para o responsável assinar e a casa guardar, além da via de entrada que fica com o responsável para a retirada.">
+                <select className="campo" value={String(r.imprimeTermo ?? 'nao')} onChange={(e) => setR({ ...r, imprimeTermo: e.target.value })}>
+                  <option value="nao">Não imprimir o termo</option><option value="sim">Imprimir o termo (via da casa)</option>
+                </select>
+              </Campo>
+              <Campo label="Imprimir o comprovante de saída" dica="Mostra a hora de saída, o tempo, os itens e o valor cobrado.">
+                <select className="campo" value={String(r.imprimeSaida ?? 'sim')} onChange={(e) => setR({ ...r, imprimeSaida: e.target.value })}>
+                  <option value="sim">Imprimir ao registrar a saída</option><option value="nao">Não imprimir</option>
+                </select>
+              </Campo>
+            </>
+          )}
         </fieldset>
       </Card>
       <Card title="Termo de responsabilidade">

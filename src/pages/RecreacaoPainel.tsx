@@ -323,7 +323,7 @@ export function RecreacaoPainel() {
               <EntradaRec unidades={unidades} unidadeInicial={unitId} funcoes={cfg.funcoes} regras={cfg.regras} termo={cfg.termo} nomeCasa={brand.name || 'Recreação'}
                 dentro={(lista ?? []).map((v) => v.crianca.id)} onFechar={() => setPainel(null)} onConcluida={carregar} />
             ) : (
-              <SaidaRec visitas={painel.visitas} marcadas={painel.marcadas} codigoLido={painel.codigo} funcoes={cfg.funcoes}
+              <SaidaRec visitas={painel.visitas} marcadas={painel.marcadas} codigoLido={painel.codigo} funcoes={cfg.funcoes} regras={cfg.regras} nomeCasa={brand.name || 'Recreação'}
                 onFechar={() => setPainel(null)} onConcluida={(t) => { setPainel(null); setMsg({ ok: true, texto: t }); carregar() }} />
             )}
           </div>

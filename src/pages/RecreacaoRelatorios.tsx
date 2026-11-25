@@ -5,6 +5,8 @@ import { useUnit } from '../lib/UnitContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { brl, friendlyDbError } from '../lib/format'
+import { RelatoriosMais } from '../components/recreacao/RelatoriosMais'
+import { useCompany } from '../lib/CompanyContext'
 import { fmtMin, horaMin, nomeForma } from '../lib/recreacao'
 
 interface Rel {
@@ -40,6 +42,7 @@ function periodos() {
 
 export function RecreacaoRelatorios() {
   const { selectedUnit, unitDbIds } = useUnit()
+  const { brand } = useCompany()
   const unitId = selectedUnit === 'todas' ? null : unitDbIds[selectedUnit]?.unitId ?? null
   const lista = useMemo(periodos, [])
   const [sel, setSel] = useState('7')
@@ -165,6 +168,8 @@ export function RecreacaoRelatorios() {
               )}
             </Card>
           </div>
+
+          <RelatoriosMais ini={per.ini} fim={per.fim} unitId={unitId} casa={brand.name || 'a recreação'} />
 
           <Card>
             <div className="flex flex-wrap items-center gap-3 mb-3">

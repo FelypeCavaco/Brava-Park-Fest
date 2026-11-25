@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { FamiliaEditor, reduzir } from './FamiliaEditor'
 import { FotoBotao } from './FotoCamera'
+import { imprimirEntrada, papelDe } from '../../lib/recImpressao'
 import { useCompany } from '../../lib/CompanyContext'
 import { cacheBuscar, cacheFamilias, cachePlanos, cachePlanosLer, codigoLocal, ehErroDeRede, filaAdd, filaLer } from '../../lib/recOffline'
 import { QrImg, qrParaImpressao } from './QrRec'
@@ -192,14 +193,15 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
       + `${funcoes.codigo ? `\n\nCódigo de retirada: ${res.codigo}\nSó entregamos a criança com esse código.` : ''}`
       + `${funcoes.paginaPais !== false ? `\n\nAcompanhe o tempo, o valor e o QR da retirada por aqui:\n${link}` : ''}`
     async function imprimir() {
-      const w = window.open('', '_blank', 'width=360,height=640')
-      if (!w) return setErro('O navegador bloqueou a janela de impressão. Libere as janelas deste site.')
-      const qr = funcoes.qr !== false ? await qrParaImpressao(link).catch(() => '') : ''
-      const largura = String(regras.impressora) === '80' ? '72mm' : '48mm'
-      w.document.write(`<!doctype html><meta charset="utf-8"><title>Etiqueta</title><style>body{font:12px/1.4 monospace;margin:0;padding:6px;width:${largura}}h1{font-size:13px;margin:0 0 4px}.c{border-top:1px dashed #000;margin-top:8px;padding-top:6px}.cod{font-size:18px;font-weight:bold;letter-spacing:3px}@media print{@page{margin:2mm}}</style>`
-        + res!.visitas.map((v) => `<div class="c"><h1>${nomeCasa} · RECREAÇÃO</h1>${v.pulseira ? `<b>PULSEIRA ${v.pulseira}</b><br>` : ''}${v.nome.toUpperCase()} (${idadeTexto(v.nascimento)})<br>${v.cuidados ? `<b>⚠ ${v.cuidados.toUpperCase()}</b><br>` : ''}Entrada: ${horaMin(res!.entrada_em)}<br>Plano: ${v.plano}${v.ate ? `<br>Até: ${horaMin(v.ate)}` : ''}<br>Responsável: ${res!.responsavel}<br>${mascaraTelefone(res!.telefone)}${funcoes.codigo ? `<br><span class="cod">${res!.codigo}</span><br>código de retirada` : ''}${qr ? `<br><img src="${qr}" width="110" height="110">` : ''}</div>`).join('')
-        + `<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),400)}<\/script>`)
-      w.document.close()
+      const papel = papelDe(regras.impressora)
+      if (!papel) return
+      const qr = funcoes.qr !== false && funcoes.paginaPais !== false ? await qrParaImpressao(link).catch(() => '') : ''
+      imprimirEntrada({
+        casa: nomeCasa, papel, imprimeTermo: regras.imprimeTermo === 'sim', termo,
+        responsavel: res!.responsavel, cpf: familia?.cpf ? mascaraCpf(familia.cpf) : null, telefone: res!.telefone ? mascaraTelefone(res!.telefone) : null,
+        entradaEm: res!.entrada_em, codigo: funcoes.codigo ? res!.codigo : null, link, qr,
+        criancas: res!.visitas.map((v) => ({ nome: v.nome, nascimento: v.nascimento, cuidados: v.cuidados, pulseira: v.pulseira, plano: v.plano, ate: v.ate })),
+      })
     }
     return (
       <div className="space-y-5">
@@ -241,7 +243,7 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
         <div className="rounded-xl bg-[#e7f6ec] text-[#1b3a28] p-4 text-sm whitespace-pre-line max-w-lg">{msg}</div>
         <div className="flex flex-wrap gap-2">
           <a href={linkWhatsApp(res.telefone, msg)} target="_blank" rel="noreferrer"><Button><MessageCircle className="w-4 h-4" />Mandar no WhatsApp</Button></a>
-          {String(regras.impressora ?? 'nao') !== 'nao' && <Button variant="secondary" onClick={imprimir}><Printer className="w-4 h-4" />Imprimir etiqueta</Button>}
+          {String(regras.impressora ?? 'nao') !== 'nao' && <Button variant="secondary" onClick={imprimir}><Printer className="w-4 h-4" />{regras.imprimeTermo === 'sim' ? 'Imprimir termo e via de entrada' : 'Imprimir via de entrada'}</Button>}
           <Button variant="secondary" onClick={() => { setRes(null); setFamilia(null); setBusca(''); setMarcadas({}) }}><Plus className="w-4 h-4" />Outra entrada</Button>
           <Button variant="ghost" onClick={onFechar}>Fechar</Button>
         </div>

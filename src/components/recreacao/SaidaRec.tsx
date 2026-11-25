@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { brl, friendlyDbError, parseDecimal } from '../../lib/format'
+import { imprimirSaida, papelDe } from '../../lib/recImpressao'
 import { FORMAS_REC, limparFotosVencidas, cronometro, idadeTexto, nomeForma, type FamiliaRec, type FuncoesRec, type ItemRec, type VisitaRec } from '../../lib/recreacao'
 
 // Saída: confere quem busca (código ou gerente), mostra a conta de cada
@@ -14,11 +15,13 @@ interface Props {
   marcadas: string[] // as que começam marcadas
   codigoLido?: string
   funcoes: FuncoesRec
+  regras?: Record<string, string | number>
+  nomeCasa?: string
   onFechar: () => void
   onConcluida: (msg: string) => void
 }
 
-export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, onFechar, onConcluida }: Props) {
+export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, regras, nomeCasa, onFechar, onConcluida }: Props) {
   const { can } = useAuth()
   const [vs, setVs] = useState<VisitaRec[] | null>(null)
   const [fam, setFam] = useState<FamiliaRec | null>(null)
@@ -111,7 +114,25 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     setSalvando(false)
     if (error) { await carregar(); return setErro(friendlyDbError(error.message)) }
     if (funcoes.fotoGuarda === 'saida') limparFotosVencidas().catch(() => {}) // a casa quer apagar a foto logo na saída
-    const pago = Number((data as { pagar: number }).pagar)
+    const resp = data as { pagar: number; saida_em: string; visitas: { id: string; pagou_agora: number; forma: string | null }[] }
+    const papel = papelDe(regras?.impressora)
+    if (papel && regras?.imprimeSaida !== 'nao') {
+      // comprovante de saída: hora, tempo, itens e valor cobrado
+      imprimirSaida({
+        casa: nomeCasa || 'Recreação', papel, saidaEm: resp.saida_em, responsavel: fam?.responsavel ?? escolhidas[0].familia.responsavel, buscou,
+        criancas: escolhidas.map((v) => {
+          const r = resp.visitas.find((x) => x.id === v.id)
+          return {
+            nome: v.crianca.nome, entradaEm: v.entrada_em, tempoSeg: v.seg_cobrado, plano: v.plano.nome, linhas: v.conta.linhas,
+            itens: Object.entries(extras[v.id] ?? {}).filter(([, q]) => q > 0).map(([iid, q]) => { const it = itens.find((i) => i.id === iid)!; return { d: `${q}x ${it.nome}`, v: q * Number(it.preco) } }),
+            desconto: descNum(v), descontoRotulo: desc[v.id]?.tipo === 'pct' ? `Desconto (${desc[v.id]?.valor}%)` : 'Desconto',
+            acrescimo: acrNum(v), acrescimoRotulo: acr[v.id]?.tipo === 'pct' ? `Acréscimo (${acr[v.id]?.valor}%)` : 'Acréscimo',
+            total: totalDe(v), pagoEntrada: Number(v.pago_entrada), pagoAgora: Number(r?.pagou_agora ?? 0), forma: r?.forma,
+          }
+        }),
+      })
+    }
+    const pago = resp.pagar
     onConcluida(`${escolhidas.map((v) => v.crianca.nome.split(' ')[0]).join(' e ')} ${escolhidas.length > 1 ? 'saíram' : 'saiu'}. ${pago > 0 ? `${brl(pago)} recebidos.` : 'Nada a pagar.'}`)
   }
 

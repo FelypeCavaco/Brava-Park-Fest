@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { FamiliaEditor, reduzir } from './FamiliaEditor'
+import { FotoBotao } from './FotoCamera'
 import { useCompany } from '../../lib/CompanyContext'
 import { cacheBuscar, cacheFamilias, cachePlanos, cachePlanosLer, codigoLocal, ehErroDeRede, filaAdd, filaLer } from '../../lib/recOffline'
 import { QrImg, qrParaImpressao } from './QrRec'
@@ -338,16 +339,14 @@ export function EntradaRec({ unidades, unidadeInicial, funcoes, regras, termo, d
                         </label>
                         <label className="text-xs font-medium text-muted">Pulseira nº<input className="campo mt-1" value={e.pulseira} onChange={(ev) => set({ pulseira: ev.target.value })} /></label>
                         {funcoes.foto === 'entrada' && (
-                          <label className="sm:col-span-2 flex items-center gap-3 cursor-pointer text-xs font-medium text-muted">
-                            <span className={`relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed ${fotosEnt[c.id!] ? 'border-transparent' : 'border-line bg-surface'}`}>
+                          <FotoBotao titulo={`Foto de ${c.nome.split(" ")[0]}`} className="sm:col-span-2 flex items-center gap-3 text-left text-xs font-medium text-muted" onFoto={async (arq) => {
+                            try { const blob = arq instanceof File ? await reduzir(arq) : arq; setFotosEnt((m) => ({ ...m, [c.id!]: { blob, url: URL.createObjectURL(blob) } })) } catch { setErro("Não consegui ler a foto. Tente de novo.") }
+                          }}>
+                            <span className={`relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed shrink-0 ${fotosEnt[c.id!] ? "border-transparent" : "border-line bg-surface"}`}>
                               {fotosEnt[c.id!] ? <img src={fotosEnt[c.id!].url} alt={`Foto de ${c.nome}`} className="w-full h-full object-cover" /> : <Camera className="w-5 h-5" />}
                             </span>
-                            <span>{fotosEnt[c.id!] ? 'Trocar a foto de hoje' : `Tirar a foto de hoje${funcoes.fotoObrig ? ' (obrigatória)' : ''}`}</span>
-                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={async (ev) => {
-                              const arq = ev.target.files?.[0]; if (!arq) return
-                              try { const blob = await reduzir(arq); setFotosEnt((m) => ({ ...m, [c.id!]: { blob, url: URL.createObjectURL(blob) } })) } catch { setErro('Não consegui ler a foto. Tente de novo.') }
-                            }} />
-                          </label>
+                            <span>{fotosEnt[c.id!] ? "Tirar outra foto de hoje" : `Tirar a foto de hoje${funcoes.fotoObrig ? " (obrigatória)" : ""}`}</span>
+                          </FotoBotao>
                         )}
                         {p && p.regra.cobranca === 'entrada' && Number(p.regra.valor) > 0 && (
                           <div className="sm:col-span-2 space-y-2">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { FotoBotao } from './FotoCamera'
 import { UserRound, Baby, ShieldCheck, ScrollText, Plus, Trash2, Camera, AlertTriangle, X, Check, Save, Undo2, GitMerge, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
@@ -110,10 +111,10 @@ export function FamiliaEditor({ familiaId, funcoes, regras, termo, onSalvo, onFe
   const idMin = Number(regras.idMin ?? 0), idMax = Number(regras.idMax ?? 17)
 
   // ---------- foto ----------
-  async function escolherFoto(chave: string, arquivo: File | undefined) {
+  async function escolherFoto(chave: string, arquivo: Blob | undefined) {
     if (!arquivo) return
     try {
-      const blob = await reduzir(arquivo)
+      const blob = arquivo instanceof File ? await reduzir(arquivo) : arquivo
       pendentes.current[chave] = blob
       setFotos((f) => ({ ...f, [chave]: URL.createObjectURL(blob) }))
     } catch { setErro('Não consegui ler a foto. Tente de novo.') }
@@ -241,10 +242,9 @@ export function FamiliaEditor({ familiaId, funcoes, regras, termo, onSalvo, onFe
               return (
                 <div key={c.chave} className="rounded-xl border border-line bg-paper/50 p-3 flex flex-col sm:flex-row gap-3">
                   {funcoes.foto !== 'nao' && (
-                    <label className={`relative w-20 h-20 rounded-xl shrink-0 overflow-hidden flex items-center justify-center cursor-pointer border-2 border-dashed ${fotos[c.chave] ? 'border-transparent' : 'border-line bg-surface hover:border-purple/40'}`} title="Tirar ou trocar a foto">
+                    <FotoBotao titulo={`Foto de ${c.nome.split(" ")[0] || "criança"}`} onFoto={(b) => escolherFoto(c.chave, b)} className={`relative w-20 h-20 rounded-xl shrink-0 overflow-hidden flex items-center justify-center border-2 border-dashed ${fotos[c.chave] ? "border-transparent" : "border-line bg-surface hover:border-purple/40"}`} title="Tirar ou trocar a foto">
                       {fotos[c.chave] ? <img src={fotos[c.chave]} alt={`Foto de ${c.nome}`} className="w-full h-full object-cover" /> : <span className="flex flex-col items-center text-[10px] text-muted"><Camera className="w-5 h-5 mb-0.5" />foto</span>}
-                      <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => escolherFoto(c.chave, e.target.files?.[0])} />
-                    </label>
+                    </FotoBotao>
                   )}
                   <div className="flex-1 grid sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3 min-w-0">
                     <Campo label="Nome da criança"><input className="campo" value={c.nome} onChange={(e) => setC(c.chave, { nome: e.target.value })} /></Campo>

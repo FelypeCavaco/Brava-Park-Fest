@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { Button } from '../ui/Button'
 import { brl, friendlyDbError, parseDecimal } from '../../lib/format'
-import { FORMAS_REC, cronometro, idadeTexto, nomeForma, type FamiliaRec, type FuncoesRec, type ItemRec, type VisitaRec } from '../../lib/recreacao'
+import { FORMAS_REC, limparFotosVencidas, cronometro, idadeTexto, nomeForma, type FamiliaRec, type FuncoesRec, type ItemRec, type VisitaRec } from '../../lib/recreacao'
 
 // Saída: confere quem busca (código ou gerente), mostra a conta de cada
 // criança (calculada no banco) e registra o pagamento — junto ou separado.
@@ -110,6 +110,7 @@ export function SaidaRec({ visitas, marcadas: marcadasIni, codigoLido, funcoes, 
     })
     setSalvando(false)
     if (error) { await carregar(); return setErro(friendlyDbError(error.message)) }
+    if (funcoes.fotoGuarda === 'saida') limparFotosVencidas().catch(() => {}) // a casa quer apagar a foto logo na saída
     const pago = Number((data as { pagar: number }).pagar)
     onConcluida(`${escolhidas.map((v) => v.crianca.nome.split(' ')[0]).join(' e ')} ${escolhidas.length > 1 ? 'saíram' : 'saiu'}. ${pago > 0 ? `${brl(pago)} recebidos.` : 'Nada a pagar.'}`)
   }

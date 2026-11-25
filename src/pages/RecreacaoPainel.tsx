@@ -12,7 +12,7 @@ import { EntradaRec } from '../components/recreacao/EntradaRec'
 import { SaidaRec } from '../components/recreacao/SaidaRec'
 import { LeitorQr, podeLerQr } from '../components/recreacao/QrRec'
 import { brl, friendlyDbError } from '../lib/format'
-import { cronometro, fmtMin, horaMin, idadeTexto, linkWhatsApp, tokenDoTexto, type FuncoesRec, type VisitaRec } from '../lib/recreacao'
+import { limparFotosVencidas, cronometro, fmtMin, horaMin, idadeTexto, linkWhatsApp, tokenDoTexto, type FuncoesRec, type VisitaRec } from '../lib/recreacao'
 
 interface Config { ligada: boolean; funcoes: FuncoesRec; regras: Record<string, string | number>; termo: string }
 type Estado = { cor: 'vd' | 'am' | 'vm' | 'cz'; etiqueta: string; info: string; valor: number }
@@ -101,13 +101,7 @@ export function RecreacaoPainel() {
   // apaga as fotos de entrada que passaram do prazo da casa (uma vez ao abrir o painel)
   useEffect(() => {
     if (!pode || cfg?.funcoes.foto !== 'entrada') return
-    ;(async () => {
-      const { data } = await supabase.rpc('rec_fotos_vencidas')
-      const paths = (data ?? []) as string[]
-      if (!paths.length) return
-      const { error } = await supabase.storage.from('recreacao-fotos').remove(paths)
-      if (!error) await supabase.rpc('rec_fotos_limpar', { p_paths: paths })
-    })()
+    limparFotosVencidas().catch(() => {})
   }, [pode, cfg?.funcoes.foto]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // situação do caixa da unidade (avisa quando está fechado ou esquecido de ontem)
@@ -210,7 +204,7 @@ export function RecreacaoPainel() {
               {/* aceita os 4 dígitos ou o link do QR (leitor de mesa) */}
               <input className={`w-20 bg-transparent outline-none placeholder:tracking-normal placeholder:font-normal ${/^\d*$/.test(codigo) ? 'font-display font-bold tracking-[0.3em]' : 'text-xs'}`} inputMode="text" maxLength={120} placeholder="Código" value={codigo} onChange={(e) => setCodigo(e.target.value)} aria-label="Código de retirada" />
               <Button type="submit" variant="secondary" className="!py-1.5 !px-3" disabled={!codigoOk}><LogOut className="w-4 h-4" />Saída</Button>
-              {cfg?.funcoes.qr !== false && podeLerQr() && <button type="button" onClick={() => setLendo(true)} className="h-8 w-8 rounded-lg text-purple hover:bg-purple-light flex items-center justify-center" aria-label="Ler QR com a câmera" title="Ler QR com a câmera"><ScanLine className="w-4 h-4" /></button>}
+              {cfg?.funcoes.qr !== false && podeLerQr() && <button type="button" onClick={() => setLendo(true)} className="h-8 px-2 gap-1.5 rounded-lg text-purple hover:bg-purple-light flex items-center justify-center text-xs font-bold" aria-label="Ler QR com a câmera" title="Ler QR com a câmera"><ScanLine className="w-4 h-4" />Ler QR</button>}
             </form>
             <Button onClick={() => setPainel({ tipo: 'entrada' })} className="!h-11"><LogIn className="w-4 h-4" />Nova entrada</Button>
           </div>

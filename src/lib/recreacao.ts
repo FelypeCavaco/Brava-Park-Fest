@@ -1,3 +1,5 @@
+import { supabase } from './supabaseClient'
+
 // Recreação (migração 100): formatos dos planos de cobrança, modelos prontos e
 // a lista de funções que o administrador geral liga/desliga por casa.
 // O CÁLCULO da cobrança não fica aqui: é feito no banco (rec_simular /
@@ -132,7 +134,8 @@ export const FUNCOES_REC: { grupo: string; itens: CampoFuncao[] }[] = [
     { k: 'qr', label: 'QR code de retirada (no WhatsApp e no cupom)', tipo: 'bool' },
     { k: 'foto', label: 'Foto da criança', tipo: 'opcao', opcoes: [['nao', 'Não tirar foto'], ['cadastro', 'Tirar uma vez, no cadastro'], ['entrada', 'Tirar a cada entrada']] },
     { k: 'fotoObrig', label: 'Foto obrigatória para dar entrada', tipo: 'bool' },
-    { k: 'fotoDias', label: 'Apagar a foto de cada entrada depois de', tipo: 'num', sufixo: 'dias' },
+    { k: 'fotoGuarda', label: 'Foto de cada entrada: quando apagar', tipo: 'opcao', opcoes: [['dias', 'Depois de alguns dias (veja abaixo)'], ['saida', 'Logo depois que a criança sai'], ['sempre', 'Nunca apagar (fica guardada)']] },
+    { k: 'fotoDias', label: 'Se for por dias: apagar a foto de cada entrada depois de', tipo: 'num', sufixo: 'dias' },
   ] },
   { grupo: 'Página do responsável', itens: [
     { k: 'paginaPais', label: 'Mandar o link da página do responsável', tipo: 'bool' },
@@ -264,4 +267,13 @@ export function linkWhatsApp(telefone: string | null | undefined, texto: string)
   let d = soDigitos(telefone)
   if (d.length === 10 || d.length === 11) d = '55' + d
   return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`
+}
+
+// Apaga as fotos de entrada que já passaram do prazo da casa (ou, se a casa escolheu, as de quem já saiu).
+export async function limparFotosVencidas() {
+  const { data } = await supabase.rpc('rec_fotos_vencidas')
+  const paths = (data ?? []) as string[]
+  if (!paths.length) return
+  const { error } = await supabase.storage.from('recreacao-fotos').remove(paths)
+  if (!error) await supabase.rpc('rec_fotos_limpar', { p_paths: paths })
 }

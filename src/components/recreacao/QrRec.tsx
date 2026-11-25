@@ -13,9 +13,9 @@ export function QrImg({ texto, tamanho = 168, className = '' }: { texto: string;
 // Imagem pronta para a etiqueta impressa.
 export const qrParaImpressao = (texto: string) => QRCode.toDataURL(texto, { margin: 0, width: 220, errorCorrectionLevel: 'M' })
 
-// O navegador do celular/tablet (Chrome, Edge, Android) lê QR pela câmera. Onde não lê
-// (iPhone/Safari), a recepção usa o leitor de mesa ou digita o código.
-export const podeLerQr = () => typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia
+// Qualquer aparelho com câmera lê o QR: onde o navegador já sabe (Chrome, Edge, Android) usa o
+// leitor dele; nos demais (computador, iPhone/Safari) usa o leitor jsQR, carregado só na hora.
+export const podeLerQr = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
 
 export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void; onFechar: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
@@ -28,15 +28,25 @@ export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void
         if (parar) return stream.getTracks().forEach((t) => t.stop())
         const el = video.current!; el.srcObject = stream; await el.play()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const det = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
+        const nativo = 'BarcodeDetector' in window ? new (window as any).BarcodeDetector({ formats: ['qr_code'] }) : null
+        const jsqr = nativo ? null : (await import('jsqr')).default
+        const tela = document.createElement('canvas'); const ctx = tela.getContext('2d', { willReadFrequently: true })!
         const olhar = async () => {
           if (parar) return
-          try { const r = await det.detect(el); if (r[0]?.rawValue) { onLido(r[0].rawValue); return } } catch { /* quadro sem imagem ainda */ }
-          timer = window.setTimeout(olhar, 200)
+          try {
+            if (nativo) { const r = await nativo.detect(el); if (r[0]?.rawValue) { onLido(r[0].rawValue); return } }
+            else if (jsqr && el.videoWidth) {
+              const esc = Math.min(1, 640 / el.videoWidth); tela.width = Math.round(el.videoWidth * esc); tela.height = Math.round(el.videoHeight * esc)
+              ctx.drawImage(el, 0, 0, tela.width, tela.height)
+              const r = jsqr(ctx.getImageData(0, 0, tela.width, tela.height).data, tela.width, tela.height, { inversionAttempts: 'dontInvert' })
+              if (r?.data) { onLido(r.data); return }
+            }
+          } catch { /* quadro sem imagem ainda */ }
+          timer = window.setTimeout(olhar, nativo ? 200 : 250)
         }
         olhar()
       } catch {
-        setErro('Não consegui abrir a câmera. Libere a câmera para este site ou use o leitor de mesa.')
+        setErro('Não consegui abrir a câmera. Libere a câmera para este site (cadeado ao lado do endereço) ou use o leitor de mesa.')
       }
     })()
     return () => { parar = true; clearTimeout(timer); stream?.getTracks().forEach((t) => t.stop()) }

@@ -17,7 +17,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const { units } = useUnit()
-  const { profile } = useAuth()
+  const { profile, session } = useAuth()
   const { brand, isPlatformAdmin, billing } = useCompany()
   const foraDaEmpresa = isPlatformAdmin && !brand.companyId
   // Empresa recém-criada, ainda sem unidade: as telas dependem de ter pelo
@@ -45,6 +45,7 @@ export function AppLayout() {
               <NotificationBell />
             </>
           )}
+          <UsuarioLogado nome={profile?.name} email={session?.user?.email} perfil={profile?.role?.name} />
         </div>
         {billing && profile?.role?.isAdmin && !isPlatformAdmin && <BillingBanner billing={billing} />}
         {semUnidade ? (
@@ -64,6 +65,22 @@ export function AppLayout() {
           </Suspense>
         )}
       </main>
+    </div>
+  )
+}
+
+// Quem está logado neste aparelho (canto superior direito).
+function UsuarioLogado({ nome, email, perfil }: { nome?: string; email?: string | null; perfil?: string }) {
+  const rotulo = nome || email
+  if (!rotulo) return null
+  const iniciais = rotulo.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
+  return (
+    <div className="shrink-0 flex items-center gap-2 pl-2 border-l border-line" title={`Logado neste aparelho: ${rotulo}${email && nome ? ` (${email})` : ''}`}>
+      <span className="w-8 h-8 rounded-full bg-purple-light text-purple text-xs font-bold flex items-center justify-center" aria-hidden>{iniciais}</span>
+      <span className="hidden lg:block leading-tight max-w-[11rem]">
+        <span className="block text-[10px] font-bold uppercase tracking-wide text-muted">Logado neste aparelho</span>
+        <span className="block text-sm font-semibold truncate">{rotulo}{perfil ? <span className="font-normal text-muted"> · {perfil}</span> : null}</span>
+      </span>
     </div>
   )
 }

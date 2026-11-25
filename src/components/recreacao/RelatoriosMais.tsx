@@ -3,19 +3,20 @@ import { Crown, HeartHandshake, CalendarDays, Cake, ShoppingBag, Siren, UserX, M
 import { supabase } from '../../lib/supabaseClient'
 import { Card } from '../ui/Card'
 import { brl, friendlyDbError } from '../../lib/format'
+import { FichaFamilia } from './FichaFamilia'
 import { fmtMin, linkWhatsApp, mascaraTelefone } from '../../lib/recreacao'
 
 // Relatórios extras da recreação (migração 114): quem mais vem, quando, com que idade,
 // o que mais se vende e quem sumiu.
 
 interface Mais {
-  criancas_top: { nome: string; visitas: number; tempo_min: number; gasto: number }[]
-  familias_top: { responsavel: string; visitas: number; dias: number; gasto: number }[]
+  criancas_top: { familia_id: string; nome: string; visitas: number; tempo_min: number; gasto: number }[]
+  familias_top: { familia_id: string; responsavel: string; visitas: number; dias: number; gasto: number }[]
   dias_semana: { dow: number; visitas: number; dias: number; recebido: number }[]
   faixas_idade: { faixa: string; visitas: number; criancas: number }[]
   itens_top: { item: string; quantidade: number; total: number }[]
   ocorrencias_tipo: { tipo: string; quantidade: number }[]
-  sumidos: { responsavel: string; telefone: string | null; ultima: string; visitas: number; dias_fora: number }[]
+  sumidos: { familia_id: string; responsavel: string; telefone: string | null; ultima: string; visitas: number; dias_fora: number }[]
 }
 
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -36,6 +37,7 @@ function Barras({ itens }: { itens: { rotulo: string; valor: number; dica?: Reac
 export function RelatoriosMais({ ini, fim, unitId, casa }: { ini: string; fim: string; unitId: string | null; casa: string }) {
   const [m, setM] = useState<Mais | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [ficha, setFicha] = useState<string | null>(null)
   useEffect(() => {
     setM(null)
     supabase.rpc('rec_relatorio_mais', { p_ini: ini, p_fim: fim, p_unit: unitId }).then(({ data, error }) => {
@@ -51,6 +53,7 @@ export function RelatoriosMais({ ini, fim, unitId, casa }: { ini: string; fim: s
 
   return (
     <>
+      {ficha && <FichaFamilia id={ficha} casa={casa} onFechar={() => setFicha(null)} />}
       <div className="grid lg:grid-cols-2 gap-4">
         <Card>
           {titulo(Crown, 'Crianças que mais vieram')}
@@ -58,7 +61,7 @@ export function RelatoriosMais({ ini, fim, unitId, casa }: { ini: string; fim: s
             <ol className="divide-y divide-line text-sm">{m.criancas_top.map((c, i) => (
               <li key={c.nome} className="py-2 flex items-center gap-3">
                 <span className="w-6 h-6 rounded-full bg-purple-light text-purple text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                <span className="flex-1 min-w-0 truncate font-semibold">{c.nome}</span>
+                <button type="button" onClick={() => setFicha(c.familia_id)} className="flex-1 min-w-0 truncate font-semibold text-left hover:text-purple hover:underline" title="Ver a ficha da família">{c.nome}</button>
                 <span className="text-xs text-muted shrink-0">{c.tempo_min ? `${fmtMin(c.tempo_min)} no total · ` : ''}{brl(Number(c.gasto))}</span>
                 <span className="font-bold shrink-0 w-16 text-right">{c.visitas}×</span>
               </li>
@@ -71,7 +74,7 @@ export function RelatoriosMais({ ini, fim, unitId, casa }: { ini: string; fim: s
             <ol className="divide-y divide-line text-sm">{m.familias_top.map((f, i) => (
               <li key={f.responsavel} className="py-2 flex items-center gap-3">
                 <span className="w-6 h-6 rounded-full bg-purple-light text-purple text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                <span className="flex-1 min-w-0 truncate font-semibold">{f.responsavel}</span>
+                <button type="button" onClick={() => setFicha(f.familia_id)} className="flex-1 min-w-0 truncate font-semibold text-left hover:text-purple hover:underline" title="Ver a ficha da família">{f.responsavel}</button>
                 <span className="text-xs text-muted shrink-0">{f.visitas} entradas · {brl(Number(f.gasto))}</span>
                 <span className="font-bold shrink-0 w-20 text-right">{f.dias} dia{f.dias === 1 ? '' : 's'}</span>
               </li>
@@ -109,7 +112,7 @@ export function RelatoriosMais({ ini, fim, unitId, casa }: { ini: string; fim: s
         {m.sumidos.length === 0 ? <Vazio texto="Ninguém sumido por enquanto." /> : (
           <ul className="divide-y divide-line text-sm">{m.sumidos.map((s) => (
             <li key={s.responsavel + s.ultima} className="py-2 flex flex-wrap items-center gap-x-4 gap-y-0.5">
-              <span className="font-semibold flex-1 min-w-[10rem]">{s.responsavel}</span>
+              <button type="button" onClick={() => setFicha(s.familia_id)} className="font-semibold flex-1 min-w-[10rem] text-left hover:text-purple hover:underline" title="Ver a ficha da família">{s.responsavel}</button>
               <span className="text-xs text-muted">{s.telefone ? mascaraTelefone(s.telefone) : 'sem telefone'}</span>
               <span className="text-xs text-muted">{s.visitas} visitas · última há {s.dias_fora} dias</span>
               {s.telefone && (

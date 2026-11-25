@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { filaEnviar, filaLer, filaSalvar, ehErroDeRede, type ItemFila } from '../lib/recOffline'
-import { WifiOff, Wallet, Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine } from 'lucide-react'
+import { WifiOff, Wallet, Timer, LogIn, KeyRound, AlertTriangle, Pause, Play, Clock, MessageCircle, LogOut, Plus, X, Check, MoreHorizontal, Search, Users, MapPin, Hourglass, ScanLine, Send } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import { useUnit } from '../lib/UnitContext'
@@ -9,6 +9,7 @@ import { useCompany } from '../lib/CompanyContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { EntradaRec } from '../components/recreacao/EntradaRec'
+import { ReenviarLink } from '../components/recreacao/ReenviarLink'
 import { SaidaRec } from '../components/recreacao/SaidaRec'
 import { LeitorQr, podeLerQr } from '../components/recreacao/QrRec'
 import { brl, friendlyDbError } from '../lib/format'
@@ -16,7 +17,7 @@ import { limparFotosVencidas, cronometro, fmtMin, horaMin, idadeTexto, linkWhats
 
 interface Config { ligada: boolean; funcoes: FuncoesRec; regras: Record<string, string | number>; termo: string }
 type Estado = { cor: 'vd' | 'am' | 'vm' | 'cz'; etiqueta: string; info: string; valor: number }
-type Acao = { tipo: 'pausa' | 'estender' | 'ocorrencia' | 'cancelar' | 'avisar'; v: VisitaRec } | null
+type Acao = { tipo: 'pausa' | 'estender' | 'ocorrencia' | 'cancelar' | 'avisar' | 'reenviar'; v: VisitaRec } | null
 
 const COR = {
   vd: { borda: 'border-line', chip: 'bg-teal-light text-teal', rel: 'text-ink' },
@@ -244,7 +245,8 @@ export function RecreacaoPainel() {
       {erro && <div className="bg-danger-light text-danger text-sm rounded-lg px-4 py-2.5">{erro}</div>}
       {msg && <div className={`text-sm rounded-lg px-4 py-2.5 flex justify-between gap-2 ${msg.ok ? 'bg-teal-light text-teal' : 'bg-danger-light text-danger'}`}>{msg.texto}<button onClick={() => setMsg(null)} aria-label="Fechar aviso"><X className="w-4 h-4" /></button></div>}
 
-      {acao && <PainelAcao acao={acao} texto={texto} setTexto={setTexto} cfg={cfg} rodar={rodar} fechar={() => setAcao(null)} />}
+      {acao?.tipo === 'reenviar' && cfg && <ReenviarLink key={acao.v.id} v={acao.v} funcoes={cfg.funcoes} regras={cfg.regras} nomeCasa={brand.name || 'Recreação'} fechar={() => setAcao(null)} />}
+      {acao && acao.tipo !== 'reenviar' && <PainelAcao acao={acao} texto={texto} setTexto={setTexto} cfg={cfg} rodar={rodar} fechar={() => setAcao(null)} />}
 
       <div className="flex flex-wrap items-center gap-2">
         {([['todos', 'Todos'], ['am', 'Perto de mudar'], ['vm', 'Cobrando a mais'], ['cuidado', 'Alergia ou cuidado'], ...((lista ?? []).some((v) => v.chegando_em) ? [['chegando', `Chegando (${(lista ?? []).filter((v) => v.chegando_em).length})`]] : [])] as [typeof filtro, string][]).map(([k, l]) => (
@@ -295,6 +297,7 @@ export function RecreacaoPainel() {
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     <Button className="!px-3 !py-1.5" onClick={() => abrirSaida(v)}><LogOut className="w-3.5 h-3.5" />Saída</Button>
                     <Botao onClick={() => abrir({ tipo: 'avisar', v })}><MessageCircle className="w-3.5 h-3.5" />Avisar</Botao>
+                    {(cfg?.funcoes.codigo !== false || cfg?.funcoes.paginaPais !== false) && <Botao onClick={() => abrir({ tipo: 'reenviar', v })} titulo="Reenviar o link e o código para o responsável"><Send className="w-3.5 h-3.5" />Reenviar link</Botao>}
                     {v.plano.pausa && (v.pausa
                       ? <Botao onClick={() => rodar('rec_retomar', { p_visita: v.id }, `Tempo de ${v.crianca.nome.split(' ')[0]} retomado.`)}><Play className="w-3.5 h-3.5" />Retomar</Botao>
                       : <Botao onClick={() => abrir({ tipo: 'pausa', v })}><Pause className="w-3.5 h-3.5" />Pausar</Botao>)}

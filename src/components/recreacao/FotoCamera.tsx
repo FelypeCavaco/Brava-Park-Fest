@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Camera, RefreshCw, Check, X, ImagePlus } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { mensagemCamera } from './QrRec'
 
 // Foto da criança: ao clicar, a câmera abre na hora (no computador, no tablet e no
 // celular). Tira, confere, e a foto já fica anexada. Se o aparelho não tiver câmera
@@ -32,8 +33,8 @@ function ModalCamera({ titulo, onFoto, onArquivo, onFechar }: { titulo: string; 
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false })
         if (parar) return stream.getTracks().forEach((t) => t.stop())
         const el = video.current!; el.srcObject = stream; await el.play(); setPronta(true)
-      } catch {
-        setErro('Não consegui abrir a câmera. Libere a câmera para este site (cadeado ao lado do endereço) ou escolha uma foto do aparelho.')
+      } catch (e) {
+        setErro(mensagemCamera(e) + ' Você também pode escolher uma foto do aparelho.')
       }
     })()
     return () => { parar = true; stream?.getTracks().forEach((t) => t.stop()) }

@@ -24,6 +24,7 @@ export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void
     let parar = false, stream: MediaStream | null = null, timer = 0
     ;(async () => {
       try {
+        if (!navigator.mediaDevices?.getUserMedia) { setErro('Este navegador não deixa usar a câmera aqui. Abra o sistema pelo Chrome ou pelo Safari (não por dentro de outro aplicativo) ou use o leitor de mesa.'); return }
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
         if (parar) return stream.getTracks().forEach((t) => t.stop())
         const el = video.current!; el.srcObject = stream; await el.play()
@@ -45,8 +46,8 @@ export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void
           timer = window.setTimeout(olhar, nativo ? 200 : 250)
         }
         olhar()
-      } catch {
-        setErro('Não consegui abrir a câmera. Libere a câmera para este site (cadeado ao lado do endereço) ou use o leitor de mesa.')
+      } catch (e) {
+        setErro(mensagemCamera(e))
       }
     })()
     return () => { parar = true; clearTimeout(timer); stream?.getTracks().forEach((t) => t.stop()) }
@@ -70,4 +71,14 @@ export function LeitorQr({ onLido, onFechar }: { onLido: (texto: string) => void
       </div>
     </div>
   )
+}
+
+
+// Texto claro para cada motivo de a câmera não abrir.
+export function mensagemCamera(e: unknown): string {
+  const nome = (e as { name?: string })?.name
+  if (nome === 'NotAllowedError' || nome === 'SecurityError') return 'A câmera está bloqueada para este site. Toque no cadeado ao lado do endereço, libere a câmera e atualize a página (se acabou de liberar, feche e abra o leitor de novo).'
+  if (nome === 'NotFoundError' || nome === 'OverconstrainedError') return 'Não encontrei nenhuma câmera neste aparelho.'
+  if (nome === 'NotReadableError' || nome === 'AbortError') return 'A câmera está sendo usada por outro programa ou aba. Feche o outro e tente de novo.'
+  return 'Não consegui abrir a câmera. Libere a câmera para este site (cadeado ao lado do endereço) ou use o leitor de mesa.'
 }

@@ -40,23 +40,50 @@
     ['u', 'Unidades incluídas'], ['p', 'Usuários'], ['a', 'Unidade a mais (por mês)'],
   ]
 
+  // Recreação: sozinha ou junto com o sistema de festas (a recreação sai mais em conta no combo).
+  var REC = { sozinha: 109.90, adicional: 89.90,
+    itens: ['Entrada e saída das crianças, com código e QR code', 'Painel ao vivo com tempo e valor de cada criança', 'Cobrança configurável: planos, faixas, tolerância e excedente', 'Cadastro de famílias, com autocadastro por QR code', 'Página do responsável no celular', 'Caixa do dia com fechamento conferido', 'Relatórios e financeiro básico', 'Treinamento, Guia Festou e suporte pelo WhatsApp'] }
+  var MODO = 'festas'
+  var NOTAS = { festas: '', recreacao: 'A recreação sozinha custa R$ 109,90 por mês, sem precisar do sistema de festas. Cada unidade a mais custa R$ 49,90 por mês.', ambos: 'Junto com o sistema de festas, a recreação custa R$ 89,90 a mais em qualquer plano (sozinha ela custa R$ 109,90).' }
   var brl = function (v) { return 'R$ ' + v.toFixed(2).replace('.', ',') }
   function precoHtml(v) {
     var p = v.toFixed(2).split('.')
     return '<span class="rs">R$</span><span class="valor">' + p[0] + '</span><span class="cent">,' + p[1] + '</span><span class="mes">/mês</span>'
   }
 
+  function cartaoRecreacao() {
+    var itens = REC.itens.map(function (i) { return '<li>' + i + '</li>' }).join('')
+    return '<article class="plano destaque" data-plano="recreacao"><div class="brilho"></div><span class="fita">Recreação</span>' +
+      '<h3>Só recreação</h3><p class="para">Para espaços de brincar, brinquedotecas e recreação infantil</p>' +
+      '<div class="preco">' + precoHtml(REC.sozinha) + '</div><div class="limites"><span>sem o sistema de festas</span><span>unidade a mais: R$ 49,90/mês</span></div>' +
+      '<p class="pergunta-plano">“Quanto cada criança rendeu hoje?”</p><ul class="itens">' + itens + '</ul>' +
+      '<a href="#contato" class="btn btn-verde btn-bloco" data-escolher="Só recreação">Quero a recreação</a></article>'
+  }
+  function trocarModo(m) {
+    MODO = m
+    $$('.modo').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.modo === m ? 'true' : 'false') })
+    $('#modo-nota').textContent = NOTAS[m] || ''
+    desenharPlanos()
+  }
+  $$('.modo').forEach(function (b) { b.addEventListener('click', function () { trocarModo(b.dataset.modo) }) })
+  $$('[data-modo-ir]').forEach(function (a) { a.addEventListener('click', function () { trocarModo(a.dataset.modoIr) }) })
+
   function desenharPlanos() {
     var box = $('#planos-cards')
+    box.className = 'planos' + (MODO === 'recreacao' ? ' so-um' : '')
+    $('#calc-box').hidden = MODO === 'recreacao'; $('#comparar-box').hidden = MODO === 'recreacao'
+    if (MODO === 'recreacao') { box.innerHTML = cartaoRecreacao(); ligarInclinacao(); return }
+    var extra = MODO === 'ambos' ? REC.adicional : 0
     box.innerHTML = PLANOS.map(function (p) {
       var lim = '<span>' + p.unidades + (p.unidades === 1 ? ' unidade' : ' unidades') + '</span><span>' + (p.usuarios ? 'até ' + p.usuarios + ' usuários' : 'usuários ilimitados') + '</span>'
       var itens = p.itens.map(function (i) { return i.charAt(0) === '=' ? '<li class="tudo">' + i.slice(1) + '</li>' : '<li>' + i + '</li>' }).join('')
+      if (extra) itens = '<li class="tudo">Mais a recreação infantil completa</li>' + itens
       return '<article class="plano' + (p.destaque ? ' destaque' : '') + '" data-plano="' + p.id + '">' +
         '<div class="brilho"></div>' + (p.destaque ? '<span class="fita">Mais escolhido</span>' : '') +
         '<h3>' + p.nome + '</h3><p class="para">' + p.para + '</p>' +
-        '<div class="preco">' + precoHtml(p.preco) + '</div><div class="limites">' + lim + '</div>' +
+        '<div class="preco">' + precoHtml(p.preco + extra) + '</div>' + (extra ? '<p class="soma">' + brl(p.preco) + ' do plano + ' + brl(extra) + ' da recreação</p>' : '') + '<div class="limites">' + lim + '</div>' +
         '<p class="pergunta-plano">' + p.pergunta + '</p><ul class="itens">' + itens + '</ul>' +
-        '<a href="#contato" class="btn ' + (p.destaque ? 'btn-verde' : 'btn-roxo') + ' btn-bloco" data-escolher="' + p.nome + '">Quero o ' + p.nome + '</a></article>'
+        '<a href="#contato" class="btn ' + (p.destaque ? 'btn-verde' : 'btn-roxo') + ' btn-bloco" data-escolher="' + p.nome + (extra ? ' + recreação' : '') + '">Quero o ' + p.nome + (extra ? ' + recreação' : '') + '</a></article>'
     }).join('')
 
     var t = $('#tabela-planos')
@@ -81,9 +108,10 @@
   function calcular() {
     var p = PLANOS.filter(function (x) { return x.id === $('#calc-plano').value })[0] || PLANOS[1]
     var extras = Math.max(0, unidades - p.unidades)
-    var total = p.preco + extras * p.adicional
+    var recMais = MODO === 'ambos' ? REC.adicional : 0
+    var total = p.preco + recMais + extras * p.adicional
     $('#calc-unidades').textContent = unidades
-    $('#calc-conta').textContent = extras > 0 ? p.nome + ' ' + brl(p.preco) + ' + ' + extras + ' × ' + brl(p.adicional) : p.nome + (unidades < p.unidades ? ' (inclui ' + p.unidades + ' unidades)' : '')
+    $('#calc-conta').textContent = p.nome + ' ' + brl(p.preco) + (recMais ? ' + recreação ' + brl(recMais) : '') + (extras > 0 ? ' + ' + extras + ' × ' + brl(p.adicional) : (unidades < p.unidades ? ' (inclui ' + p.unidades + ' unidades)' : ''))
     animarNumero($('#calc-valor'), total)
   }
   function animarNumero(el, valor) {
@@ -120,6 +148,23 @@
       })
       .catch(function () { /* fica com os valores da página */ })
   }
+
+  /* ================= RECREAÇÃO (abas) ================= */
+  var abas = $$('.rec-aba'), panes = $$('.rec-pane')
+  function mostrarRec(i, foco) {
+    abas.forEach(function (a, k) { a.setAttribute('aria-selected', k === i ? 'true' : 'false'); a.tabIndex = k === i ? 0 : -1 })
+    panes.forEach(function (p, k) { p.hidden = k !== i })
+    if (foco) abas[i].focus()
+  }
+  abas.forEach(function (a, k) {
+    a.addEventListener('click', function () { mostrarRec(k) })
+    a.addEventListener('keydown', function (e) {
+      var n = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? k + 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? k - 1 : null
+      if (n === null) return
+      e.preventDefault(); mostrarRec((n + abas.length) % abas.length, true)
+    })
+  })
+  if (abas.length) mostrarRec(0)
 
   /* ================= NAVEGAÇÃO ================= */
   var nav = $('.nav')

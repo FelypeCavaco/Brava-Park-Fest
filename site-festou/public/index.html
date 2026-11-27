@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Festou · Sistema para casas de festas</title>
-<meta name="description" content="O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. E cada família ganha um portal da própria festa, com Pix por QR code.">
+<title>Festou · Sistema para casas de festas e recreação</title>
+<meta name="description" content="O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. Também controla a recreação infantil: entrada, saída, tempo, valor e caixa do dia. E cada família ganha um portal da própria festa, com Pix por QR code.">
 <meta name="theme-color" content="#2A1A4E">
 <link rel="icon" href="img/festou-icone.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Festou","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"Sistema de gestão para casas de festas, com portal da família.","offers":[{"@type":"Offer","name":"Essencial","price":"189.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Profissional","price":"279.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Master","price":"369.90","priceCurrency":"BRL"}]}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Festou","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"Sistema de gestão para casas de festas e recreação infantil, com portal da família.","offers":[{"@type":"Offer","name":"Essencial","price":"189.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Profissional","price":"279.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Master","price":"369.90","priceCurrency":"BRL"},{"@type":"Offer","name":"Recreação","price":"109.90","priceCurrency":"BRL"}]}
 </script>
 </head>
 <body>
@@ -30,6 +30,7 @@
     <a href="#problemas">Por que o Festou</a>
     <a href="#portal">Portal da família</a>
     <a href="#sistema">O sistema</a>
+    <a href="#recreacao">Recreação</a>
     <a href="#planos">Planos</a>
     <a href="#duvidas">Dúvidas</a>
   </nav>
@@ -46,9 +47,9 @@
   <canvas id="hero3d" aria-hidden="true"></canvas>
   <div class="hero-brilho" aria-hidden="true"></div>
   <div class="hero-conteudo">
-    <p class="selo"><span class="ponto"></span> Sistema para casas de festas</p>
+    <p class="selo"><span class="ponto"></span> Sistema para casas de festas e recreação infantil</p>
     <h1 class="hero-titulo"><span class="linha"><span>Menos WhatsApp.</span></span><span class="linha"><span class="grad">Mais festa.</span></span></h1>
-    <p class="hero-sub">O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. E cada família ganha um <strong>portal da própria festa</strong>, no celular.</p>
+    <p class="hero-sub">O Festou organiza a casa de festas inteira: agenda, contratos, cobranças, cardápio, convidados, estoque e financeiro. E cada família ganha um <strong>portal da própria festa</strong>, no celular. Tem recreação? O Festou também controla a <strong>entrada, o tempo e o caixa</strong> das crianças.</p>
     <div class="hero-ctas">
       <a href="#contato" class="btn btn-verde btn-lg magnet">Quero ver funcionando <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <a href="#planos" class="btn btn-vidro btn-lg">Ver planos</a>
@@ -67,8 +68,8 @@
 <!-- ============ FAIXA ============ -->
 <div class="faixa" aria-hidden="true">
   <div class="faixa-trilho">
-    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i>
-    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i>
+    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i><span>Controle de recreação</span><i>✦</i><span>Caixa do dia</span><i>✦</i>
+    <span>Agenda de festas</span><i>✦</i><span>Portal da família</span><i>✦</i><span>Pix por QR code</span><i>✦</i><span>Contratos em PDF</span><i>✦</i><span>Cobrança em parcelas</span><i>✦</i><span>Lista de convidados</span><i>✦</i><span>Estoque</span><i>✦</i><span>Lucro por festa</span><i>✦</i><span>Controle de recreação</span><i>✦</i><span>Caixa do dia</span><i>✦</i>
   </div>
 </div>
 
@@ -175,6 +176,108 @@
   </div>
 </section>
 
+<!-- ============ RECREAÇÃO ============ -->
+<section class="secao recreacao" id="recreacao">
+  <div class="cabeca revelar">
+    <p class="sobretitulo">Novo · Recreação infantil</p>
+    <h2>Controle de recreação: tempo, valor e segurança de cada criança</h2>
+    <p class="sub">Tem espaço de brincar, brinquedoteca ou recreação? O Festou controla a entrada e a saída, conta o tempo, calcula o valor e fecha o caixa do dia. Contrate sozinho ou junto com o sistema de festas.</p>
+  </div>
+
+  <div class="rec-modos revelar">
+    <a href="#planos" class="rec-modo" data-modo-ir="festas"><small>Para casas de festas</small><b>Só festas</b><span>Tudo o que você já conhece, a partir de R$ 189,90 por mês.</span></a>
+    <a href="#planos" class="rec-modo" data-modo-ir="recreacao"><small>Para quem tem recreação</small><b>Só recreação</b><span><em>R$ 109,90</em> por mês, sem precisar do sistema de festas.</span></a>
+    <a href="#planos" class="rec-modo dest" data-modo-ir="ambos"><small>Os dois, no mesmo sistema</small><b>Festas + recreação</b><span>A recreação sai por só <em>R$ 89,90 a mais</em> em qualquer plano.</span></a>
+  </div>
+
+  <div class="rec-vitrine revelar" id="rec-vitrine">
+    <div class="rec-abas" role="tablist" aria-label="Como funciona a recreação">
+      <button type="button" class="rec-aba" role="tab" aria-selected="true" aria-controls="rec-p0" id="rec-a0"><span>1</span>Cadastro da família</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p1" id="rec-a1"><span>2</span>Entrada</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p2" id="rec-a2"><span>3</span>Painel ao vivo</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p3" id="rec-a3"><span>4</span>Responsável no celular</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p4" id="rec-a4"><span>5</span>Saída e conta certa</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p5" id="rec-a5"><span>6</span>Caixa do dia</button>
+      <button type="button" class="rec-aba" role="tab" aria-selected="false" aria-controls="rec-p6" id="rec-a6"><span>7</span>Relatórios</button>
+    </div>
+
+    <div class="rec-palco">
+      <div class="rec-pane" role="tabpanel" id="rec-p0" aria-labelledby="rec-a0">
+        <div class="rec-texto">
+          <h3>Cadastro rápido, uma vez só</h3>
+          <p>Procure pelo CPF do responsável e a família aparece inteira: crianças, alergias e quem mais pode buscar. A família também pode se cadastrar sozinha pelo QR code da casa. A recepção só confere e aprova.</p>
+          <ul><li>Termo de responsabilidade com aceite registrado</li><li>Aviso quando o cadastro já existe</li><li>Foto da criança, se a casa quiser</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Famílias</span></div><img src="img/rec-familias.jpg" alt="Cadastro de famílias da recreação, com cadastros recebidos pelo celular" width="1700" height="1062" loading="lazy"></div></div>
+      </div>
+
+      <div class="rec-pane" role="tabpanel" id="rec-p1" aria-labelledby="rec-a1" hidden>
+        <div class="rec-texto">
+          <h3>Entrada em poucos toques</h3>
+          <p>Marque quem vai entrar, escolha o plano e a forma de pagamento de cada criança, inclusive dividida em duas formas. O responsável recebe no WhatsApp o código de retirada e o link para acompanhar.</p>
+          <ul><li>Irmãos entram e saem separados, cada um com seu plano</li><li>Pulseira numerada, foto pela câmera e via de entrada impressa (cupom ou A4), se a casa quiser</li><li>Entrada continua mesmo se a internet cair</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Nova entrada</span></div><img src="img/rec-entrada.jpg" alt="Tela de entrada de duas crianças na recreação" width="1700" height="1063" loading="lazy"></div></div>
+      </div>
+
+      <div class="rec-pane" role="tabpanel" id="rec-p2" aria-labelledby="rec-a2" hidden>
+        <div class="rec-texto">
+          <h3>Todas as crianças numa tela</h3>
+          <p>A recepção vê cada criança com cronômetro e valor. As cores avisam quem está acabando o tempo, quem passou do combinado e quem tem alergia.</p>
+          <ul><li>Pausar o tempo, estender e registrar ocorrências</li><li>Aviso antes de o valor mudar</li><li>O horário é sempre o do sistema: ninguém mexe no relógio</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Recreação agora</span></div><img src="img/rec-painel.jpg" alt="Painel ao vivo da recreação, com tempo e valor de cada criança" width="1700" height="1063" loading="lazy"></div></div>
+      </div>
+
+      <div class="rec-pane celular-modo" role="tabpanel" id="rec-p3" aria-labelledby="rec-a3" hidden>
+        <div class="rec-texto">
+          <h3>O responsável acompanha pelo celular</h3>
+          <p>Sem baixar aplicativo: um link mostra o tempo, o valor até agora e o QR code da retirada. O responsável pode avisar que está chegando e pedir mais tempo.</p>
+          <ul><li>Nunca mostra CPF nem telefone</li><li>A recepção aceita ou recusa o pedido de mais tempo</li><li>O link expira depois da saída</li><li>Perdeu a mensagem? A recepção reenvia o link e o código em segundos</li></ul>
+        </div>
+        <div class="rec-tela"><div class="rec-fone"><img src="img/rec-pais.jpg" alt="Página do responsável no celular, com tempo, valor e QR code" width="560" height="1284" loading="lazy"></div></div>
+      </div>
+
+      <div class="rec-pane" role="tabpanel" id="rec-p4" aria-labelledby="rec-a4" hidden>
+        <div class="rec-texto">
+          <h3>Saída segura e conta certa</h3>
+          <p>A criança só sai com o código ou o QR. O sistema calcula tempo, excedente e itens do balcão, desconta o que já foi pago e mostra o valor final. Cada criança paga do seu jeito.</p>
+          <ul><li>Ocorrências com ciência do responsável na saída</li><li>Desconto ou acréscimo em R$ ou %, sempre com motivo escrito</li><li>Pagamento dividido: parte no Pix, parte no dinheiro</li><li>Comprovante de saída impresso, se a casa quiser</li><li>Liberação sem código só pelo gerente</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Saída</span></div><img src="img/rec-saida.jpg" alt="Tela de saída com a conta da criança" width="1700" height="1063" loading="lazy"></div></div>
+      </div>
+
+      <div class="rec-pane" role="tabpanel" id="rec-p5" aria-labelledby="rec-a5" hidden>
+        <div class="rec-texto">
+          <h3>Caixa do dia sob controle</h3>
+          <p>Abra o caixa com o troco, troque de atendente sem fechar e, no fim do expediente, o atendente conta antes de ver o valor esperado. Diferença exige explicação, e o relatório do dia fica guardado.</p>
+          <ul><li>Retirada e reforço sempre com motivo</li><li>Estorno total ou parcial, com motivo, que aparece no relatório do dia</li><li>Lembrete para fechar o caixa</li><li>O que foi recebido entra no Financeiro</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Caixa da recreação</span></div><img src="img/rec-caixa.jpg" alt="Caixa da recreação aberto, com o recebido do dia" width="1700" height="460" loading="lazy" class="img-baixa"></div></div>
+      </div>
+
+      <div class="rec-pane" role="tabpanel" id="rec-p6" aria-labelledby="rec-a6" hidden>
+        <div class="rec-texto">
+          <h3>Relatórios para decidir</h3>
+          <p>Quantas crianças vieram, quanto entrou, qual o horário de pico, qual plano mais vende e como foram os caixas. Cancelamentos, descontos e estornos aparecem com motivo e quem fez. Veja também quem mais volta, quais dias e idades predominam, o que mais vende no balcão e quais famílias sumiram: clicou no nome, abriu a ficha da família.</p>
+          <ul><li>Por dia, por horário, por plano e por forma de pagamento</li><li>Crianças e famílias mais frequentes, e quem não volta há 30 dias</li><li>Resumo pronto para mandar no WhatsApp</li></ul>
+        </div>
+        <div class="rec-tela"><div class="navegador"><div class="barra"><i></i><i></i><i></i><span>Relatórios da recreação</span></div><img src="img/rec-relatorios.jpg" alt="Relatórios da recreação, com entradas por dia e por horário" width="1700" height="1370" loading="lazy"></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="aviso-print">Telas reais do sistema · dados fictícios</p>
+
+  <div class="rec-recursos">
+    <div class="rec-rec revelar"><b>Cobrança do jeito da sua casa</b><p>Pague na entrada ou na saída, por tempo, por faixas ou por blocos de minutos, com tolerância e excedente configuráveis.</p></div>
+    <div class="rec-rec revelar"><b>A conta é sempre a do sistema</b><p>Cálculo e horário ficam no servidor. O preço combinado na entrada fica guardado, mesmo se a tabela mudar depois.</p></div>
+    <div class="rec-rec revelar"><b>Alergias em destaque</b><p>Cuidados especiais aparecem em vermelho no painel, na entrada e na etiqueta da pulseira.</p></div>
+    <div class="rec-rec revelar"><b>Ocorrências registradas</b><p>Machucados, brigas e mal-estar ficam no histórico, e o responsável confirma que ficou ciente na saída.</p></div>
+    <div class="rec-rec revelar"><b>Equipe com o acesso certo</b><p>A recepção da recreação enxerga só a recreação. Cada pessoa tem as permissões do seu perfil.</p></div>
+    <div class="rec-rec revelar"><b>Dados protegidos</b><p>Dados de crianças e responsáveis ficam separados por casa, dentro da LGPD, e fotos podem ser apagadas depois de um prazo.</p></div>
+  </div>
+</section>
+
 <!-- ============ FINANCEIRO POR PLANO ============ -->
 <section class="secao perguntas" id="financeiro">
   <div class="cabeca revelar">
@@ -209,12 +312,19 @@
     <p class="sub">Todos incluem treinamento da equipe, o Guia Festou com explicações e vídeos, sua logo no sistema e no portal e suporte pelo WhatsApp.</p>
   </div>
 
+  <div class="modos" role="tablist" aria-label="O que você quer controlar">
+    <button type="button" class="modo" role="tab" data-modo="festas" aria-selected="true">Só festas</button>
+    <button type="button" class="modo" role="tab" data-modo="recreacao" aria-selected="false">Só recreação</button>
+    <button type="button" class="modo" role="tab" data-modo="ambos" aria-selected="false">Festas + recreação<small>a recreação sai mais em conta</small></button>
+  </div>
+  <p class="modo-nota" id="modo-nota" aria-live="polite"></p>
+
   <div class="planos" id="planos-cards"></div>
 
-  <div class="calculadora revelar">
+  <div class="calculadora revelar" id="calc-box">
     <div>
       <h3>Tem mais de um salão?</h3>
-      <p>Cada unidade a mais custa só <b>R$ 49,90 por mês</b>, em qualquer plano. Simule:</p>
+      <p>Cada unidade a mais custa só <b>R$ 49,90 por mês</b>, em qualquer plano (e também na recreação). Simule:</p>
     </div>
     <div class="calc-campos">
       <label>Plano
@@ -227,7 +337,7 @@
     <div class="calc-total"><small id="calc-conta">—</small><strong id="calc-valor">—</strong><span>por mês</span></div>
   </div>
 
-  <details class="comparar revelar">
+  <details class="comparar revelar" id="comparar-box">
     <summary>Comparar tudo o que cada plano tem</summary>
     <div class="tabela-rolar"><table id="tabela-planos"></table></div>
   </details>
@@ -272,6 +382,9 @@
   <div class="faq">
     <details><summary>Preciso instalar alguma coisa?</summary><p>Não. O Festou funciona no navegador do computador e do celular. A família acessa o portal da festa por um link, sem baixar aplicativo.</p></details>
     <details><summary>Como a família paga pelo portal?</summary><p>O portal mostra o QR code do Pix e o código copia e cola com o valor certo, gerados com a chave da sua casa. O dinheiro cai direto na sua conta. A família anexa o comprovante e a sua equipe confere e confirma.</p></details>
+    <details><summary>Posso contratar só a recreação, sem o sistema de festas?</summary><p>Pode. A recreação sozinha custa R$ 109,90 por mês. Se a sua casa também faz festas, a recreação sai por R$ 89,90 a mais em qualquer plano do sistema de festas, em vez de R$ 109,90.</p></details>
+    <details><summary>Como o Festou calcula o valor de cada criança?</summary><p>A casa cadastra os planos de cobrança: por exemplo, uma hora paga na entrada com tolerância e excedente por faixas, ou tempo livre cobrado por blocos de minutos na saída. O sistema calcula tudo sozinho, com o horário do servidor, e mostra a conta antes de a criança sair.</p></details>
+    <details><summary>A recreação funciona se a internet cair?</summary><p>A entrada das crianças continua: ela fica guardada no aparelho com a hora certa e é enviada sozinha quando a internet volta. A saída precisa de internet, porque a conta é sempre calculada pelo sistema.</p></details>
     <details><summary>Tenho duas unidades. Como funciona?</summary><p>Cada plano já inclui unidades (o Master inclui duas) e cada unidade a mais custa R$ 49,90 por mês. Você vê cada unidade separada ou todas juntas, no financeiro e na agenda.</p></details>
     <details><summary>Posso trocar de plano depois?</summary><p>Pode, a qualquer momento. Subir de plano vale na hora; descer vale a partir do mês seguinte. Os seus dados nunca são apagados na troca.</p></details>
     <details><summary>Os meus dados ficam seguros?</summary><p>Os dados de cada casa ficam separados dos das outras, com acesso por usuário e permissões por perfil. Você pode exportar tudo quando quiser. Seguimos a LGPD.</p></details>
@@ -296,7 +409,7 @@
         <label>WhatsApp com DDD *<input name="whatsapp" required inputmode="tel" autocomplete="tel" placeholder="(47) 99999-9999" maxlength="20"></label>
         <label class="largo">E-mail<input name="email" type="email" autocomplete="email" maxlength="160"></label>
         <label class="largo">Plano de interesse
-          <select name="plano"><option value="">Ainda não sei</option><option>Essencial</option><option>Profissional</option><option>Master</option></select>
+          <select name="plano"><option value="">Ainda não sei</option><option>Essencial</option><option>Profissional</option><option>Master</option><option>Só recreação</option><option>Essencial + recreação</option><option>Profissional + recreação</option><option>Master + recreação</option></select>
         </label>
         <label class="largo">Quer contar algo? (opcional)<textarea name="mensagem" rows="3" maxlength="1000" placeholder="Ex.: temos 2 salões e fazemos umas 30 festas por mês"></textarea></label>
         <label class="mel" aria-hidden="true">Não preencha<input name="site" tabindex="-1" autocomplete="off"></label>

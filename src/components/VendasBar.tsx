@@ -15,6 +15,7 @@ interface Bebida { id: string; name: string; sale_price: number; quantity: numbe
 interface Venda {
   id: string; modo: 'pago' | 'conta'; forma: string | null; total: number; custo: number | null; vendido_em: string
   criado_por: string | null; cancelada_em: string | null; cancelada_por: string | null; motivo_cancelamento: string | null
+  payment_id?: string | null
   bar_venda_itens: { nome: string; quantidade: number; preco_unit: number }[]
 }
 export interface TotaisBar { pagoNaHora: number; naConta: number; custo: number }
@@ -33,6 +34,8 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [modo, setModo] = useState<'pago' | 'conta'>('pago')
   const [forma, setForma] = useState<PaymentMethod>('pix')
+  const [donoPagou, setDonoPagou] = useState(false) // venda na conta, mas o dono já pagou agora
+  const [recebendo, setRecebendo] = useState<{ id: string; forma: PaymentMethod } | null>(null)
   const [avulso, setAvulso] = useState<{ nome: string; preco: string; qtd: string } | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
@@ -42,7 +45,7 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
   const carregar = useCallback(async () => {
     const [v, b] = await Promise.all([
       supabase.from('bar_vendas')
-        .select('id, modo, forma, total, custo, vendido_em, criado_por, cancelada_em, cancelada_por, motivo_cancelamento, bar_venda_itens(nome, quantidade, preco_unit)')
+        .select('id, modo, forma, total, custo, vendido_em, criado_por, cancelada_em, cancelada_por, motivo_cancelamento, payment_id, bar_venda_itens(nome, quantidade, preco_unit)')
         .eq('reservation_id', reservationId).order('vendido_em', { ascending: false }),
       supabase.from('inventory_items').select('id, name, sale_price, quantity, unit_of_measure').eq('unit_id', unitId).not('sale_price', 'is', null).order('name'),
     ])
@@ -79,20 +82,31 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
     setLinhas((prev) => [...prev, { chave: `a${Date.now()}`, item: null, nome: avulso.nome.trim(), quantidade: q, preco }])
     setAvulso(null); setMsg(null)
   }
-  function fechar() { setAberto(false); setLinhas([]); setAvulso(null); setModo('pago'); setForma('pix') }
+  function fechar() { setAberto(false); setLinhas([]); setAvulso(null); setModo('pago'); setForma('pix'); setDonoPagou(false) }
+
+  async function receber() {
+    if (!recebendo) return
+    const { error } = await supabase.rpc('bar_receber', { p_venda: recebendo.id, p_forma: recebendo.forma })
+    if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
+    setRecebendo(null)
+    setMsg({ ok: true, texto: 'Pagamento das bebidas lançado na festa.' })
+    await carregar(); onMudou()
+  }
 
   async function confirmar() {
     if (!linhas.length) return
     setSalvando(true); setMsg(null)
     const { error } = await supabase.rpc('bar_vender', {
-      p_reservation: reservationId, p_modo: modo, p_forma: modo === 'pago' ? forma : null,
+      p_reservation: reservationId, p_modo: modo, p_forma: modo === 'pago' || donoPagou ? forma : null, p_dono_pagou: modo === 'conta' && donoPagou,
       p_itens: linhas.map((l) => (l.item ? { item: l.item, quantidade: l.quantidade, preco: l.preco } : { nome: l.nome, quantidade: l.quantidade, preco: l.preco })),
     })
     setSalvando(false)
     if (error) return setMsg({ ok: false, texto: friendlyDbError(error.message) })
     setMsg({ ok: true, texto: modo === 'pago'
       ? `Venda de ${brl(totalVenda)} registrada. O estoque baixou e o valor já está no Financeiro (Vendas no bar, ${PAYMENT_METHOD_LABEL[forma].toLowerCase()}).`
-      : `Venda de ${brl(totalVenda)} registrada na conta do dono da festa. O estoque baixou e o valor somou no total da festa.` })
+      : donoPagou
+        ? `Venda de ${brl(totalVenda)} registrada na festa e já paga (${PAYMENT_METHOD_LABEL[forma].toLowerCase()}). O estoque baixou e a festa continua com o pagamento em dia.`
+        : `Venda de ${brl(totalVenda)} registrada na conta do dono da festa. O estoque baixou e o valor somou no total da festa. Quando ele pagar, use "Marcar como paga" na venda.` })
     fechar(); await carregar(); onMudou()
   }
 
@@ -192,7 +206,13 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
                   <Escolha ativo={modo === 'pago'} onClick={() => setModo('pago')} icone={Wallet} titulo="Pagou agora" texto="Entra hoje no Financeiro, como Vendas no bar." />
                   <Escolha ativo={modo === 'conta'} onClick={() => setModo('conta')} icone={Users} titulo="Na conta do dono da festa" texto="Soma no valor da festa; entra quando ele pagar." />
                 </div>
-                {modo === 'pago' && (
+                {modo === 'conta' && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={donoPagou} onChange={(e) => setDonoPagou(e.target.checked)} />
+                    O dono da festa já pagou estas bebidas agora
+                  </label>
+                )}
+                {(modo === 'pago' || donoPagou) && (
                   <div className="flex flex-wrap gap-1.5">
                     {FORMAS.map((f) => (
                       <button key={f} type="button" onClick={() => setForma(f)} className={`px-3 h-8 rounded-full text-xs font-semibold border ${forma === f ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{PAYMENT_METHOD_LABEL[f]}</button>
@@ -221,9 +241,14 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
               <span className="text-muted tabular-nums">{hora(v.vendido_em)}</span>
               <span className="flex-1 min-w-[10rem]">{v.bar_venda_itens.map((i) => `${qtdTxt(i.quantidade)}× ${i.nome}`).join(', ')}</span>
               <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${v.modo === 'pago' ? 'bg-teal-light text-teal' : 'bg-purple-light text-purple-dark'}`}>
-                {v.modo === 'pago' ? `pago · ${PAYMENT_METHOD_LABEL[v.forma as PaymentMethod] ?? v.forma}` : 'na conta do dono'}
+                {v.modo === 'pago' ? `pago · ${PAYMENT_METHOD_LABEL[v.forma as PaymentMethod] ?? v.forma}` : v.payment_id ? `na conta do dono · paga${v.forma ? ` (${PAYMENT_METHOD_LABEL[v.forma as PaymentMethod] ?? v.forma})` : ''}` : 'na conta do dono · falta receber'}
               </span>
               <span className={`w-24 text-right tabular-nums font-semibold ${v.cancelada_em ? 'line-through' : ''}`}>{brl(v.total)}</span>
+              {!v.cancelada_em && v.modo === 'conta' && !v.payment_id && (
+                <Can permission="action:festa.vendas_bar">
+                  <button type="button" className="text-xs font-semibold text-purple hover:underline" onClick={() => setRecebendo({ id: v.id, forma: 'pix' })}>marcar como paga</button>
+                </Can>
+              )}
               {!v.cancelada_em && (
                 <Can permission="action:festa.vendas_bar">
                   <button type="button" className="text-xs text-muted hover:text-danger" onClick={() => setCancelando({ id: v.id, motivo: '' })}>cancelar</button>
@@ -234,6 +259,16 @@ export function VendasBar({ reservationId, unitId, onMudou, onTotais }: {
               {v.criado_por ? `por ${v.criado_por}` : ''}{v.custo != null && !v.cancelada_em ? ` · custo ${brl(v.custo)}` : ''}
               {v.cancelada_em ? ` · cancelada por ${v.cancelada_por ?? '—'}: ${v.motivo_cancelamento}` : ''}
             </p>
+            {recebendo?.id === v.id && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className="text-xs text-muted mr-1">O dono pagou {brl(v.total)} no:</span>
+                {FORMAS.map((f) => (
+                  <button key={f} type="button" onClick={() => setRecebendo({ id: v.id, forma: f })} className={`px-3 h-8 rounded-full text-xs font-semibold border ${recebendo.forma === f ? 'bg-purple text-white border-purple' : 'border-line bg-surface'}`}>{PAYMENT_METHOD_LABEL[f]}</button>
+                ))}
+                <Button variant="secondary" onClick={receber}>Lançar pagamento</Button>
+                <button type="button" className="text-xs text-muted" onClick={() => setRecebendo(null)}>voltar</button>
+              </div>
+            )}
             {cancelando?.id === v.id && (
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <input className="campo !w-72" autoFocus value={cancelando.motivo} onChange={(e) => setCancelando({ ...cancelando, motivo: e.target.value })} placeholder="Motivo do cancelamento (obrigatório)" />

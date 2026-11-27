@@ -427,6 +427,9 @@ export function FestaDetalhe() {
   const [guestEntries, setGuestEntries] = useState<{ id: string; name: string; arrived: boolean; flagged: boolean }[]>([])
   const [manualGuestName, setManualGuestName] = useState('')
   const [manualGuestFlagged, setManualGuestFlagged] = useState(false)
+  const [pasteGuests, setPasteGuests] = useState('')
+  const [pasteGuestsMsg, setPasteGuestsMsg] = useState<{ ok: boolean; texto: string } | null>(null)
+  const [pasteGuestsBusy, setPasteGuestsBusy] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [guestSortAlpha, setGuestSortAlpha] = useState(false)
   const [guestListFullscreen, setGuestListFullscreen] = useState(false)
@@ -975,6 +978,43 @@ export function FestaDetalhe() {
     setManualGuestFlagged(false)
   }
 
+  // Lista colada (um nome por linha, como no portal do cliente): tira numeração e marcadores,
+  // junta repetidos e pula quem já está na lista.
+  const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+  function nomesColados(texto: string) {
+    const vistos = new Set<string>()
+    const out: string[] = []
+    for (const linha of texto.split(/\r?\n/)) {
+      const nome = linha.replace(/^\s*(?:\d+\s*[.)\-:]+|[-•*·]+)\s*/, '').replace(/\s+/g, ' ').trim()
+      if (nome.length < 2) continue
+      const chave = semAcento(nome)
+      if (vistos.has(chave)) continue
+      vistos.add(chave); out.push(nome.slice(0, 120))
+    }
+    return out
+  }
+  async function handleAddPastedGuests() {
+    if (!guestListToken) return
+    const naLista = new Set(guestEntries.map((g) => semAcento(g.name)))
+    const todos = nomesColados(pasteGuests)
+    const novos = todos.filter((n) => !naLista.has(semAcento(n)))
+    if (!todos.length) return setPasteGuestsMsg({ ok: false, texto: 'Cole os nomes, um embaixo do outro.' })
+    if (!novos.length) return setPasteGuestsMsg({ ok: false, texto: 'Todos esses nomes já estão na lista.' })
+    if (novos.length > 300) return setPasteGuestsMsg({ ok: false, texto: 'Muitos nomes de uma vez (máximo 300). Cole em partes.' })
+    setPasteGuestsBusy(true); setPasteGuestsMsg(null)
+    const agora = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('guest_list_entries')
+      .insert(novos.map((name) => ({ token: guestListToken, name, flagged: manualGuestFlagged, arrived: manualGuestFlagged, arrived_at: manualGuestFlagged ? agora : null })))
+      .select()
+    setPasteGuestsBusy(false)
+    if (error || !data) return setPasteGuestsMsg({ ok: false, texto: 'Não foi possível adicionar os nomes.' })
+    setGuestEntries((prev) => [...prev, ...data.map((d) => ({ id: d.id, name: d.name, arrived: !!d.arrived, flagged: !!d.flagged }))])
+    setPasteGuests('')
+    const pulados = todos.length - novos.length
+    setPasteGuestsMsg({ ok: true, texto: `${novos.length} nome${novos.length === 1 ? '' : 's'} adicionado${novos.length === 1 ? '' : 's'}${pulados ? ` (${pulados} já estava${pulados === 1 ? '' : 'm'} na lista)` : ''}.` })
+  }
+
   function handleRemoveGuest(entryId: string) {
     const guest = guestEntries.find((g) => g.id === entryId)
     if (!guest) return
@@ -1095,6 +1135,26 @@ export function FestaDetalhe() {
               <Flag className="w-3.5 h-3.5 text-amber" /> Sinalizar — chegou sem estar na lista
             </label>
           </form>
+          <details className="mt-3 rounded-lg border border-line px-3" open={pasteGuests.length > 0}>
+            <summary className="py-2 text-xs font-semibold text-purple cursor-pointer">Colar a lista de convidados (um nome embaixo do outro)</summary>
+            <div className="pb-3 space-y-2">
+              <textarea
+                value={pasteGuests}
+                onChange={(e) => { setPasteGuests(e.target.value); setPasteGuestsMsg(null) }}
+                rows={5}
+                placeholder={'Cole aqui, um nome por linha (dá para colar do WhatsApp ou de uma planilha)'}
+                aria-label="Colar lista de convidados"
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={handleAddPastedGuests} disabled={pasteGuestsBusy || nomesColados(pasteGuests).length === 0} className="text-xs px-3 py-1.5">
+                  {pasteGuestsBusy ? 'Adicionando...' : `Adicionar ${nomesColados(pasteGuests).length || ''} nome${nomesColados(pasteGuests).length === 1 ? '' : 's'}`}
+                </Button>
+                <span className="text-[11px] text-muted">Números e marcadores no começo da linha são ignorados; nomes repetidos entram uma vez só.</span>
+              </div>
+              {pasteGuestsMsg && <p className={`text-xs font-semibold ${pasteGuestsMsg.ok ? 'text-teal' : 'text-danger'}`}>{pasteGuestsMsg.texto}</p>}
+            </div>
+          </details>
         </Can>
       </div>
     )
